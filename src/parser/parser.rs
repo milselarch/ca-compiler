@@ -8,7 +8,7 @@ TODO: implement rollback for token stack for failed parse paths
 */
 
 pub struct ParseError {
-    message: String
+    pub(crate) message: String
 }
 
 pub struct TokenStack {
@@ -31,6 +31,14 @@ impl TokenStack {
         } else {
             Err(ParseError { message: "Unexpected token".to_string() })
         }
+    }
+
+    pub fn new(tokens: VecDeque<Tokens>) -> TokenStack {
+        TokenStack { tokens }
+    }
+
+    pub fn new_from_vec(tokens: Vec<Tokens>) -> TokenStack {
+        TokenStack { tokens: VecDeque::from(tokens) }
     }
 }
 
@@ -127,6 +135,7 @@ impl Function {
         // <function> ::= "int" <identifier> "(" "void" ")" "{" <statement> "}"
         tokens.expect_pop_front(Tokens::Keyword(Keywords::Integer))?;
         let identifier = Identifier::parse_tokens(tokens)?;
+
         tokens.expect_pop_front(Tokens::Punctuator(Punctuators::OpenParens))?;
         tokens.expect_pop_front(Tokens::Keyword(Keywords::Void))?;
         tokens.expect_pop_front(Tokens::Punctuator(Punctuators::CloseParens))?;
@@ -134,8 +143,6 @@ impl Function {
         tokens.expect_pop_front(Tokens::Punctuator(Punctuators::OpenBrace))?;
         let statement = Statement::parse(tokens)?;
         tokens.expect_pop_front(Tokens::Punctuator(Punctuators::CloseBrace))?;
-        // TODO: parse everything after the identifier
-        // <function> ::= "int" <identifier> "(" "void" ")" "{" <statement> "}"
         Ok(Function { name: identifier, body: statement })
     }
 }

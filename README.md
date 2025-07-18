@@ -20,3 +20,14 @@ Running on windows:
 2. `cargo build`  
 `./target/debug/ca-compiler.exe --lex ./writing-a-c-compiler-tests/tests/chapter_1/invalid_parse/invalid_function_name.c`
 
+### `run parser tests`
+
+`./target/debug/ca-compiler --parse 
+~/projects/ca-compiler/writing-a-c-compiler-tests/tests/chapter_1/invalid_parse/end_before_expr.c`  
+`./target/debug/ca-compiler --parse 
+~/projects/ca-compiler/writing-a-c-compiler-tests/tests/chapter_1/invalid_parse/invalid_function_name.c`
+
+Test parsing on all test cases in chapter 1:
+```bash
+writing-a-c-compiler-tests/test_compiler ./target/debug/ca-compiler --chapter 1 --stage parse
+```

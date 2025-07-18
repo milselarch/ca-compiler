@@ -1,4 +1,6 @@
-use std::fmt;
+use std::{error::Error, fmt};
+use std::fs::File;
+use std::io::Read;
 use regex::Regex;
 
 use crate::lexer::base_token_builder::{BaseTokenBuilder, TokenBuilderStates};
@@ -309,6 +311,7 @@ impl TokenBuilder for ConstantBuilder {
 }
 
 struct PunctuatorProcessor {
+    // things like "(", ")", "{", "}", ";"
     pattern: String,
     punctuator: Punctuators,
     base: BaseTokenBuilder,
@@ -513,6 +516,7 @@ impl TokenBuilder for MultiLineCommentBuilder {
     }
 }
 
+#[derive(Debug)]
 pub struct InvalidToken {
     characters: String,
     start_position: usize,
@@ -615,6 +619,40 @@ impl Lexer {
 
         Ok(tokens)
     }
+}
+
+
+#[derive(Debug)]
+pub enum LexerFromFileError {
+    InvalidToken(InvalidToken),
+    IoError(std::io::Error),
+}
+
+
+pub fn lex_from_filepath(
+    file_path: &String, verbose: bool
+) -> Result<Vec<Tokens>, LexerFromFileError> {
+    let open_result = File::open(file_path);
+    let mut file = match open_result {
+        Ok(f) => f,
+        Err(e) => return Err(LexerFromFileError::IoError(e)),
+    };
+
+    let mut contents = String::new();
+    let read_result = file.read_to_string(&mut contents);
+    if read_result.is_err() {
+        return Err(LexerFromFileError::IoError(read_result.unwrap_err()));
+    }
+
+    // Print the file contents
+    if verbose { println!("{}", contents); }
+    let lexer = Lexer::new();
+    let tokens_res = lexer.tokenize(&contents);
+    let tokens = match tokens_res {
+        Ok(t) => t,
+        Err(e) => return Err(LexerFromFileError::InvalidToken(e)),
+    };
+    Ok(tokens)
 }
 
 #[cfg(test)]

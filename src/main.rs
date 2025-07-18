@@ -3,6 +3,8 @@ use std::fs::File;
 use std::io::{self, Read};
 
 use lexer::lexer::Lexer;
+use crate::lexer::lexer::lex_from_filepath;
+
 pub mod lexer;
 pub mod parser;
 
@@ -15,26 +17,44 @@ fn main() -> io::Result<()> {
         eprintln!("Usage: {} --lex <file_path>", args[0]);
         std::process::exit(1);
     }
-    // Check for the --lex flag
-    if args[1] != "--lex" {
-        eprintln!("Usage: {} --lex <file_path>", args[0]);
-        std::process::exit(1);
-    }
 
-    // Get the file path from the arguments
-    let file_path = &args[2];
-    let mut file = File::open(file_path)?;
-    let mut contents = String::new();
-    file.read_to_string(&mut contents)?;
+    let subcommand = &args[1][..];
 
-    // Print the file contents
-    println!("{}", contents);
-    let lexer = Lexer::new();
-    let tokens = lexer.tokenize(&contents);
-    if tokens.is_err() {
-        eprintln!("Error: {}", tokens.err().unwrap());
-        std::process::exit(1);
-    } else {
-        std::process::exit(0);
+    match subcommand {
+        "--lex" => {
+            let lex_result = lex_from_filepath(&args[2], true);
+            if lex_result.is_err() {
+                eprintln!("Error: {:?}", lex_result.err().unwrap());
+                std::process::exit(1);
+            } else {
+                println!("Lex successful!");
+                std::process::exit(0);
+            }
+        },
+        "--parse" => {
+            // Proceed with parsing
+            // Get the file path from the arguments
+            let lex_result = lex_from_filepath(&args[2], true);
+            if lex_result.is_err() {
+                eprintln!("Error: {:?}", lex_result.err().unwrap());
+                std::process::exit(1);
+            }
+
+            let tokens = lex_result.unwrap();
+            let mut token_stack = parser::parser::TokenStack::new_from_vec(tokens);
+            let parse_result = parser::parser::parse(&mut token_stack);
+            if parse_result.is_err() {
+                eprintln!("Parse Error: {}", parse_result.err().unwrap().message);
+                std::process::exit(1);
+            } else {
+                println!("Parse successful!");
+                std::process::exit(0);
+            }
+        },
+        _ => {
+            eprintln!("Usage: {} --lex <file_path>", args[0]);
+            eprintln!("Usage: {} --parse <file_path>", args[0]);
+            std::process::exit(1);
+        }
     }
 }
