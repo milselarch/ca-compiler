@@ -31,3 +31,5 @@ Test parsing on all test cases in chapter 1:
 ```bash
 writing-a-c-compiler-tests/test_compiler ./target/debug/ca-compiler --chapter 1 --stage parse
 ```
+
+WE ARE NOW AT PAGE 17  

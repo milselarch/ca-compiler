@@ -8,28 +8,63 @@ TODO: implement rollback for token stack for failed parse paths
 */
 
 pub struct ParseError {
-    pub(crate) message: String
+    pub(crate) message: String,
+    token_stack: TokenStack
+}
+impl ParseError {
+    pub fn new(message: String, token_stack: &TokenStack) -> ParseError {
+        ParseError {
+            message,
+            token_stack: token_stack.clone(),
+        }
+    }
 }
 
+#[derive(Clone)]
 pub struct TokenStack {
     tokens: VecDeque<Tokens>
 }
 impl TokenStack {
     pub fn pop_front(&mut self) -> Result<Tokens, ParseError> {
         match self.tokens.pop_front() {
-            None => { Err(ParseError { message: "No more tokens".to_string() }) }
+            None => {
+                Err(ParseError {
+                    message: "No more tokens".to_string(),
+                    token_stack: self.clone()
+                })
+            }
             Some(token) => { Ok(token) }
         }
     }
+
     pub fn expect_pop_front(
         &mut self, expected_token: Tokens
     ) -> Result<Tokens, ParseError> {
+        self._expect_pop_front(expected_token, true)
+    }
+
+    pub fn _expect_pop_front(
+        &mut self, expected_token: Tokens, skip_comments: bool
+    ) -> Result<Tokens, ParseError> {
+        while skip_comments {
+            // Skip comments if the token is a comment
+            match self.tokens.front() {
+                Some(Tokens::Comment(_)) => {
+                    self.pop_front()?;
+                }
+                _ => break, // Exit loop if the next token is not a comment
+            }
+        }
+
         // pops the front token and checks that it matches expected_token
         let popped_token = self.pop_front()?;
         if popped_token == expected_token {
             Ok(popped_token)
         } else {
-            Err(ParseError { message: "Unexpected token".to_string() })
+            Err(ParseError {
+                message: format!("Unexpected token [{}]", popped_token),
+                token_stack: self.clone()
+            })
         }
     }
 
@@ -60,7 +95,10 @@ impl Identifier {
         let identifier_token_opt = tokens.pop_front();
         let identifier_name = match identifier_token_opt {
             Ok(Tokens::Identifier(name)) => name,
-            _ => return Err(ParseError { message: "No tokens found".to_string() }),
+            _ => return Err(ParseError {
+                message: "No tokens found".to_string(),
+                token_stack: tokens.clone()
+            }),
         };
         Ok(Identifier::new(identifier_name))
     }
@@ -81,7 +119,10 @@ impl Expression {
         let constant_token_opt = tokens.pop_front();
         let constant = match constant_token_opt {
             Ok(Tokens::Constant(constant)) => constant,
-            _ => return Err(ParseError { message: "No tokens found".to_string() }),
+            _ => return Err(ParseError {
+                message: "No tokens found".to_string(),
+                token_stack: tokens.clone()
+            }),
         };
         Ok(Expression::new(constant))
     }
@@ -104,14 +145,16 @@ impl Statement {
         let punctuator_keyword_opt = tokens.pop_front();
         let punctuator_keyword = match punctuator_keyword_opt {
             Ok(token) => token,
-            _ => return Err(ParseError { message:
-                "No semicolon token found".to_string()
+            _ => return Err(ParseError {
+                message: "No semicolon token found".to_string(),
+                token_stack: tokens.clone()
             }),
         };
         match punctuator_keyword {
             Tokens::Punctuator(Punctuators::Semicolon) => {},
-            _ => return Err(ParseError { message:
-                "Statement does not end with semicolon".to_string()
+            _ => return Err(ParseError {
+                message: "Statement does not end with semicolon".to_string(),
+                token_stack: tokens.clone()
             }),
         }
 
@@ -155,5 +198,11 @@ pub struct Program {
 pub fn parse(tokens: &mut TokenStack) -> Result<Program, ParseError> {
     // <program> ::= <function>
     let function = Function::parse(tokens)?;
+    if !tokens.tokens.is_empty() {
+        return Err(ParseError {
+            message: "Unexpected tokens after function".to_string(),
+            token_stack: tokens.clone()
+        });
+    }
     Ok(Program { function })
 }

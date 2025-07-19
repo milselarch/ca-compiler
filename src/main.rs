@@ -1,8 +1,5 @@
 use std::env;
-use std::fs::File;
-use std::io::{self, Read};
-
-use lexer::lexer::Lexer;
+use std::io::{self};
 use crate::lexer::lexer::lex_from_filepath;
 
 pub mod lexer;
