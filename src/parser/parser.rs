@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 use crate::lexer::lexer::{Keywords, Punctuators, Tokens};
-
+use crate::parser::asm_symbols::{AsmFunction, AsmImmediateValue, AsmInstruction, AsmOperand, MovInstruction};
 /*
 Recursive descent parser implementation
 TODO: use fancier error type
@@ -126,6 +126,12 @@ impl Expression {
         };
         Ok(Expression::new(constant))
     }
+
+    fn to_asm_symbol(&self) -> AsmImmediateValue {
+        // Convert the expression to an assembly representation
+        let value = self.constant.parse::<i64>().unwrap();
+        AsmImmediateValue::new(value)
+    }
 }
 
 pub struct Statement {
@@ -160,6 +166,10 @@ impl Statement {
 
         Ok(Statement::new(expression))
     }
+
+    fn to_asm_symbol(&self) -> AsmImmediateValue {
+        self.expression.to_asm_symbol()
+    }
 }
 
 pub struct Function {
@@ -187,6 +197,26 @@ impl Function {
         let statement = Statement::parse(tokens)?;
         tokens.expect_pop_front(Tokens::Punctuator(Punctuators::CloseBrace))?;
         Ok(Function { name: identifier, body: statement })
+    }
+
+    fn to_asm_symbol(&self) -> AsmFunction {
+        // Convert the function to an assembly representation
+        let function_name = self.name.name.clone();
+        let mut instructions: Vec<AsmInstruction> = vec![];
+        let body_expression = self.body.to_asm_symbol();
+
+        instructions.push(AsmInstruction::Mov(
+            MovInstruction {
+                source: AsmOperand::ImmediateValue(body_expression),
+                destination: AsmOperand::Register
+            })
+        );
+        instructions.push(AsmInstruction::Ret);
+
+        AsmFunction {
+            name: function_name,
+            instructions,
+        }
     }
 }
 

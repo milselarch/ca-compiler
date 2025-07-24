@@ -69,6 +69,7 @@ impl HasLength for Punctuators {
 pub enum Tokens {
     Keyword(Keywords),
     Identifier(String),
+    // a bunch of digits, e.g. "1234"
     Constant(String),
     Punctuator(Punctuators),
     Comment(String),
