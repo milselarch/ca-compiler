@@ -46,5 +46,12 @@ Test asm generation on all test cases in chapter 1:
 writing-a-c-compiler-tests/test_compiler ./target/debug/ca-compiler --chapter 1 --stage codegen
 ```
 
+### `chapter 1 tests`
+
+Test asm generation on all test cases in chapter 1:
+```bash
+writing-a-c-compiler-tests/test_compiler ./target/debug/ca-compiler --chapter 1
+```
+
 
 WE ARE NOW AT PAGE 17  

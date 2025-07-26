@@ -62,7 +62,7 @@ pub enum AsmOperand {
     Register,
 }
 impl AsmSymbol for AsmOperand {
-    pub fn to_asm_code(self) -> String {
+    fn to_asm_code(self) -> String {
         match self {
             AsmOperand::ImmediateValue(value) => value.to_asm_code(),
             AsmOperand::Register => "%eax".to_string(),
