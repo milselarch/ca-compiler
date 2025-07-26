@@ -11,7 +11,7 @@ trait HasLength {
     fn get_length(&self) -> usize;
 }
 
-#[derive(PartialEq, Copy, Clone)]
+#[derive(PartialEq, Copy, Clone, Debug)]
 pub enum Keywords {
     Integer,
     Void,
@@ -37,7 +37,7 @@ impl fmt::Display for Keywords {
     }
 }
 
-#[derive(PartialEq, Copy, Clone)]
+#[derive(PartialEq, Copy, Clone, Debug)]
 pub enum Punctuators {
     OpenParens,
     CloseParens,
@@ -67,7 +67,7 @@ impl HasLength for Punctuators {
     }
 }
 
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Debug)]
 pub enum Tokens {
     Keyword(Keywords),
     Identifier(String),

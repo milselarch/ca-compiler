@@ -32,4 +32,12 @@ Test parsing on all test cases in chapter 1:
 writing-a-c-compiler-tests/test_compiler ./target/debug/ca-compiler --chapter 1 --stage parse
 ```
 
+### `run asm generation tests`
+
+Test asm generation on all test cases in chapter 1:
+```bash
+writing-a-c-compiler-tests/test_compiler ./target/debug/ca-compiler --chapter 1 --stage codegen
+```
+
+
 WE ARE NOW AT PAGE 17  

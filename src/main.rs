@@ -40,6 +40,17 @@ fn main() -> io::Result<()> {
                 std::process::exit(0);
             }
         },
+        "--codegen" => {
+            // Proceed with assembly generation
+            let asm_gen_result = parser::parser::asm_gen_from_filepath(&args[2], true);
+            if asm_gen_result.is_err() {
+                eprintln!("Assembly Generation Error: {}", asm_gen_result.err().unwrap());
+                std::process::exit(1);
+            } else {
+                println!("Assembly Generation successful!");
+                std::process::exit(0);
+            }
+        },
         _ => {
             eprintln!("Usage: {} --lex <file_path>", args[0]);
             eprintln!("Usage: {} --parse <file_path>", args[0]);

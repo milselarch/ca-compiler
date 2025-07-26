@@ -22,6 +22,7 @@ pub enum ParseErrorVariants {
     LexerError(LexerFromFileError)
 }
 
+#[derive(Debug)]
 pub struct ParseError {
     variant: ParseErrorVariants,
     token_stack: TokenStack
@@ -49,7 +50,7 @@ impl Display for ParseError {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TokenStack {
     tokens: VecDeque<Tokens>
 }
@@ -304,4 +305,17 @@ pub fn parse_from_filepath(file_path: &String, verbose: bool) -> Result<Program,
     let mut token_stack = TokenStack::new_from_vec(tokens);
     let parse_result = parse(&mut token_stack);
     parse_result
+}
+
+pub fn asm_gen_from_filepath(
+    file_path: &String, verbose: bool
+) -> Result<AsmProgram, ParseError> {
+    let parse_result = parse_from_filepath(file_path, verbose);
+    let program = match parse_result {
+        Ok(program) => program,
+        Err(err) => return Err(err),
+    };
+
+    let asm_program = program.to_asm_symbol();
+    Ok(asm_program)
 }
