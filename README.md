@@ -1,5 +1,12 @@
 # ca-compiler
 
+### TODO:
+- trace tokens to source code positions 
+- trace ASM lines to AST nodes
+- generate turing machine tape from code
+- implement arbitrary (specified) length integer type support
+- implement turing machine tape to CA conversion
+
 ## `C compiler tests`
 ### `run lexer tests`
 `cargo build && python ./writing-a-c-compiler-tests/test_compiler ./target/debug/R110 --chapter 1 --stage lex`  
