@@ -31,17 +31,9 @@ fn main() -> io::Result<()> {
         "--parse" => {
             // Proceed with parsing
             // Get the file path from the arguments
-            let lex_result = lex_from_filepath(&args[2], true);
-            if lex_result.is_err() {
-                eprintln!("Error: {:?}", lex_result.err().unwrap());
-                std::process::exit(1);
-            }
-
-            let tokens = lex_result.unwrap();
-            let mut token_stack = parser::parser::TokenStack::new_from_vec(tokens);
-            let parse_result = parser::parser::parse(&mut token_stack);
+            let parse_result = parser::parser::parse_from_filepath(&args[2], true);
             if parse_result.is_err() {
-                eprintln!("Parse Error: {}", parse_result.err().unwrap().message);
+                eprintln!("Parse Error: {}", parse_result.err().unwrap());
                 std::process::exit(1);
             } else {
                 println!("Parse successful!");

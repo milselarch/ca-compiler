@@ -1,5 +1,5 @@
 pub struct AsmProgram {
-    function: AsmFunction,
+    pub(crate) function: AsmFunction,
 }
 
 pub struct AsmFunction {
