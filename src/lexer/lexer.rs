@@ -1,15 +1,17 @@
 use std::{error::Error, fmt};
+use std::fmt::Display;
 use std::fs::File;
 use std::io::Read;
 use regex::Regex;
 
 use crate::lexer::base_token_builder::{BaseTokenBuilder, TokenBuilderStates};
+use crate::parser::parser::ParseError;
 
 trait HasLength {
     fn get_length(&self) -> usize;
 }
 
-#[derive(PartialEq, Copy, Clone)]
+#[derive(PartialEq, Copy, Clone, Debug)]
 pub enum Keywords {
     Integer,
     Void,
@@ -35,7 +37,7 @@ impl fmt::Display for Keywords {
     }
 }
 
-#[derive(PartialEq, Copy, Clone)]
+#[derive(PartialEq, Copy, Clone, Debug)]
 pub enum Punctuators {
     OpenParens,
     CloseParens,
@@ -65,10 +67,11 @@ impl HasLength for Punctuators {
     }
 }
 
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Debug)]
 pub enum Tokens {
     Keyword(Keywords),
     Identifier(String),
+    // a bunch of digits, e.g. "1234"
     Constant(String),
     Punctuator(Punctuators),
     Comment(String),
@@ -626,6 +629,23 @@ impl Lexer {
 pub enum LexerFromFileError {
     InvalidToken(InvalidToken),
     IoError(std::io::Error),
+}
+impl LexerFromFileError {
+    pub fn message(&self) -> String {
+        match self {
+            LexerFromFileError::InvalidToken(token) => format!(
+                "Invalid token: {}", token
+            ),
+            LexerFromFileError::IoError(e) => format!(
+                "I/O error: {}", e
+            ),
+        }
+    }
+}
+impl Display for LexerFromFileError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "LexerFromFileError: {}", self.message())
+    }
 }
 
 

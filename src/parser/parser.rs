@@ -1,26 +1,56 @@
 use std::collections::VecDeque;
-use crate::lexer::lexer::{Keywords, Punctuators, Tokens};
-
+use std::fmt::Display;
+use crate::lexer::lexer::{
+    lex_from_filepath, Keywords, LexerFromFileError, Punctuators, Tokens
+};
+use crate::parser::asm_symbols::{
+    AsmFunction, AsmImmediateValue, AsmInstruction,
+    AsmOperand, AsmProgram, MovInstruction
+};
 /*
 Recursive descent parser implementation
 TODO: use fancier error type
 TODO: implement rollback for token stack for failed parse paths
 */
 
+#[derive(Debug)]
+pub enum ParseErrorVariants {
+    GenericError(String),
+    NoMoreTokens(String),
+    UnexpectedToken(String),
+    UnexpectedExtraTokens(String),
+    LexerError(LexerFromFileError)
+}
+
+#[derive(Debug)]
 pub struct ParseError {
-    pub(crate) message: String,
+    variant: ParseErrorVariants,
     token_stack: TokenStack
 }
 impl ParseError {
     pub fn new(message: String, token_stack: &TokenStack) -> ParseError {
         ParseError {
-            message,
+            variant: ParseErrorVariants::GenericError(message),
             token_stack: token_stack.clone(),
         }
     }
+    pub fn message(&self) -> String {
+        match &self.variant {
+            ParseErrorVariants::GenericError(msg) => msg.clone(),
+            ParseErrorVariants::NoMoreTokens(msg) => msg.clone(),
+            ParseErrorVariants::UnexpectedToken(msg) => msg.clone(),
+            ParseErrorVariants::UnexpectedExtraTokens(msg) => msg.clone(),
+            ParseErrorVariants::LexerError(err) => format!("Lexer error: {}", err),
+        }
+    }
+}
+impl Display for ParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ParseError: {}", self.message())
+    }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TokenStack {
     tokens: VecDeque<Tokens>
 }
@@ -29,7 +59,7 @@ impl TokenStack {
         match self.tokens.pop_front() {
             None => {
                 Err(ParseError {
-                    message: "No more tokens".to_string(),
+                    variant: ParseErrorVariants::NoMoreTokens("".to_owned()),
                     token_stack: self.clone()
                 })
             }
@@ -62,7 +92,9 @@ impl TokenStack {
             Ok(popped_token)
         } else {
             Err(ParseError {
-                message: format!("Unexpected token [{}]", popped_token),
+                variant: ParseErrorVariants::UnexpectedToken(format!(
+                    "Unexpected token [{}]", popped_token
+                ).to_string()),
                 token_stack: self.clone()
             })
         }
@@ -96,7 +128,9 @@ impl Identifier {
         let identifier_name = match identifier_token_opt {
             Ok(Tokens::Identifier(name)) => name,
             _ => return Err(ParseError {
-                message: "No tokens found".to_string(),
+                variant: ParseErrorVariants::NoMoreTokens(
+                    "No identifier token found".to_string()
+                ),
                 token_stack: tokens.clone()
             }),
         };
@@ -120,11 +154,19 @@ impl Expression {
         let constant = match constant_token_opt {
             Ok(Tokens::Constant(constant)) => constant,
             _ => return Err(ParseError {
-                message: "No tokens found".to_string(),
+                variant: ParseErrorVariants::NoMoreTokens(
+                    "Constant not found in expression".to_owned()
+                ),
                 token_stack: tokens.clone()
             }),
         };
         Ok(Expression::new(constant))
+    }
+
+    fn to_asm_symbol(&self) -> AsmImmediateValue {
+        // Convert the expression to an assembly representation
+        let value = self.constant.parse::<i64>().unwrap();
+        AsmImmediateValue::new(value)
     }
 }
 
@@ -146,19 +188,27 @@ impl Statement {
         let punctuator_keyword = match punctuator_keyword_opt {
             Ok(token) => token,
             _ => return Err(ParseError {
-                message: "No semicolon token found".to_string(),
+                variant: ParseErrorVariants::NoMoreTokens(
+                    "No semicolon token found".to_string()
+                ),
                 token_stack: tokens.clone()
             }),
         };
         match punctuator_keyword {
             Tokens::Punctuator(Punctuators::Semicolon) => {},
             _ => return Err(ParseError {
-                message: "Statement does not end with semicolon".to_string(),
+                variant: ParseErrorVariants::UnexpectedToken(
+                    "Statement does not end with semicolon".to_string()
+                ),
                 token_stack: tokens.clone()
             }),
         }
 
         Ok(Statement::new(expression))
+    }
+
+    fn to_asm_symbol(&self) -> AsmImmediateValue {
+        self.expression.to_asm_symbol()
     }
 }
 
@@ -188,10 +238,43 @@ impl Function {
         tokens.expect_pop_front(Tokens::Punctuator(Punctuators::CloseBrace))?;
         Ok(Function { name: identifier, body: statement })
     }
+
+    fn to_asm_symbol(&self) -> AsmFunction {
+        // Convert the function to an assembly representation
+        let function_name = self.name.name.clone();
+        let mut instructions: Vec<AsmInstruction> = vec![];
+        let body_expression = self.body.to_asm_symbol();
+
+        instructions.push(AsmInstruction::Mov(
+            MovInstruction {
+                source: AsmOperand::ImmediateValue(body_expression),
+                destination: AsmOperand::Register
+            })
+        );
+        instructions.push(AsmInstruction::Ret);
+
+        AsmFunction {
+            name: function_name,
+            instructions,
+        }
+    }
 }
 
 pub struct Program {
     function: Function
+}
+impl Program {
+    pub fn new(function: Function) -> Program {
+        Program {
+            function,
+        }
+    }
+
+    pub fn to_asm_symbol(&self) -> AsmProgram {
+        AsmProgram {
+            function: self.function.to_asm_symbol(),
+        }
+    }
 }
 
 
@@ -200,9 +283,39 @@ pub fn parse(tokens: &mut TokenStack) -> Result<Program, ParseError> {
     let function = Function::parse(tokens)?;
     if !tokens.tokens.is_empty() {
         return Err(ParseError {
-            message: "Unexpected tokens after function".to_string(),
+            variant: ParseErrorVariants::UnexpectedExtraTokens(
+                "Unexpected tokens after function".to_string()
+            ),
             token_stack: tokens.clone()
         });
     }
     Ok(Program { function })
+}
+
+pub fn parse_from_filepath(file_path: &String, verbose: bool) -> Result<Program, ParseError> {
+    let lex_result = lex_from_filepath(file_path, verbose);
+    if lex_result.is_err() {
+        return Err(ParseError {
+            variant: ParseErrorVariants::LexerError(lex_result.err().unwrap()),
+            token_stack: TokenStack::new(VecDeque::new())
+        })
+    }
+
+    let tokens = lex_result.unwrap();
+    let mut token_stack = TokenStack::new_from_vec(tokens);
+    let parse_result = parse(&mut token_stack);
+    parse_result
+}
+
+pub fn asm_gen_from_filepath(
+    file_path: &String, verbose: bool
+) -> Result<AsmProgram, ParseError> {
+    let parse_result = parse_from_filepath(file_path, verbose);
+    let program = match parse_result {
+        Ok(program) => program,
+        Err(err) => return Err(err),
+    };
+
+    let asm_program = program.to_asm_symbol();
+    Ok(asm_program)
 }
