@@ -650,7 +650,7 @@ impl Display for LexerFromFileError {
 
 
 pub fn lex_from_filepath(
-    file_path: &String, verbose: bool
+    file_path: &str, verbose: bool
 ) -> Result<Vec<Tokens>, LexerFromFileError> {
     let open_result = File::open(file_path);
     let mut file = match open_result {

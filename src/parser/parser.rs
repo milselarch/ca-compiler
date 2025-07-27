@@ -292,7 +292,7 @@ pub fn parse(tokens: &mut TokenStack) -> Result<Program, ParseError> {
     Ok(Program { function })
 }
 
-pub fn parse_from_filepath(file_path: &String, verbose: bool) -> Result<Program, ParseError> {
+pub fn parse_from_filepath(file_path: &str, verbose: bool) -> Result<Program, ParseError> {
     let lex_result = lex_from_filepath(file_path, verbose);
     if lex_result.is_err() {
         return Err(ParseError {
@@ -308,7 +308,7 @@ pub fn parse_from_filepath(file_path: &String, verbose: bool) -> Result<Program,
 }
 
 pub fn asm_gen_from_filepath(
-    file_path: &String, verbose: bool
+    file_path: &str, verbose: bool
 ) -> Result<AsmProgram, ParseError> {
     let parse_result = parse_from_filepath(file_path, verbose);
     let program = match parse_result {
