@@ -8,7 +8,7 @@ pub struct AsmProgram {
 impl AsmSymbol for AsmProgram {
     fn to_asm_code(self) -> String {
         let mut code = self.function.to_asm_code();
-        code.push_str(".section .note.GNU-stack,\"\",@progbits");
+        code.push_str(".section .note.GNU-stack,\"\",@progbits\n");
         code
     }
 }
