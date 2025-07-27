@@ -50,7 +50,7 @@ writing-a-c-compiler-tests/test_compiler ./target/debug/ca-compiler --chapter 1 
 
 Test asm generation on all test cases in chapter 1:
 ```bash
-writing-a-c-compiler-tests/test_compiler ./target/debug/ca-compiler --chapter 1
+writing-a-c-compiler-tests/test_compiler ./target/release/ca-compiler --chapter 1
 ```
 
 

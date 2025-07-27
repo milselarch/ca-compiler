@@ -1,2 +1,2 @@
 pub mod parser;
-mod asm_symbols;
+pub(crate) mod asm_symbols;

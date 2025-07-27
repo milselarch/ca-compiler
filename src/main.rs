@@ -1,5 +1,7 @@
 use std::env;
-use std::io::{self};
+use std::fs::OpenOptions;
+use std::io::{self, Write};
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 use crate::lexer::lexer::lex_from_filepath;
 use crate::parser::asm_symbols::AsmSymbol;
@@ -32,7 +34,6 @@ fn main() -> io::Result<()> {
         let output_path = path.with_extension("");
         let asm_gen_result = parser::parser::asm_gen_from_filepath(source_filepath, true);
 
-        // Write the generated assembly code to the output file
         let asm_program = match asm_gen_result {
             Ok(program) => program,
             Err(err) => {
@@ -42,10 +43,23 @@ fn main() -> io::Result<()> {
         };
 
         let asm_code = asm_program.to_asm_code();
+        println!("Generated assembly code:\n{}", asm_code);
+
+        // ... inside your function
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o755) // set permissions
+            .open(&output_path)?;
+
         // Write the assembly code to the output file
-        std::fs::write(&output_path, asm_code).expect("Unable to write file");
-        eprintln!("Output path: {}", output_path.display());
-        std::process::exit(1);
+        let write_result = file.write_all(asm_code.as_bytes());
+        if write_result.is_err() {
+            eprintln!("Error writing to output file: {}", write_result.err().unwrap());
+            std::process::exit(1);
+        }
+        std::process::exit(0);
     }
 
     // Check if the correct number of arguments is provided
@@ -68,8 +82,6 @@ fn main() -> io::Result<()> {
             }
         },
         "--parse" => {
-            // Proceed with parsing
-            // Get the file path from the arguments
             let parse_result = parser::parser::parse_from_filepath(&args[2], true);
             if parse_result.is_err() {
                 eprintln!("Parse Error: {}", parse_result.err().unwrap());
@@ -80,7 +92,6 @@ fn main() -> io::Result<()> {
             }
         },
         "--codegen" => {
-            // Proceed with assembly generation
             let asm_gen_result = parser::parser::asm_gen_from_filepath(&args[2], true);
             if asm_gen_result.is_err() {
                 eprintln!("Assembly Generation Error: {}", asm_gen_result.err().unwrap());

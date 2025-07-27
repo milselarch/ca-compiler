@@ -5,7 +5,7 @@ use crate::lexer::lexer::{
 };
 use crate::parser::asm_symbols::{
     AsmFunction, AsmImmediateValue, AsmInstruction,
-    AsmOperand, AsmProgram, MovInstruction, AsmSymbol
+    AsmOperand, AsmProgram, MovInstruction
 };
 /*
 Recursive descent parser implementation
