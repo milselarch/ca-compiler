@@ -1,6 +1,5 @@
 use std::fs::OpenOptions;
 use std::io::Write;
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 use std::process::Command;
 use crate::{parser, AssembleAndLinkError};
@@ -52,7 +51,6 @@ pub fn compile_from_filepath(
         .write(true)
         .create(true)
         .truncate(true)
-        .mode(0o755) // set permissions
         .open(&asm_output_path);
 
     let mut file = match file_res {

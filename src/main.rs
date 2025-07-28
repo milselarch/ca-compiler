@@ -2,7 +2,6 @@ use std::env;
 use std::fmt::Debug;
 use std::fs::OpenOptions;
 use std::io::{self, Write};
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 use std::process::Command;
 use crate::generator::compile_from_filepath;

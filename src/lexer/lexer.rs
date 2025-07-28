@@ -11,7 +11,7 @@ trait HasLength {
     fn get_length(&self) -> usize;
 }
 
-#[derive(PartialEq, Copy, Clone, Debug)]
+#[derive(PartialEq, Copy, Clone, Debug, Eq)]
 pub enum Keywords {
     Integer,
     Void,
@@ -37,7 +37,7 @@ impl fmt::Display for Keywords {
     }
 }
 
-#[derive(PartialEq, Copy, Clone, Debug)]
+#[derive(PartialEq, Copy, Clone, Debug, Eq)]
 pub enum Punctuators {
     OpenParens,
     CloseParens,
@@ -67,7 +67,7 @@ impl HasLength for Punctuators {
     }
 }
 
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Eq)]
 pub enum Tokens {
     Keyword(Keywords),
     Identifier(String),
@@ -103,6 +103,42 @@ impl fmt::Display for Tokens {
         }
     }
 }
+
+#[derive(PartialEq, Clone, Debug, Eq)]
+pub struct SourceContext {
+    pub source: String,
+    pub start_position: usize,
+    pub end_position: usize
+}
+impl SourceContext {
+    pub fn new(source: String, start_position: usize, end_position: usize) -> Self {
+        SourceContext {
+            source,
+            start_position,
+            end_position
+        }
+    }
+}
+impl fmt::Display for SourceContext {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f, "SourceContext('{}' @ {}-{})",
+            self.source, self.start_position, self.end_position
+        )
+    }
+}
+
+#[derive(PartialEq, Clone, Debug, Eq)]
+pub struct WrappedToken {
+    pub token: Tokens,
+    pub context: SourceContext,
+}
+impl WrappedToken {
+    pub fn new(token: Tokens, context: SourceContext) -> Self {
+        WrappedToken { token, context }
+    }
+}
+
 
 #[derive(PartialEq, Copy, Clone, Debug, Eq)]
 pub struct ProcessResult {
@@ -566,7 +602,9 @@ impl Lexer {
         padded_input
     }
 
-    pub fn tokenize(&self, raw_source: &str) -> Result<Vec<Tokens>, InvalidToken> {
+    pub fn tokenize(
+        &self, raw_source: &str
+    ) -> Result<Vec<WrappedToken>, InvalidToken> {
         let mut tokens = Vec::new();
         let mut processing_token: bool = false;
         let source = Lexer::pad_input_str(raw_source);
@@ -603,8 +641,15 @@ impl Lexer {
                     // TODO: use match pattern get get token instead
                     let token = builder.build_token().unwrap();
                     println!("MADE TOKEN {}", token);
+
                     search_end = search_start + token.get_length();
-                    tokens.push(token);
+                    let content = builder._get_built_str().clone();
+                    let context = SourceContext::new(
+                        content, search_start, search_end
+                    );
+
+                    let wrapped_token = WrappedToken::new(token.clone(), context);
+                    tokens.push(wrapped_token);
                     processing_token = false;
                     token_found = true;
                     break
@@ -651,7 +696,7 @@ impl Display for LexerFromFileError {
 
 pub fn lex_from_filepath(
     file_path: &str, verbose: bool
-) -> Result<Vec<Tokens>, LexerFromFileError> {
+) -> Result<Vec<WrappedToken>, LexerFromFileError> {
     let open_result = File::open(file_path);
     let mut file = match open_result {
         Ok(f) => f,
