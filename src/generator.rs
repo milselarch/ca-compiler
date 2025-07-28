@@ -2,8 +2,9 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::Path;
 use std::process::Command;
-use crate::{parser, AssembleAndLinkError};
+use crate::{AssembleAndLinkError};
 use crate::parser::asm_symbols::AsmSymbol;
+use crate::parser::parse;
 
 pub fn assemble_and_link(
     asm_path: &Path, exe_path: &Path
@@ -34,7 +35,8 @@ pub fn compile_from_filepath(
     let source_filepath = path.to_str().unwrap();
     let asm_output_path = path.with_extension("s");
     let exec_output_path = path.with_extension("");
-    let asm_gen_result = parser::parser::asm_gen_from_filepath(source_filepath, true);
+    let asm_gen_result =
+        parse::asm_gen_from_filepath(source_filepath, true);
 
     let asm_program = match asm_gen_result {
         Ok(program) => program,
@@ -47,7 +49,7 @@ pub fn compile_from_filepath(
     let asm_code = asm_program.to_asm_code();
     println!("Generated assembly code:\n{}", asm_code);
 
-    let mut file_res = OpenOptions::new()
+    let file_res = OpenOptions::new()
         .write(true)
         .create(true)
         .truncate(true)

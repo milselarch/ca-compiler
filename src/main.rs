@@ -1,12 +1,11 @@
+extern crate core;
+
 use std::env;
 use std::fmt::Debug;
-use std::fs::OpenOptions;
-use std::io::{self, Write};
+use std::io::{self};
 use std::path::Path;
-use std::process::Command;
 use crate::generator::compile_from_filepath;
 use crate::lexer::lexer::lex_from_filepath;
-use crate::parser::asm_symbols::AsmSymbol;
 pub mod lexer;
 pub mod parser;
 mod generator;
@@ -69,7 +68,7 @@ fn main() -> io::Result<()> {
             }
         },
         "--parse" => {
-            let parse_result = parser::parser::parse_from_filepath(&args[2], true);
+            let parse_result = parser::parse::parse_from_filepath(&args[2], true);
             if parse_result.is_err() {
                 eprintln!("Parse Error: {}", parse_result.err().unwrap());
                 std::process::exit(1);
@@ -79,7 +78,7 @@ fn main() -> io::Result<()> {
             }
         },
         "--codegen" => {
-            let asm_gen_result = parser::parser::asm_gen_from_filepath(&args[2], true);
+            let asm_gen_result = parser::parse::asm_gen_from_filepath(&args[2], true);
             if asm_gen_result.is_err() {
                 eprintln!("Assembly Generation Error: {}", asm_gen_result.err().unwrap());
                 std::process::exit(1);

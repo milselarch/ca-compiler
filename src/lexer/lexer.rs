@@ -1,11 +1,10 @@
-use std::{error::Error, fmt};
+use std::{fmt};
 use std::fmt::Display;
 use std::fs::File;
 use std::io::Read;
 use regex::Regex;
 
 use crate::lexer::base_token_builder::{BaseTokenBuilder, TokenBuilderStates};
-use crate::parser::parser::ParseError;
 
 trait HasLength {
     fn get_length(&self) -> usize;
