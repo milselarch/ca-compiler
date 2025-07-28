@@ -1,10 +1,9 @@
 use std::collections::VecDeque;
 use std::fmt::{Display};
-use crate::lexer::lexer::{lex_from_filepath, Keywords, LexerFromFileError, Punctuators, Tokens, WrappedToken};
-use crate::parser::asm_symbols::{
-    AsmFunction, AsmImmediateValue, AsmInstruction,
-    AsmOperand, AsmProgram, MovInstruction
+use crate::lexer::lexer::{
+    LexerFromFileError, Tokens, WrappedToken
 };
+
 /*
 Recursive descent parser_helpers implementation
 TODO: use fancier error type
@@ -150,6 +149,16 @@ impl <'a> StackPopper<'a> {
             token_stack,
             popped_tokens: vec![],
         }
+    }
+
+    pub fn pop_front(&mut self) -> Result<WrappedToken, ParseError> {
+        self.token_stack.pop_front()
+    }
+
+    pub fn expect_pop_front(
+        &mut self, expected_token: Tokens
+    ) -> Result<WrappedToken, ParseError> {
+        self.token_stack.expect_pop_front(expected_token)
     }
 
     pub fn build_pop_context(&self) -> PoppedTokenContext {

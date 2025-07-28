@@ -48,24 +48,26 @@ impl Expression {
     }
 
     fn parse(tokens: &mut TokenStack) -> Result<Expression, ParseError> {
-        // <exp> ::= <int>
-        let constant_wrapped_token_res = tokens.pop_front();
-        let constant_token_res = match constant_wrapped_token_res {
-            Ok(token) => token,
-            Err(err) => return Err(err),
-        };
+        tokens.run_with_rollback(|stack_popper| {
+            // <exp> ::= <int>
+            let constant_wrapped_token_res = stack_popper.pop_front();
+            let constant_token_res = match constant_wrapped_token_res {
+                Ok(token) => token,
+                Err(err) => return Err(err),
+            };
 
-        let constant_token = constant_token_res.token;
-        let constant = match constant_token {
-            Tokens::Constant(constant) => constant,
-            _ => return Err(ParseError {
-                variant: ParseErrorVariants::NoMoreTokens(
-                    "Constant not found in expression".to_owned()
-                ),
-                token_stack: tokens.clone()
-            }),
-        };
-        Ok(Expression::new(constant))
+            let constant_token = constant_token_res.token;
+            let constant = match constant_token {
+                Tokens::Constant(constant) => constant,
+                _ => return Err(ParseError {
+                    variant: ParseErrorVariants::NoMoreTokens(
+                        "Constant not found in expression".to_owned()
+                    ),
+                    token_stack: stack_popper.token_stack.clone()
+                }),
+            };
+            Ok(Expression::new(constant))
+        })
     }
 
     fn to_asm_symbol(&self) -> AsmImmediateValue {
@@ -136,16 +138,16 @@ impl Function {
     fn parse(tokens: &mut TokenStack) -> Result<Function, ParseError> {
         tokens.run_with_rollback(|stack_popper| {
             // <function> ::= "int" <identifier> "(" "void" ")" "{" <statement> "}"
-            stack_popper.token_stack.expect_pop_front(Tokens::Keyword(Keywords::Integer))?;
+            stack_popper.expect_pop_front(Tokens::Keyword(Keywords::Integer))?;
             let identifier = Identifier::parse_tokens(&mut stack_popper.token_stack)?;
 
-            stack_popper.token_stack.expect_pop_front(Tokens::Punctuator(Punctuators::OpenParens))?;
-            stack_popper.token_stack.expect_pop_front(Tokens::Keyword(Keywords::Void))?;
-            stack_popper.token_stack.expect_pop_front(Tokens::Punctuator(Punctuators::CloseParens))?;
+            stack_popper.expect_pop_front(Tokens::Punctuator(Punctuators::OpenParens))?;
+            stack_popper.expect_pop_front(Tokens::Keyword(Keywords::Void))?;
+            stack_popper.expect_pop_front(Tokens::Punctuator(Punctuators::CloseParens))?;
 
-            stack_popper.token_stack.expect_pop_front(Tokens::Punctuator(Punctuators::OpenBrace))?;
+            stack_popper.expect_pop_front(Tokens::Punctuator(Punctuators::OpenBrace))?;
             let statement = Statement::parse(&mut stack_popper.token_stack)?;
-            stack_popper.token_stack.expect_pop_front(Tokens::Punctuator(Punctuators::CloseBrace))?;
+            stack_popper.expect_pop_front(Tokens::Punctuator(Punctuators::CloseBrace))?;
 
             Ok(Function {
                 name: identifier, body: statement,
