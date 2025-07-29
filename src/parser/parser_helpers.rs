@@ -49,7 +49,8 @@ impl Display for ParseError {
 
 #[derive(Clone, Debug)]
 pub struct TokenStack {
-    pub(crate) tokens: VecDeque<WrappedToken>
+    pub(crate) tokens: VecDeque<WrappedToken>,
+    popped_tokens: Vec<WrappedToken>
 }
 impl TokenStack {
     pub fn pop_front(&mut self) -> Result<WrappedToken, ParseError> {
@@ -62,6 +63,10 @@ impl TokenStack {
             }
             Some(token) => { Ok(token) }
         }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.tokens.is_empty()
     }
 
     pub fn expect_pop_front(
@@ -111,11 +116,14 @@ impl TokenStack {
     }
 
     pub fn new(tokens: VecDeque<WrappedToken>) -> TokenStack {
-        TokenStack { tokens }
+        TokenStack {
+            tokens,
+            popped_tokens: vec![],
+        }
     }
 
     pub fn new_from_vec(tokens: Vec<WrappedToken>) -> TokenStack {
-        TokenStack { tokens: VecDeque::from(tokens) }
+        TokenStack::new(VecDeque::from(tokens))
     }
 
     pub fn run_with_rollback<F, T, E>(
@@ -149,6 +157,14 @@ impl <'a> StackPopper<'a> {
             token_stack,
             popped_tokens: vec![],
         }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.token_stack.is_empty()
+    }
+
+    pub fn clone_stack(&self) -> TokenStack {
+        self.token_stack.clone()
     }
 
     pub fn pop_front(&mut self) -> Result<WrappedToken, ParseError> {

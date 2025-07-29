@@ -39,11 +39,13 @@ impl Identifier {
 
 pub struct Expression {
     constant: String,
+    pop_context: Option<PoppedTokenContext>
 }
 impl Expression {
     pub fn new(constant: String) -> Expression {
         Expression {
             constant,
+            pop_context: None
         }
     }
 
@@ -66,58 +68,73 @@ impl Expression {
                     token_stack: stack_popper.token_stack.clone()
                 }),
             };
-            Ok(Expression::new(constant))
+            Ok(Expression {
+                constant,
+                pop_context: Some(stack_popper.build_pop_context())
+            })
         })
     }
 
     fn to_asm_symbol(&self) -> AsmImmediateValue {
         // Convert the expression to an assembly representation
         let value = self.constant.parse::<i64>().unwrap();
-        AsmImmediateValue::new(value)
+        AsmImmediateValue::new(value).with_added_pop_context(
+            self.pop_context.clone()
+        )
     }
 }
 
 pub struct Statement {
-    expression: Expression
+    expression: Expression,
+    pop_context: Option<PoppedTokenContext>
 }
 impl Statement {
     pub fn new(expression: Expression) -> Statement {
         Statement {
             expression,
+            pop_context: None,
         }
     }
 
     fn parse(tokens: &mut TokenStack) -> Result<Statement, ParseError> {
-        // <statement> ::= "return" <exp> ";"
-        tokens.expect_pop_front(Tokens::Keyword(Keywords::Return))?;
-        let expression = Expression::parse(tokens)?;
-        let punctuator_keyword_opt = tokens.pop_front();
-        let punctuator_wrapped_keyword = match punctuator_keyword_opt {
-            Ok(token) => token,
-            _ => return Err(ParseError {
-                variant: ParseErrorVariants::NoMoreTokens(
-                    "No semicolon token found".to_string()
-                ),
-                token_stack: tokens.clone()
-            }),
-        };
+        tokens.run_with_rollback(|stack_popper| {
+            // <statement> ::= "return" <exp> ";"
+            stack_popper.expect_pop_front(Tokens::Keyword(Keywords::Return))?;
 
-        let punctuator_keyword = punctuator_wrapped_keyword.token;
-        match punctuator_keyword {
-            Tokens::Punctuator(Punctuators::Semicolon) => {},
-            _ => return Err(ParseError {
-                variant: ParseErrorVariants::UnexpectedToken(
-                    "Statement does not end with semicolon".to_string()
-                ),
-                token_stack: tokens.clone()
-            }),
-        }
+            let expression = Expression::parse(stack_popper.token_stack)?;
+            let punctuator_keyword_opt = stack_popper.pop_front();
+            let punctuator_wrapped_keyword = match punctuator_keyword_opt {
+                Ok(token) => token,
+                _ => return Err(ParseError {
+                    variant: ParseErrorVariants::NoMoreTokens(
+                        "No semicolon token found".to_string()
+                    ),
+                    token_stack: stack_popper.clone_stack()
+                }),
+            };
 
-        Ok(Statement::new(expression))
+            let punctuator_keyword = punctuator_wrapped_keyword.token;
+            match punctuator_keyword {
+                Tokens::Punctuator(Punctuators::Semicolon) => {},
+                _ => return Err(ParseError {
+                    variant: ParseErrorVariants::UnexpectedToken(
+                        "Statement does not end with semicolon".to_string()
+                    ),
+                    token_stack: stack_popper.clone_stack()
+                }),
+            }
+
+            Ok(Statement {
+                expression,
+                pop_context: Some(stack_popper.build_pop_context())
+            })
+        })
     }
 
     fn to_asm_symbol(&self) -> AsmImmediateValue {
-        self.expression.to_asm_symbol()
+        self.expression.to_asm_symbol().with_added_pop_context(
+            self.pop_context.clone()
+        )
     }
 }
 
@@ -178,12 +195,14 @@ impl Function {
 }
 
 pub struct Program {
-    function: Function
+    function: Function,
+    pop_context: Option<PoppedTokenContext>
 }
 impl Program {
     pub fn new(function: Function) -> Program {
         Program {
             function,
+            pop_context: None,
         }
     }
 
@@ -197,16 +216,21 @@ impl Program {
 
 pub fn parse(tokens: &mut TokenStack) -> Result<Program, ParseError> {
     // <program> ::= <function>
-    let function = Function::parse(tokens)?;
-    if !tokens.tokens.is_empty() {
-        return Err(ParseError {
-            variant: ParseErrorVariants::UnexpectedExtraTokens(
-                "Unexpected tokens after function".to_string()
-            ),
-            token_stack: tokens.clone()
-        });
-    }
-    Ok(Program { function })
+    tokens.run_with_rollback(|stack_popper| {
+        let function = Function::parse(stack_popper.token_stack)?;
+        if !stack_popper.is_empty() {
+            return Err(ParseError {
+                variant: ParseErrorVariants::UnexpectedExtraTokens(
+                    "Unexpected tokens after function".to_string()
+                ),
+                token_stack: stack_popper.clone_stack()
+            });
+        }
+        Ok(Program {
+            function,
+            pop_context: Some(stack_popper.build_pop_context())
+        })
+    })
 }
 
 pub fn parse_from_filepath(file_path: &str, verbose: bool) -> Result<Program, ParseError> {

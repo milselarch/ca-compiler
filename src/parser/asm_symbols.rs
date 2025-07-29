@@ -1,3 +1,5 @@
+use crate::parser::parser_helpers::PoppedTokenContext;
+
 pub trait AsmSymbol {
     fn to_asm_code(self) -> String;
 }
@@ -70,12 +72,35 @@ impl AsmSymbol for AsmOperand {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct AsmImmediateValue {
-    value: i64,
+    pub(crate) value: i64,
+    pub(crate) pop_contexts: Vec<PoppedTokenContext>
 }
 impl AsmImmediateValue {
     pub fn new(value: i64) -> AsmImmediateValue {
-        AsmImmediateValue { value }
+        AsmImmediateValue {
+            value,
+            pop_contexts: vec![]
+        }
+    }
+    
+    fn _add_pop_context(&mut self, pop_context: PoppedTokenContext) {
+        self.pop_contexts.push(pop_context);
+    }
+    
+    fn _add_pop_context_opt(
+        &mut self, pop_context: Option<PoppedTokenContext>
+    ) {
+        if let Some(pop_context) = pop_context {
+            self._add_pop_context(pop_context);
+        }
+    }
+
+    pub fn with_added_pop_context(mut self, pop_context: Option<PoppedTokenContext>) -> Self {
+        let mut new = self.clone();
+        new._add_pop_context_opt(pop_context);
+        new
     }
 }
 impl AsmSymbol for AsmImmediateValue {
