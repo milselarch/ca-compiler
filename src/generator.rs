@@ -47,7 +47,9 @@ pub fn compile_from_filepath(
     };
 
     let asm_code = asm_program.to_asm_code();
-    println!("Generated assembly code:\n{}", asm_code);
+    println!("\nGenerated assembly code:");
+    println!("---------------------------------");
+    println!("{}", asm_code);
 
     let file_res = OpenOptions::new()
         .write(true)

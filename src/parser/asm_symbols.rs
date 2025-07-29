@@ -1,5 +1,7 @@
 use crate::parser::parser_helpers::PoppedTokenContext;
 
+const TAB: &str = "    ";
+
 pub trait AsmSymbol {
     fn to_asm_code(self) -> String;
 }
@@ -22,11 +24,13 @@ pub struct AsmFunction {
 impl AsmSymbol for AsmFunction {
     fn to_asm_code(self) -> String {
         let mut code = "".to_string();
-        code.push_str(&format!(".globl {}\n", self.name));
+        code.push_str(&format!("{TAB}.globl {}\n", self.name));
         code.push_str(&format!("{}:\n", self.name));
         for instruction in self.instructions {
-            code.push_str(&instruction.to_asm_code());
-            code.push('\n');
+            let inner_code = &instruction.to_asm_code();
+            let indented_inner_code = indent::indent_all_with(TAB, inner_code);
+            // println!("Indented inner code: {}", indented_inner_code);
+            code.push_str(&*indented_inner_code);
         }
         code
     }

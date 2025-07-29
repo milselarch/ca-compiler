@@ -30,7 +30,7 @@ impl Identifier {
                 variant: ParseErrorVariants::NoMoreTokens(
                     "No identifier token found".to_string()
                 ),
-                token_stack: tokens.clone()
+                token_stack: tokens.soft_copy()
             }),
         };
         Ok(Identifier::new(identifier_name))
@@ -65,7 +65,7 @@ impl Expression {
                     variant: ParseErrorVariants::NoMoreTokens(
                         "Constant not found in expression".to_owned()
                     ),
-                    token_stack: stack_popper.token_stack.clone()
+                    token_stack: stack_popper.token_stack.soft_copy()
                 }),
             };
             Ok(Expression {
@@ -101,7 +101,9 @@ impl Statement {
             // <statement> ::= "return" <exp> ";"
             stack_popper.expect_pop_front(Tokens::Keyword(Keywords::Return))?;
 
-            let expression = Expression::parse(stack_popper.token_stack)?;
+            let expression = Expression::parse(
+                stack_popper.token_stack
+            )?;
             let punctuator_keyword_opt = stack_popper.pop_front();
             let punctuator_wrapped_keyword = match punctuator_keyword_opt {
                 Ok(token) => token,

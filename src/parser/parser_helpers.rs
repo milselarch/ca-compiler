@@ -1,5 +1,5 @@
 use std::collections::VecDeque;
-use std::fmt::{Display};
+use std::fmt::{Debug, Display, Formatter};
 use crate::lexer::lexer::{
     LexerFromFileError, Tokens, WrappedToken
 };
@@ -28,7 +28,7 @@ impl ParseError {
     pub fn new(message: String, token_stack: &TokenStack) -> ParseError {
         ParseError {
             variant: ParseErrorVariants::GenericError(message),
-            token_stack: token_stack.clone(),
+            token_stack: token_stack.soft_copy(),
         }
     }
     pub fn message(&self) -> String {
@@ -47,7 +47,7 @@ impl Display for ParseError {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct TokenStack {
     pub(crate) tokens: VecDeque<WrappedToken>,
     popped_tokens: Vec<WrappedToken>
@@ -58,10 +58,21 @@ impl TokenStack {
             None => {
                 Err(ParseError {
                     variant: ParseErrorVariants::NoMoreTokens("".to_owned()),
-                    token_stack: self.clone()
+                    token_stack: self.soft_copy()
                 })
             }
             Some(token) => { Ok(token) }
+        }
+    }
+
+    pub fn push(&mut self, token: WrappedToken, is_rollback: bool) {
+        self.tokens.push_back(token);
+    }
+
+    pub fn soft_copy(&self) -> TokenStack {
+        TokenStack {
+            tokens: self.tokens.clone(),
+            popped_tokens: self.popped_tokens.clone()
         }
     }
 
@@ -87,7 +98,7 @@ impl TokenStack {
                         variant: ParseErrorVariants::NoMoreTokens(
                             "No more tokens available".to_string()
                         ),
-                        token_stack: self.clone()
+                        token_stack: self.soft_copy()
                     });
                 }
             };
@@ -110,16 +121,13 @@ impl TokenStack {
                 variant: ParseErrorVariants::UnexpectedToken(format!(
                     "Unexpected token [{}]", popped_token
                 ).to_string()),
-                token_stack: self.clone()
+                token_stack: self.soft_copy()
             })
         }
     }
 
     pub fn new(tokens: VecDeque<WrappedToken>) -> TokenStack {
-        TokenStack {
-            tokens,
-            popped_tokens: vec![],
-        }
+        TokenStack { tokens, popped_tokens: vec![] }
     }
 
     pub fn new_from_vec(tokens: Vec<WrappedToken>) -> TokenStack {
@@ -132,8 +140,10 @@ impl TokenStack {
     where
         F: for<'b> FnOnce(&mut StackPopper<'b>) -> Result<T, E>,
     {
-        let mut stack_popper = StackPopper::new(self);
+        let mut stack_popper= StackPopper::new(self);
+
         let result = func(&mut stack_popper);
+        // If the result is an error, rollback the popped tokens
         if result.is_err() {
             stack_popper.rollback();
         }
@@ -147,12 +157,13 @@ pub struct PoppedTokenContext {
 }
 
 
+#[derive(Debug)]
 pub struct StackPopper<'a> {
     pub(crate) token_stack: &'a mut TokenStack,
     pub(crate) popped_tokens : Vec<WrappedToken>
 }
-impl <'a> StackPopper<'a> {
-    pub fn new(token_stack: &'a mut TokenStack) -> StackPopper<'a> {
+impl StackPopper<'_> {
+    pub fn new(token_stack: &mut TokenStack) -> StackPopper {
         StackPopper {
             token_stack,
             popped_tokens: vec![],
@@ -164,7 +175,7 @@ impl <'a> StackPopper<'a> {
     }
 
     pub fn clone_stack(&self) -> TokenStack {
-        self.token_stack.clone()
+        self.token_stack.soft_copy()
     }
 
     pub fn pop_front(&mut self) -> Result<WrappedToken, ParseError> {
@@ -195,3 +206,4 @@ impl <'a> StackPopper<'a> {
         }
     }
 }
+
