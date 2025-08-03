@@ -1,7 +1,12 @@
 use std::collections::VecDeque;
 use crate::lexer::lexer::{lex_from_filepath, Keywords, Punctuators, Tokens};
-use crate::parser::asm_symbols::{AsmFunction, AsmImmediateValue, AsmInstruction, AsmOperand, AsmProgram, MovInstruction};
-use crate::parser::parser_helpers::{ParseError, ParseErrorVariants, PoppedTokenContext, TokenStack};
+use crate::parser::asm_symbols::{
+    AsmFunction, AsmImmediateValue, AsmInstruction, AsmOperand, AsmProgram,
+    MovInstruction, HasPopContexts
+};
+use crate::parser::parser_helpers::{
+    ParseError, ParseErrorVariants, PoppedTokenContext, TokenStack
+};
 
 pub struct Identifier {
     name: String,
@@ -188,11 +193,10 @@ impl Function {
             })
         );
         instructions.push(AsmInstruction::Ret);
-
-        AsmFunction {
-            name: function_name,
-            instructions,
-        }
+        let asm_func = AsmFunction::new(function_name)
+                .add_instructions(instructions)
+                .with_added_pop_context(self.pop_context.clone());
+        asm_func
     }
 }
 

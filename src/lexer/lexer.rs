@@ -130,11 +130,19 @@ impl fmt::Display for SourceContext {
 #[derive(PartialEq, Clone, Debug, Eq)]
 pub struct WrappedToken {
     pub token: Tokens,
-    pub context: SourceContext,
+    context: SourceContext,
 }
 impl WrappedToken {
     pub fn new(token: Tokens, context: SourceContext) -> Self {
         WrappedToken { token, context }
+    }
+    pub fn get_max_position(&self) -> usize {
+        // returns the maximum position of the token
+        self.context.end_position
+    }
+    pub fn get_min_position(&self) -> usize {
+        // returns the minimum position of the token
+        self.context.start_position
     }
 }
 
