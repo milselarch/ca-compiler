@@ -1,4 +1,5 @@
 use std::fmt;
+use std::fmt::{Debug, Display};
 use regex::Regex;
 use crate::lexer::base_token_builder::{BaseTokenBuilder, TokenBuilderStates};
 
@@ -176,7 +177,7 @@ impl ProcessResult {
     }
 }
 
-pub trait TokenBuilder {
+pub trait TokenBuilder: Display {
     fn base(&self) -> &BaseTokenBuilder;
     fn base_mut(&mut self) -> &mut BaseTokenBuilder;
 

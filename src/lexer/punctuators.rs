@@ -1,3 +1,4 @@
+use std::fmt::{Display, Formatter};
 use crate::lexer::base_token_builder::BaseTokenBuilder;
 use crate::lexer::lexer::{ProcessResult, Tokens};
 use crate::lexer::tokens::{Punctuators, TokenBuilder};
@@ -21,6 +22,13 @@ impl PunctuatorProcessor {
         self.punctuator
     }
 }
+
+impl Display for PunctuatorProcessor {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "PunctuatorProcessor")
+    }
+}
+
 impl crate::lexer::lexer::TokenBuilder for PunctuatorProcessor {
     fn base(&self) -> &BaseTokenBuilder { &self.base }
     fn base_mut(&mut self) -> &mut BaseTokenBuilder { &mut self.base }

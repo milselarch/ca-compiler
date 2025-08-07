@@ -1,5 +1,5 @@
 use std::{fmt};
-use std::fmt::Display;
+use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io::Read;
 use regex::Regex;
@@ -24,6 +24,13 @@ impl IdentifierBuilder {
         }
     }
 }
+
+impl Display for IdentifierBuilder {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "IdentifierBuilder")
+    }
+}
+
 impl TokenBuilder for IdentifierBuilder {
     fn base(&self) -> &BaseTokenBuilder { &self.base }
     fn base_mut(&mut self) -> &mut BaseTokenBuilder { &mut self.base }
@@ -73,6 +80,13 @@ impl ConstantBuilder {
         }
     }
 }
+
+impl Display for ConstantBuilder {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "ConstantBuilder")
+    }
+}
+
 impl TokenBuilder for ConstantBuilder {
     fn base(&self) -> &BaseTokenBuilder { &self.base }
     fn base_mut(&mut self) -> &mut BaseTokenBuilder { &mut self.base }
@@ -98,6 +112,12 @@ impl TokenBuilder for ConstantBuilder {
         } else {
             None
         }
+    }
+}
+
+impl Display for PunctuatorsBuilder {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "PunctuatorsBuilder")
     }
 }
 
@@ -138,6 +158,12 @@ impl TokenBuilder for PunctuatorsBuilder {
             }
         }
         None
+    }
+}
+
+impl Display for OperatorsBuilder {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "OperatorsBuilder")
     }
 }
 
@@ -191,6 +217,13 @@ impl SingleLineCommentBuilder {
         }
     }
 }
+
+impl Display for SingleLineCommentBuilder {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "SingleLineCommentBuilder")
+    }
+}
+
 impl TokenBuilder for SingleLineCommentBuilder {
     fn base(&self) -> &BaseTokenBuilder { &self.base }
     fn base_mut(&mut self) -> &mut BaseTokenBuilder { &mut self.base }
@@ -225,6 +258,13 @@ impl MultiLineCommentBuilder {
         }
     }
 }
+
+impl Display for MultiLineCommentBuilder {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "MultiLineCommentBuilder")
+    }
+}
+
 impl TokenBuilder for MultiLineCommentBuilder {
     fn base(&self) -> &BaseTokenBuilder { &self.base }
     fn base_mut(&mut self) -> &mut BaseTokenBuilder { &mut self.base }
@@ -348,7 +388,13 @@ impl Lexer {
             for builder in token_builders.iter() {
                 if builder.is_done() {
                     // TODO: use match pattern get get token instead
-                    let token = builder.build_token().unwrap();
+                    let error_message = format!(
+                        "Token builder {builder} did not produce a token for '{}'",
+                        searched_string
+                    );
+                    let token = builder.build_token().expect(
+                        format!("Token builder error: {}", error_message).as_str()
+                    );
                     println!("MADE TOKEN {}", token);
 
                     search_end = search_start + token.get_length();

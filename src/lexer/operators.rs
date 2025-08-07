@@ -1,3 +1,4 @@
+use std::fmt::{Display, Formatter};
 use crate::lexer::base_token_builder::BaseTokenBuilder;
 use crate::lexer::lexer::{ProcessResult, TokenBuilder, Tokens};
 use crate::lexer::tokens::{Operators};
@@ -22,6 +23,13 @@ impl OperatorProcessor {
         self.operator
     }
 }
+
+impl Display for OperatorProcessor {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "OperatorProcessor")
+    }
+}
+
 impl TokenBuilder for OperatorProcessor {
     fn base(&self) -> &BaseTokenBuilder { &self.base }
     fn base_mut(&mut self) -> &mut BaseTokenBuilder { &mut self.base }
