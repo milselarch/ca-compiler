@@ -176,8 +176,10 @@ impl TokenBuilder for OperatorsBuilder {
         self.base_mut()._push_char(char);
 
         for processor in &mut self.operators {
+            if !processor.is_accepting() { continue; }
+
             let process_result = processor.process_char(char);
-            if process_result.complete || process_result.accepting {
+            if process_result.accept_char {
                 // println!("PROC_PUSH {}", process_result.accepting);
                 processor._push_char(char);
             }
@@ -185,16 +187,19 @@ impl TokenBuilder for OperatorsBuilder {
     }
 
     fn process_char(&self, c: char) -> ProcessResult {
+        println!("\nPROCESS_CHAR {}", c);
         let mut complete = false;
         let mut accepting = false;
 
         for processor in &self.operators {
             let process_result = processor.process_char(c);
             complete = complete || process_result.complete;
+            println!("PROCESS_RESULT: {:?} {}", process_result, complete);
             accepting = accepting || process_result.accepting;
         }
 
-        ProcessResult::new(complete, accepting, true)
+        println!("COMPLETE: {}, ACCEPTING: {}", complete, accepting);
+        ProcessResult::new(complete, accepting, accepting)
     }
     fn build_token(&self) -> Option<Tokens> {
         // println!("BUILT_STR {}", self._get_built_str());
@@ -395,8 +400,8 @@ impl Lexer {
                     let token = builder.build_token().expect(
                         format!("Token builder error: {}", error_message).as_str()
                     );
-                    println!("MADE TOKEN {}", token);
 
+                    println!("MADE TOKEN {}", token);
                     search_end = search_start + token.get_length();
                     let content = builder._get_built_str().clone();
                     let context = SourceContext::new(

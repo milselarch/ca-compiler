@@ -155,9 +155,9 @@ impl WrappedToken {
 
 #[derive(PartialEq, Copy, Clone, Debug, Eq)]
 pub struct ProcessResult {
-    pub(crate) complete: bool, // whether token is complete
+    pub(crate) complete: bool, // whether the token is well-formed in its current state
     pub(crate) accepting: bool, // whether token is still accepting new characters
-    accept_char: bool, // whether to add current character
+    pub(crate) accept_char: bool, // whether to add current character
 }
 impl ProcessResult {
     pub(crate) fn new(complete: bool, accepting: bool, accept_char: bool) -> Self {

@@ -29,7 +29,7 @@ impl Display for PunctuatorProcessor {
     }
 }
 
-impl crate::lexer::lexer::TokenBuilder for PunctuatorProcessor {
+impl TokenBuilder for PunctuatorProcessor {
     fn base(&self) -> &BaseTokenBuilder { &self.base }
     fn base_mut(&mut self) -> &mut BaseTokenBuilder { &mut self.base }
 

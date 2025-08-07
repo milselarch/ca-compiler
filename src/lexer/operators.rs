@@ -26,7 +26,11 @@ impl OperatorProcessor {
 
 impl Display for OperatorProcessor {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "OperatorProcessor")
+        let output = format!(
+            "OperatorProcessor(pattern: '{}', operator: {:?})",
+            self.pattern, self.operator
+        );
+        write!(f, "{}", output)
     }
 }
 
@@ -35,12 +39,16 @@ impl TokenBuilder for OperatorProcessor {
     fn base_mut(&mut self) -> &mut BaseTokenBuilder { &mut self.base }
 
     fn process_char(&self, c: char) -> ProcessResult {
+        println!("{}", format!("Processing char: '{}'", c));
         let pattern_length = self.pattern.len();
         let chars_collected = self.base.get_length();
+
         if chars_collected >= pattern_length {
+            println!("COMPLETE_NO_CONT");
             return ProcessResult::complete_without_continue(false)
         }
         if c != self.pattern.chars().nth(chars_collected).unwrap() {
+            println!("REJECT");
             // character does not match operator at position
             return ProcessResult::reject()
         }
@@ -48,6 +56,7 @@ impl TokenBuilder for OperatorProcessor {
         let new_length = chars_collected + 1;
         let complete = new_length == pattern_length;
         let accepting = !complete;
+        println!("OP {self} > COMPLETE: {}, ACCEPTING: {}", complete, accepting);
         ProcessResult::new(complete, accepting, true)
     }
 
@@ -70,7 +79,7 @@ impl OperatorsBuilder {
     ) -> Vec<OperatorProcessor> {
         let mut processors = Vec::new();
         for raw_operator in operator_patterns {
-            // Create a OperatorProcessor for each pattern
+            // Create an OperatorProcessor for each pattern
             let processor = OperatorProcessor::new(
                 raw_operator.0.parse().unwrap(), raw_operator.1
             );
