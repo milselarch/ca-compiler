@@ -115,103 +115,6 @@ impl TokenBuilder for ConstantBuilder {
     }
 }
 
-impl Display for PunctuatorsBuilder {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "PunctuatorsBuilder")
-    }
-}
-
-impl TokenBuilder for PunctuatorsBuilder {
-    fn base(&self) -> &BaseTokenBuilder { &self.base }
-    fn base_mut(&mut self) -> &mut BaseTokenBuilder { &mut self.base }
-
-    fn _push_char(&mut self, char: char) {
-        // println!("PUSH_CHAR {}", char);
-        self.base_mut()._push_char(char);
-
-        for processor in &mut self.punctuators {
-            let process_result = processor.process_char(char);
-            if process_result.complete || process_result.accepting {
-                // println!("PROC_PUSH {}", process_result.accepting);
-                processor._push_char(char);
-            }
-        }
-    }
-
-    fn process_char(&self, c: char) -> ProcessResult {
-        let mut complete = false;
-        let mut accepting = false;
-
-        for processor in &self.punctuators {
-            let process_result = processor.process_char(c);
-            complete = complete || process_result.complete;
-            accepting = accepting || process_result.accepting;
-        }
-
-        ProcessResult::new(complete, accepting, true)
-    }
-    fn build_token(&self) -> Option<Tokens> {
-        // println!("BUILT_STR {}", self._get_built_str());
-        for processor in &self.punctuators {
-            if processor.is_done() {
-                return Some(Tokens::Punctuator(processor.get_punctuator()));
-            }
-        }
-        None
-    }
-}
-
-impl Display for OperatorsBuilder {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "OperatorsBuilder")
-    }
-}
-
-impl TokenBuilder for OperatorsBuilder {
-    fn base(&self) -> &BaseTokenBuilder { &self.base }
-    fn base_mut(&mut self) -> &mut BaseTokenBuilder { &mut self.base }
-
-    fn _push_char(&mut self, char: char) {
-        // println!("PUSH_CHAR {}", char);
-        self.base_mut()._push_char(char);
-
-        for processor in &mut self.operators {
-            if !processor.is_accepting() { continue; }
-
-            let process_result = processor.process_char(char);
-            if process_result.accept_char {
-                // println!("PROC_PUSH {}", process_result.accepting);
-                processor._push_char(char);
-            }
-        }
-    }
-
-    fn process_char(&self, c: char) -> ProcessResult {
-        println!("\nPROCESS_CHAR {}", c);
-        let mut complete = false;
-        let mut accepting = false;
-
-        for processor in &self.operators {
-            let process_result = processor.process_char(c);
-            complete = complete || process_result.complete;
-            println!("PROCESS_RESULT: {:?} {}", process_result, complete);
-            accepting = accepting || process_result.accepting;
-        }
-
-        println!("COMPLETE: {}, ACCEPTING: {}", complete, accepting);
-        ProcessResult::new(complete, accepting, accepting)
-    }
-    fn build_token(&self) -> Option<Tokens> {
-        // println!("BUILT_STR {}", self._get_built_str());
-        for processor in &self.operators {
-            if processor.is_done() {
-                return Some(Tokens::Operator(processor.get_operator()));
-            }
-        }
-        None
-    }
-}
-
 struct SingleLineCommentBuilder {
     base: BaseTokenBuilder,
 }
@@ -225,7 +128,7 @@ impl SingleLineCommentBuilder {
 
 impl Display for SingleLineCommentBuilder {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "SingleLineCommentBuilder")
+        write!(f, "SingleLineCommentBuilder {:?}", self.base)
     }
 }
 

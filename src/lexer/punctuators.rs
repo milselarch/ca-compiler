@@ -1,8 +1,10 @@
+use std::fmt;
 use std::fmt::{Display, Formatter};
 use crate::lexer::base_token_builder::BaseTokenBuilder;
 use crate::lexer::lexer::{ProcessResult, Tokens};
 use crate::lexer::tokens::{Punctuators, TokenBuilder};
 
+#[derive(Debug)]
 pub struct PunctuatorProcessor {
     // things like "(", ")", "{", "}", ";"
     pattern: String,
@@ -84,6 +86,7 @@ impl PunctuatorsBuilder {
     pub(crate) fn new() -> PunctuatorsBuilder {
         PunctuatorsBuilder {
             base: BaseTokenBuilder::new(),
+            // TODO: use enum iterators macro instead of hardcoding
             punctuators: PunctuatorsBuilder::create_processors(vec![
                 ("(", Punctuators::OpenParens),
                 (")", Punctuators::CloseParens),
@@ -92,5 +95,51 @@ impl PunctuatorsBuilder {
                 (";", Punctuators::Semicolon),
             ])
         }
+    }
+}
+
+impl Display for PunctuatorsBuilder {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "PunctuatorsBuilder")
+    }
+}
+
+impl TokenBuilder for PunctuatorsBuilder {
+    fn base(&self) -> &BaseTokenBuilder { &self.base }
+    fn base_mut(&mut self) -> &mut BaseTokenBuilder { &mut self.base }
+
+    fn _push_char(&mut self, char: char) {
+        // println!("PUSH_CHAR {}", char);
+        self.base_mut()._push_char(char);
+
+        for processor in &mut self.punctuators {
+            let process_result = processor.process_char(char);
+            if process_result.complete || process_result.accepting {
+                // println!("PROC_PUSH {}", process_result.accepting);
+                processor._push_char(char);
+            }
+        }
+    }
+
+    fn process_char(&self, c: char) -> ProcessResult {
+        let mut complete = false;
+        let mut accepting = false;
+
+        for processor in &self.punctuators {
+            let process_result = processor.process_char(c);
+            complete = complete || process_result.complete;
+            accepting = accepting || process_result.accepting;
+        }
+
+        ProcessResult::new(complete, accepting, true)
+    }
+    fn build_token(&self) -> Option<Tokens> {
+        // println!("BUILT_STR {}", self._get_built_str());
+        for processor in &self.punctuators {
+            if processor.is_done() {
+                return Some(Tokens::Punctuator(processor.get_punctuator()));
+            }
+        }
+        None
     }
 }

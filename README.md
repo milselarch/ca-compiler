@@ -13,15 +13,26 @@
 
 Test lexer on all test cases in chapter 2:
 ```bash
-cargo build --release && \
+cargo build && \
 writing-a-c-compiler-tests/test_compiler ./target/debug/ca-compiler --chapter 2 --stage lex
 ```
-  
+Test lexer on all test cases in chapter 2 (windows):
+```bash
+cargo build; 
+python writing-a-c-compiler-tests/test_compiler ./target/debug/ca-compiler --chapter 2 --stage lex
+```
+
 Lexing a specific test case:  
 ```bash
 cargo build && ./target/debug/ca-compiler --lex \
 /home/milselarch/projects/ca-compiler/writing-a-c-compiler-tests/tests/chapter_2/valid/redundant_parens.c
-```
+```  
+Lexing a specific test case (windows):
+```bash
+cargo build; ./target/debug/ca-compiler --lex \
+./target/debug/ca-compiler.exe --lex ./writing-a-c-compiler-tests/tests/chapter_2/valid/parens_2.c
+```  
+
 
 ## `CHAPTER 1`
 ### `run lexer tests`
