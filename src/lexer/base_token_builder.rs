@@ -1,4 +1,4 @@
-#[derive(PartialEq, Copy, Clone)]
+#[derive(PartialEq, Copy, Clone, Debug)]
 pub enum TokenBuilderStates {
     Start,
     Accepting,
@@ -6,6 +6,7 @@ pub enum TokenBuilderStates {
     Done,
 }
 
+#[derive(Debug)]
 pub struct BaseTokenBuilder {
     built_string: String,
     state: TokenBuilderStates,

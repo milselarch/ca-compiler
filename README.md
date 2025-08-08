@@ -7,9 +7,36 @@
 - implement arbitrary (specified) length integer type support
 - implement turing machine tape to CA conversion
 
-## `C compiler tests`
+# `C compiler tests`
+
+## `CHAPTER 2`
+
+Test lexer on all test cases in chapter 2:
+```bash
+cargo build && \
+writing-a-c-compiler-tests/test_compiler ./target/debug/ca-compiler --chapter 2 --stage lex
+```
+Test lexer on all test cases in chapter 2 (windows):
+```bash
+cargo build; 
+python writing-a-c-compiler-tests/test_compiler ./target/debug/ca-compiler --chapter 2 --stage lex
+```
+
+Lexing a specific test case:  
+```bash
+cargo build && ./target/debug/ca-compiler --lex \
+/home/milselarch/projects/ca-compiler/writing-a-c-compiler-tests/tests/chapter_2/valid/redundant_parens.c
+```  
+Lexing a specific test case (windows):
+```bash
+cargo build; ./target/debug/ca-compiler --lex \
+./target/debug/ca-compiler.exe --lex ./writing-a-c-compiler-tests/tests/chapter_2/valid/parens_2.c
+```  
+
+
+## `CHAPTER 1`
 ### `run lexer tests`
-`cargo build && python ./writing-a-c-compiler-tests/test_compiler ./target/debug/R110 --chapter 1 --stage lex`  
+`cargo build --release && python ./writing-a-c-compiler-tests/test_compiler ./target/release/R110 --chapter 1 --stage lex`  
 examples for running lexer tests for specific test cases
 1. `cargo build`  
 `./target/debug/ca-compiler --lex ~/projects/ca-compiler/writing-a-c-compiler-tests/tests/chapter_1/invalid_parse/end_before_expr.c`

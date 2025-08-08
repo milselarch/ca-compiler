@@ -1,5 +1,6 @@
 use std::collections::VecDeque;
-use crate::lexer::lexer::{lex_from_filepath, Keywords, Punctuators, Tokens};
+use crate::lexer::lexer::{lex_from_filepath, Keywords, Tokens};
+use crate::lexer::tokens::Punctuators;
 use crate::parser::asm_symbols::{
     AsmFunction, AsmImmediateValue, AsmInstruction, AsmOperand, AsmProgram,
     MovInstruction, HasPopContexts
