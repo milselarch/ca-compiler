@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
+use std::panic;
 use crate::lexer::lexer::{lex_from_filepath, Keywords, Tokens};
-use crate::lexer::tokens::Punctuators;
+use crate::lexer::tokens::{Operators, Punctuators};
 use crate::parser::asm_symbols::{
     AsmFunction, AsmImmediateValue, AsmInstruction, AsmOperand, AsmProgram,
     MovInstruction, HasPopContexts
@@ -43,21 +44,96 @@ impl Identifier {
     }
 }
 
+
+#[derive(Clone, Debug)]
+pub enum SupportedUnaryOperators {
+    Minus,
+    BitwiseNot,
+}
+impl SupportedUnaryOperators {
+    pub fn from_operator(op: Operators) -> Option<SupportedUnaryOperators> {
+        match op {
+            Operators::Minus => Some(SupportedUnaryOperators::Minus),
+            Operators::BitwiseNot => Some(SupportedUnaryOperators::BitwiseNot),
+            _ => None,
+        }
+    }
+}
+
+pub enum ExpressionType {
+    Constant(String),
+    UnaryOperation(SupportedUnaryOperators, Box<ExpressionType>)
+}
+
 pub struct Expression {
-    constant: String,
+    expr_item: ExpressionType,
     pop_context: Option<PoppedTokenContext>
 }
 impl Expression {
-    pub fn new(constant: String) -> Expression {
+    pub fn new(expr_item: ExpressionType) -> Expression {
         Expression {
-            constant,
+            expr_item,
             pop_context: None
         }
     }
 
     fn parse(tokens: &mut TokenStack) -> Result<Expression, ParseError> {
+        let load_unary_operation_res = tokens.run_with_rollback(|stack_popper| {
+            /*
+            Try to parse a unary operation first
+            <exp> ::= UnaryOperation(<op>, <exp>)
+            */
+            let unary_op_wrapped_token_res = stack_popper.pop_front();
+            let unary_op_token_res = match unary_op_wrapped_token_res {
+                Ok(token) => token,
+                Err(err) => return Err(err),
+            };
+
+            let unary_op_token = unary_op_token_res.token;
+            let operator = match unary_op_token {
+                Tokens::Operator(op) => {
+                    match SupportedUnaryOperators::from_operator(op) {
+                        Some(supported_op) => supported_op,
+                        None => return Err(ParseError {
+                            variant: ParseErrorVariants::UnexpectedToken(
+                                format!("Unsupported unary operator {op}")
+                            ),
+                            token_stack: stack_popper.token_stack.soft_copy()
+                        }),
+                    }
+                },
+                _ => return Err(ParseError {
+                    variant: ParseErrorVariants::NoMoreTokens(
+                        "Unary operation not found in expression".to_owned()
+                    ),
+                    token_stack: stack_popper.token_stack.soft_copy()
+                }),
+            };
+
+            let sub_expression = Expression::parse(&mut stack_popper.token_stack)?;
+            Ok(Self {
+                expr_item: ExpressionType::UnaryOperation(
+                    operator, Box::new(sub_expression.expr_item)
+                ),
+                pop_context: Some(stack_popper.build_pop_context())
+            })
+        });
+
+        match load_unary_operation_res {
+            Ok(expression) => Ok(expression),
+            Err(_) => {
+                /*
+                If unary operation parsing failed, try parsing a constant
+                <exp> ::= Constant(<int>)
+                */
+                Self::parse_as_constant(tokens)
+            }
+        }
+    }
+
+    fn parse_as_constant(tokens: &mut TokenStack) -> Result<Expression, ParseError> {
         tokens.run_with_rollback(|stack_popper| {
-            // <exp> ::= <int>
+            // <exp> ::= Constant(<int>)
             let constant_wrapped_token_res = stack_popper.pop_front();
             let constant_token_res = match constant_wrapped_token_res {
                 Ok(token) => token,
@@ -75,18 +151,26 @@ impl Expression {
                 }),
             };
             Ok(Expression {
-                constant,
+                expr_item: ExpressionType::Constant(constant),
                 pop_context: Some(stack_popper.build_pop_context())
             })
         })
     }
 
+
     fn to_asm_symbol(&self) -> AsmImmediateValue {
         // Convert the expression to an assembly representation
-        let value = self.constant.parse::<i64>().unwrap();
-        AsmImmediateValue::new(value).with_added_pop_context(
-            self.pop_context.clone()
-        )
+        match self.expr_item {
+            ExpressionType::Constant(ref constant) => {
+                let value = constant.parse::<i64>().unwrap();
+                AsmImmediateValue::new(value).with_added_pop_context(
+                    self.pop_context.clone()
+                )
+            },
+            ExpressionType::UnaryOperation(ref operator, ref sub_expression ) => {
+                panic!("Unary operations not implemented yet");
+            },
+        }
     }
 }
 
