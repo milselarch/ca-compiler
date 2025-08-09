@@ -66,7 +66,7 @@ impl TokenStack {
 
         if let Ok(ref token) = wrapped_token_res {
             let popped_token = token.clone();
-            self.popped_tokens.push(token.clone());
+            self.popped_tokens.push(popped_token);
         }
 
         wrapped_token_res
@@ -76,7 +76,7 @@ impl TokenStack {
         self.tokens.push_back(token);
     }
 
-    pub fn rollback_once(&mut self) -> Result<(), ParseError> {
+    fn rollback_once(&mut self) -> Result<(), ParseError> {
         if let Some(token) = self.popped_tokens.pop() {
             self.tokens.push_front(token);
             Ok(())
@@ -144,6 +144,24 @@ impl TokenStack {
                 token_stack: self.soft_copy()
             })
         }
+    }
+
+    pub fn peek_front(&self, skip_comments: bool) -> Result<WrappedToken, ParseError> {
+        for token in &self.tokens {
+            if !skip_comments {
+                return Ok(token.clone())
+            }
+            match token.token {
+                Tokens::Comment(_) => continue,
+                _ => return Ok(token.clone()),
+            }
+        }
+        Err(ParseError {
+            variant: ParseErrorVariants::NoMoreTokens(
+                "No non-comment tokens available".to_string()
+            ),
+            token_stack: self.soft_copy()
+        })
     }
 
     pub fn new(tokens: VecDeque<WrappedToken>) -> TokenStack {
@@ -247,7 +265,8 @@ impl StackPopper<'_> {
 
     pub fn rollback(&mut self) -> Result<(), ParseError> {
         // Rollback the token stack to the state before this popper was created
-        let rollback_count = self.token_stack.popped_tokens.len() - self.start_token_position;
+        let rollback_count =
+            self.token_stack.popped_tokens.len() - self.start_token_position;
         for _ in 0..rollback_count {
             if let Err(err) = self.token_stack.rollback_once() {
                 eprintln!("Error during rollback: {}", err);

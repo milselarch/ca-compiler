@@ -151,6 +151,12 @@ impl WrappedToken {
         self.context.start_position
     }
 }
+impl fmt::Display for WrappedToken {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "WrappedToken({}, {})", self.token, self.context)
+    }
+}
+
 
 
 #[derive(PartialEq, Copy, Clone, Debug, Eq)]

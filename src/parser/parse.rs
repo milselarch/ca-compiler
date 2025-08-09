@@ -6,6 +6,7 @@ use crate::parser::asm_symbols::{
     AsmFunction, AsmImmediateValue, AsmInstruction, AsmOperand, AsmProgram,
     MovInstruction, HasPopContexts
 };
+use crate::parser::parse::ExpressionType::UnaryOperation;
 use crate::parser::parser_helpers::{
     ParseError, ParseErrorVariants, PoppedTokenContext, TokenStack
 };
@@ -58,6 +59,19 @@ impl SupportedUnaryOperators {
             _ => None,
         }
     }
+    pub fn from_operator_as_result(
+        op: Operators
+    ) -> Result<SupportedUnaryOperators, ParseError> {
+        match Self::from_operator(op) {
+            Some(supported_op) => Ok(supported_op),
+            None => Err(ParseError {
+                variant: ParseErrorVariants::UnexpectedToken(
+                    format!("Unsupported unary operator {op}")
+                ),
+                token_stack: TokenStack::new(VecDeque::new())
+            }),
+        }
+    }
 }
 
 pub enum ExpressionType {
@@ -78,11 +92,72 @@ impl Expression {
     }
 
     fn parse(tokens: &mut TokenStack) -> Result<Expression, ParseError> {
-        let load_unary_operation_res = tokens.run_with_rollback(|stack_popper| {
-            /*
-            Try to parse a unary operation first
-            <exp> ::= UnaryOperation(<op>, <exp>)
-            */
+        let wrapped_front_code_token = tokens.peek_front(true)?;
+        let front_code_token = wrapped_front_code_token.token.clone();
+
+        match front_code_token {
+            Tokens::Punctuator(Punctuators::OpenParens) => {
+                Self::parse_as_parens_wrapped(tokens)
+            },
+            Tokens::Operator(op) => {
+                match SupportedUnaryOperators::from_operator_as_result(op) {
+                    Ok(_) => { Self::parse_as_unary_op(tokens) },
+                    Err(err) => { Err(err) }
+                }
+            },
+            Tokens::Constant(_) => {
+                Self::parse_as_constant(tokens)
+            },
+            _ => {
+                Err(ParseError {
+                    variant: ParseErrorVariants::UnexpectedToken(format!(
+                        "Unexpected token at expression start \
+                        {wrapped_front_code_token}"
+                    )),
+                    token_stack: tokens.soft_copy()
+                })
+            }
+        }
+    }
+
+    fn parse_as_parens_wrapped(tokens: &mut TokenStack) -> Result<Expression, ParseError> {
+        /*
+        Try to parse a parenthesized expression first
+        <exp> ::= "(" <exp> ")"
+        */
+        tokens.run_with_rollback(|stack_popper| {
+            let open_paren_wrapped_token_res = stack_popper.pop_front();
+            let open_paren_token_res = match open_paren_wrapped_token_res {
+                Ok(token) => token,
+                Err(err) => return Err(err),
+            };
+
+            let open_paren_token = open_paren_token_res.token;
+            if open_paren_token != Tokens::Punctuator(Punctuators::OpenParens) {
+                return Err(ParseError {
+                    variant: ParseErrorVariants::UnexpectedToken(
+                        "Expected opening parenthesis".to_owned()
+                    ),
+                    token_stack: stack_popper.token_stack.soft_copy()
+                });
+            }
+
+            let sub_expression = Expression::parse(&mut stack_popper.token_stack)?;
+            stack_popper.expect_pop_front(Tokens::Punctuator(Punctuators::CloseParens))?;
+
+            Ok(Self {
+                expr_item: sub_expression.expr_item,
+                pop_context: Some(stack_popper.build_pop_context())
+            })
+        })
+    }
+
+    fn parse_as_unary_op(tokens: &mut TokenStack) -> Result<Expression, ParseError> {
+        /*
+        Try to parse a unary operation first
+        <exp> ::= UnaryOperation(<op>, <exp>)
+        */
+        tokens.run_with_rollback(|stack_popper| {
             let unary_op_wrapped_token_res = stack_popper.pop_front();
             let unary_op_token_res = match unary_op_wrapped_token_res {
                 Ok(token) => token,
@@ -92,15 +167,7 @@ impl Expression {
             let unary_op_token = unary_op_token_res.token;
             let operator = match unary_op_token {
                 Tokens::Operator(op) => {
-                    match SupportedUnaryOperators::from_operator(op) {
-                        Some(supported_op) => supported_op,
-                        None => return Err(ParseError {
-                            variant: ParseErrorVariants::UnexpectedToken(
-                                format!("Unsupported unary operator {op}")
-                            ),
-                            token_stack: stack_popper.token_stack.soft_copy()
-                        }),
-                    }
+                    SupportedUnaryOperators::from_operator_as_result(op)?
                 },
                 _ => return Err(ParseError {
                     variant: ParseErrorVariants::NoMoreTokens(
@@ -117,23 +184,12 @@ impl Expression {
                 ),
                 pop_context: Some(stack_popper.build_pop_context())
             })
-        });
-
-        match load_unary_operation_res {
-            Ok(expression) => Ok(expression),
-            Err(_) => {
-                /*
-                If unary operation parsing failed, try parsing a constant
-                <exp> ::= Constant(<int>)
-                */
-                Self::parse_as_constant(tokens)
-            }
-        }
+        })
     }
 
     fn parse_as_constant(tokens: &mut TokenStack) -> Result<Expression, ParseError> {
+        // <exp> ::= Constant(<int>)
         tokens.run_with_rollback(|stack_popper| {
-            // <exp> ::= Constant(<int>)
             let constant_wrapped_token_res = stack_popper.pop_front();
             let constant_token_res = match constant_wrapped_token_res {
                 Ok(token) => token,
@@ -159,7 +215,6 @@ impl Expression {
 
 
     fn to_asm_symbol(&self) -> AsmImmediateValue {
-        // Convert the expression to an assembly representation
         match self.expr_item {
             ExpressionType::Constant(ref constant) => {
                 let value = constant.parse::<i64>().unwrap();
