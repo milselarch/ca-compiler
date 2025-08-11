@@ -7,6 +7,7 @@ use crate::lexer::lexer::lex_from_filepath;
 pub mod lexer;
 pub mod parser;
 mod generator;
+mod tacky;
 
 fn print_usage(args: &Vec<String>) {
     eprintln!("Unknown / invalid args: {:?}", args);

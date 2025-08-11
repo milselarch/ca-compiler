@@ -6,11 +6,13 @@ use crate::parser::asm_symbols::{
     AsmFunction, AsmImmediateValue, AsmInstruction, AsmOperand, AsmProgram,
     MovInstruction, HasPopContexts
 };
-use crate::parser::parse::ExpressionType::UnaryOperation;
+use crate::parser::parse::ExpressionVariant::UnaryOperation;
 use crate::parser::parser_helpers::{
     ParseError, ParseErrorVariants, PoppedTokenContext, TokenStack
 };
 
+#[derive(Clone, Debug)]
+#[derive(PartialEq)]
 pub struct Identifier {
     name: String,
 }
@@ -74,17 +76,19 @@ impl SupportedUnaryOperators {
     }
 }
 
-pub enum ExpressionType {
+#[derive(Clone)]
+pub enum ExpressionVariant {
     Constant(String),
-    UnaryOperation(SupportedUnaryOperators, Box<ExpressionType>)
+    UnaryOperation(SupportedUnaryOperators, Box<ExpressionVariant>)
 }
 
+#[derive(Clone)]
 pub struct Expression {
-    expr_item: ExpressionType,
+    pub(crate) expr_item: ExpressionVariant,
     pop_context: Option<PoppedTokenContext>
 }
 impl Expression {
-    pub fn new(expr_item: ExpressionType) -> Expression {
+    pub fn new(expr_item: ExpressionVariant) -> Expression {
         Expression {
             expr_item,
             pop_context: None
@@ -179,7 +183,7 @@ impl Expression {
 
             let sub_expression = Expression::parse(&mut stack_popper.token_stack)?;
             Ok(Self {
-                expr_item: ExpressionType::UnaryOperation(
+                expr_item: ExpressionVariant::UnaryOperation(
                     operator, Box::new(sub_expression.expr_item)
                 ),
                 pop_context: Some(stack_popper.build_pop_context())
@@ -207,7 +211,7 @@ impl Expression {
                 }),
             };
             Ok(Expression {
-                expr_item: ExpressionType::Constant(constant),
+                expr_item: ExpressionVariant::Constant(constant),
                 pop_context: Some(stack_popper.build_pop_context())
             })
         })
@@ -216,13 +220,13 @@ impl Expression {
 
     fn to_asm_symbol(&self) -> AsmImmediateValue {
         match self.expr_item {
-            ExpressionType::Constant(ref constant) => {
+            ExpressionVariant::Constant(ref constant) => {
                 let value = constant.parse::<i64>().unwrap();
                 AsmImmediateValue::new(value).with_added_pop_context(
                     self.pop_context.clone()
                 )
             },
-            ExpressionType::UnaryOperation(ref operator, ref sub_expression ) => {
+            ExpressionVariant::UnaryOperation(ref operator, ref sub_expression ) => {
                 panic!("Unary operations not implemented yet");
             },
         }
@@ -230,7 +234,7 @@ impl Expression {
 }
 
 pub struct Statement {
-    expression: Expression,
+    pub(crate) expression: Expression,
     pop_context: Option<PoppedTokenContext>
 }
 impl Statement {
@@ -285,21 +289,21 @@ impl Statement {
     }
 }
 
-pub struct Function {
-    name: Identifier,
-    body: Statement,
+pub struct ASTFunction {
+    pub(crate) name: Identifier,
+    pub(crate) body: Statement,
     pop_context: Option<PoppedTokenContext>
 }
-impl Function {
-    pub fn new(name: Identifier, body: Statement) -> Function {
-        Function {
+impl ASTFunction {
+    pub fn new(name: Identifier, body: Statement) -> ASTFunction {
+        ASTFunction {
             name,
             body,
             pop_context: None,
         }
     }
 
-    fn parse(tokens: &mut TokenStack) -> Result<Function, ParseError> {
+    fn parse(tokens: &mut TokenStack) -> Result<ASTFunction, ParseError> {
         tokens.run_with_rollback(|stack_popper| {
             // <function> ::= "int" <identifier> "(" "void" ")" "{" <statement> "}"
             stack_popper.expect_pop_front(Tokens::Keyword(Keywords::Integer))?;
@@ -313,7 +317,7 @@ impl Function {
             let statement = Statement::parse(&mut stack_popper.token_stack)?;
             stack_popper.expect_pop_front(Tokens::Punctuator(Punctuators::CloseBrace))?;
 
-            Ok(Function {
+            Ok(ASTFunction {
                 name: identifier, body: statement,
                 pop_context: Some(stack_popper.build_pop_context())
             })
@@ -340,13 +344,13 @@ impl Function {
     }
 }
 
-pub struct Program {
-    function: Function,
+pub struct ASTProgram {
+    pub function: ASTFunction,
     pop_context: Option<PoppedTokenContext>
 }
-impl Program {
-    pub fn new(function: Function) -> Program {
-        Program {
+impl ASTProgram {
+    pub fn new(function: ASTFunction) -> ASTProgram {
+        ASTProgram {
             function,
             pop_context: None,
         }
@@ -360,10 +364,10 @@ impl Program {
 }
 
 
-pub fn parse(tokens: &mut TokenStack) -> Result<Program, ParseError> {
+pub fn parse(tokens: &mut TokenStack) -> Result<ASTProgram, ParseError> {
     // <program> ::= <function>
     tokens.run_with_rollback(|stack_popper| {
-        let function = Function::parse(stack_popper.token_stack)?;
+        let function = ASTFunction::parse(stack_popper.token_stack)?;
         if !stack_popper.is_empty() {
             return Err(ParseError {
                 variant: ParseErrorVariants::UnexpectedExtraTokens(
@@ -372,14 +376,14 @@ pub fn parse(tokens: &mut TokenStack) -> Result<Program, ParseError> {
                 token_stack: stack_popper.clone_stack()
             });
         }
-        Ok(Program {
+        Ok(ASTProgram {
             function,
             pop_context: Some(stack_popper.build_pop_context())
         })
     })
 }
 
-pub fn parse_from_filepath(file_path: &str, verbose: bool) -> Result<Program, ParseError> {
+pub fn parse_from_filepath(file_path: &str, verbose: bool) -> Result<ASTProgram, ParseError> {
     let lex_result = lex_from_filepath(file_path, verbose);
     if lex_result.is_err() {
         return Err(ParseError {
