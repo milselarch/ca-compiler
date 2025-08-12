@@ -1,1 +1,1 @@
-mod tacky_symbols;
+pub(crate) mod tacky_symbols;

@@ -124,7 +124,7 @@ pub fn tacky_gen_from_filepath(
     if parse_result.is_err() {
         return Err(parse_result.err().unwrap());
     }
-    let program = parse_result.unwrap();
+    let program = parse_result?;
     let tacky_program = TackyProgram::from_program(&program);
     Ok(tacky_program)
 }

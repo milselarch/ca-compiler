@@ -57,7 +57,8 @@ fn main() -> io::Result<()> {
 
     match subcommand {
         "--lex" => {
-            let lex_result = lex_from_filepath(&args[2], true);
+            let lex_result =
+                lex_from_filepath(&args[2], true);
             if lex_result.is_err() {
                 eprintln!("Error: {:?}", lex_result.err().unwrap());
                 std::process::exit(1);
@@ -67,12 +68,24 @@ fn main() -> io::Result<()> {
             }
         },
         "--parse" => {
-            let parse_result = parser::parse::parse_from_filepath(&args[2], true);
+            let parse_result =
+                parser::parse::parse_from_filepath(&args[2], true);
             if parse_result.is_err() {
                 eprintln!("Parse Error: {}", parse_result.err().unwrap());
                 std::process::exit(1);
             } else {
                 println!("Parse successful!");
+                std::process::exit(0);
+            }
+        },
+        "--tacky" => {
+            let tacky_gen_result =
+                tacky::tacky_symbols::tacky_gen_from_filepath(&args[2], true);
+            if tacky_gen_result.is_err() {
+                eprintln!("Tacky Generation Error: {}", tacky_gen_result.err().unwrap());
+                std::process::exit(1);
+            } else {
+                println!("Tacky Generation successful!");
                 std::process::exit(0);
             }
         },
