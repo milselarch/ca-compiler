@@ -137,11 +137,11 @@ impl AsmSymbol for AsmOperand {
 
 #[derive(Clone, Debug)]
 pub struct AsmImmediateValue {
-    pub(crate) value: i64,
+    pub(crate) value: u64,
     pub(crate) pop_contexts: Vec<PoppedTokenContext>
 }
 impl AsmImmediateValue {
-    pub fn new(value: i64) -> AsmImmediateValue {
+    pub fn new(value: u64) -> AsmImmediateValue {
         AsmImmediateValue {
             value,
             pop_contexts: vec![]

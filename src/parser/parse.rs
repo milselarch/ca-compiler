@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::num::ParseIntError;
 use std::panic;
 use crate::lexer::lexer::{lex_from_filepath, Keywords, Tokens};
 use crate::lexer::tokens::{Operators, Punctuators};
@@ -76,16 +77,28 @@ impl SupportedUnaryOperators {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct ASTConstant {
+    pub(crate) value: String,
+    pub(crate) pop_context: Option<PoppedTokenContext>
+}
+impl ASTConstant {
+    pub fn to_u64(&self) -> Result<u64, ParseIntError> {
+        self.value.parse::<u64>()
+    }
+}
+
+
 #[derive(Clone)]
 pub enum ExpressionVariant {
-    Constant(String),
-    UnaryOperation(SupportedUnaryOperators, Box<ExpressionVariant>)
+    Constant(ASTConstant),
+    UnaryOperation(SupportedUnaryOperators, Box<Expression>)
 }
 
 #[derive(Clone)]
 pub struct Expression {
     pub(crate) expr_item: ExpressionVariant,
-    pop_context: Option<PoppedTokenContext>
+    pub(crate) pop_context: Option<PoppedTokenContext>
 }
 impl Expression {
     pub fn new(expr_item: ExpressionVariant) -> Expression {
@@ -183,10 +196,10 @@ impl Expression {
 
             let sub_expression = Expression::parse(&mut stack_popper.token_stack)?;
             Ok(Self {
+                pop_context: Some(stack_popper.build_pop_context()),
                 expr_item: ExpressionVariant::UnaryOperation(
-                    operator, Box::new(sub_expression.expr_item)
-                ),
-                pop_context: Some(stack_popper.build_pop_context())
+                    operator, Box::new(sub_expression)
+                )
             })
         })
     }
@@ -210,9 +223,15 @@ impl Expression {
                     token_stack: stack_popper.token_stack.soft_copy()
                 }),
             };
+
+            let pop_context = stack_popper.build_pop_context();
+            let ast_constant = ASTConstant {
+                value: constant.clone(),
+                pop_context: Some(pop_context.clone())
+            };
             Ok(Expression {
-                expr_item: ExpressionVariant::Constant(constant),
-                pop_context: Some(stack_popper.build_pop_context())
+                expr_item: ExpressionVariant::Constant(ast_constant),
+                pop_context: Some(pop_context.clone())
             })
         })
     }
@@ -221,12 +240,12 @@ impl Expression {
     fn to_asm_symbol(&self) -> AsmImmediateValue {
         match self.expr_item {
             ExpressionVariant::Constant(ref constant) => {
-                let value = constant.parse::<i64>().unwrap();
+                let value = constant.to_u64().unwrap();
                 AsmImmediateValue::new(value).with_added_pop_context(
                     self.pop_context.clone()
                 )
             },
-            ExpressionVariant::UnaryOperation(ref operator, ref sub_expression ) => {
+            ExpressionVariant::UnaryOperation(_, _) => {
                 panic!("Unary operations not implemented yet");
             },
         }
@@ -292,7 +311,7 @@ impl Statement {
 pub struct ASTFunction {
     pub(crate) name: Identifier,
     pub(crate) body: Statement,
-    pop_context: Option<PoppedTokenContext>
+    pub(crate) pop_context: Option<PoppedTokenContext>
 }
 impl ASTFunction {
     pub fn new(name: Identifier, body: Statement) -> ASTFunction {
@@ -346,7 +365,7 @@ impl ASTFunction {
 
 pub struct ASTProgram {
     pub function: ASTFunction,
-    pop_context: Option<PoppedTokenContext>
+    pub pop_context: Option<PoppedTokenContext>
 }
 impl ASTProgram {
     pub fn new(function: ASTFunction) -> ASTProgram {
