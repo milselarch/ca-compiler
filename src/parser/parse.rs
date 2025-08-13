@@ -3,10 +3,6 @@ use std::num::ParseIntError;
 use std::panic;
 use crate::lexer::lexer::{lex_from_filepath, Keywords, Tokens};
 use crate::lexer::tokens::{Operators, Punctuators};
-use crate::parser::asm_symbols::{
-    AsmFunction, AsmImmediateValue, AsmInstruction, AsmOperand, AsmProgram,
-    MovInstruction, HasPopContexts
-};
 use crate::parser::parse::ExpressionVariant::UnaryOperation;
 use crate::parser::parser_helpers::{
     ParseError, ParseErrorVariants, PoppedTokenContext, TokenStack
@@ -15,7 +11,7 @@ use crate::parser::parser_helpers::{
 #[derive(Clone, Debug)]
 #[derive(PartialEq)]
 pub struct Identifier {
-    name: String,
+    pub(crate) name: String,
 }
 impl Identifier {
     pub fn new(identifier: String) -> Identifier {
@@ -235,21 +231,6 @@ impl Expression {
             })
         })
     }
-
-
-    fn to_asm_symbol(&self) -> AsmImmediateValue {
-        match self.expr_item {
-            ExpressionVariant::Constant(ref constant) => {
-                let value = constant.to_u64().unwrap();
-                AsmImmediateValue::new(value).with_added_pop_context(
-                    self.pop_context.clone()
-                )
-            },
-            ExpressionVariant::UnaryOperation(_, _) => {
-                panic!("Unary operations not implemented yet");
-            },
-        }
-    }
 }
 
 pub struct Statement {
@@ -300,12 +281,6 @@ impl Statement {
             })
         })
     }
-
-    fn to_asm_symbol(&self) -> AsmImmediateValue {
-        self.expression.to_asm_symbol().with_added_pop_context(
-            self.pop_context.clone()
-        )
-    }
 }
 
 pub struct ASTFunction {
@@ -342,25 +317,6 @@ impl ASTFunction {
             })
         })
     }
-
-    fn to_asm_symbol(&self) -> AsmFunction {
-        // Convert the function to an assembly representation
-        let function_name = self.name.name.clone();
-        let mut instructions: Vec<AsmInstruction> = vec![];
-        let body_expression = self.body.to_asm_symbol();
-
-        instructions.push(AsmInstruction::Mov(
-            MovInstruction {
-                source: AsmOperand::ImmediateValue(body_expression),
-                destination: AsmOperand::Register
-            })
-        );
-        instructions.push(AsmInstruction::Ret);
-        let asm_func = AsmFunction::new(function_name)
-                .add_instructions(instructions)
-                .with_added_pop_context(self.pop_context.clone());
-        asm_func
-    }
 }
 
 pub struct ASTProgram {
@@ -374,14 +330,7 @@ impl ASTProgram {
             pop_context: None,
         }
     }
-
-    pub fn to_asm_symbol(&self) -> AsmProgram {
-        AsmProgram {
-            function: self.function.to_asm_symbol(),
-        }
-    }
 }
-
 
 pub fn parse(tokens: &mut TokenStack) -> Result<ASTProgram, ParseError> {
     // <program> ::= <function>
@@ -415,17 +364,4 @@ pub fn parse_from_filepath(file_path: &str, verbose: bool) -> Result<ASTProgram,
     let mut token_stack = TokenStack::new_from_vec(tokens);
     let parse_result = parse(&mut token_stack);
     parse_result
-}
-
-pub fn asm_gen_from_filepath(
-    file_path: &str, verbose: bool
-) -> Result<AsmProgram, ParseError> {
-    let parse_result = parse_from_filepath(file_path, verbose);
-    let program = match parse_result {
-        Ok(program) => program,
-        Err(err) => return Err(err),
-    };
-
-    let asm_program = program.to_asm_symbol();
-    Ok(asm_program)
 }

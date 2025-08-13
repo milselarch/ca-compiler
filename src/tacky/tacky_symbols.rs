@@ -1,4 +1,3 @@
-use crate::parser::asm_symbols::AsmProgram;
 use crate::parser::parse::{
     Identifier, ASTProgram, SupportedUnaryOperators, ASTFunction,
     ExpressionVariant, ASTConstant, parse_from_filepath
