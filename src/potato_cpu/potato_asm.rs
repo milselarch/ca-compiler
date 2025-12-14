@@ -1,3 +1,4 @@
+use crate::asm_gen::asm_symbols::AnnotationInstruction;
 use crate::parser::parser_helpers::PoppedTokenContext;
 use crate::potato_cpu::bit_allocation::GrowableBitAllocation;
 use crate::potato_cpu::potato_cpu::{PotatoCPU, PotatoCodes, PotatoSpec, Registers};
@@ -69,11 +70,21 @@ impl PotatoFunction {
                         }
                     }
                 },
-                _ => {
-                    panic!(
-                        "Unsupported instruction type in \
-                        PotatoFunction::from_tacky_function"
+                TackyInstruction::AnnotationStartInstruction(annotation_start) => {
+                    // TODO: handle these properly
+                    continue
+                },
+                TackyInstruction::AnnotationEndInstruction(annotation_end) => {
+                    // TODO: handle these properly
+                    continue
+                },
+                unsupported => {
+                    let err_msg = format!(
+                        "Unsupported instruction type {} in \
+                        PotatoFunction::from_tacky_function",
+                        unsupported
                     );
+                    panic!("{}", err_msg);
                 }
             };
 

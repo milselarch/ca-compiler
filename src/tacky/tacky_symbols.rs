@@ -1,4 +1,5 @@
 use std::hash::{Hash, Hasher};
+use strum_macros::Display;
 use crate::constants::TAB;
 use crate::parser::parse::{
     Identifier, ASTProgram, SupportedUnaryOperators, ASTFunction, ExpressionVariant,
@@ -360,7 +361,7 @@ impl ToTackyInstruction for AnnotationEndInstruction {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Display)]
 pub enum TackyInstruction {
     UnaryInstruction(UnaryInstruction),
     BinaryInstruction(BinaryInstruction),
