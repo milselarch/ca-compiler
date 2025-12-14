@@ -1,6 +1,6 @@
-use std::fmt::format;
 use std::hash::{Hash, Hasher};
-use crate::asm_gen::asm_symbols::TAB;
+use strum_macros::Display;
+use crate::constants::TAB;
 use crate::parser::parse::{
     Identifier, ASTProgram, SupportedUnaryOperators, ASTFunction, ExpressionVariant,
     ASTConstant, parse_from_filepath, SupportedBinaryOperators
@@ -22,6 +22,9 @@ pub struct TackyVariable {
 impl TackyVariable {
     pub fn new(id: u64) -> TackyVariable {
         TackyVariable { id, name: "".to_string() }
+    }
+    pub fn to_tacky_value(&self) -> TackyValue {
+        TackyValue::Var(self.clone())
     }
 }
 impl Eq for TackyVariable {}
@@ -58,6 +61,25 @@ impl UnrollResult {
             instructions,
             value,
             next_free_var_id
+        }
+    }
+
+    pub fn with_annotation(
+        &self, annotation: AnnotationStartInstruction
+    ) -> Self {
+        let mut new_instructions = vec![];
+        new_instructions.push(
+            annotation.to_tacky_instruction()
+        );
+        new_instructions.extend(self.instructions.clone());
+        new_instructions.push(AnnotationEndInstruction::new(
+            annotation.label.clone(), annotation.pop_context.clone()
+        ).to_tacky_instruction());
+
+        UnrollResult {
+            instructions: new_instructions,
+            value: self.value.clone(),
+            next_free_var_id: self.next_free_var_id
         }
     }
 }
@@ -185,8 +207,8 @@ impl PrintableTacky for BinaryInstruction {
 
 #[derive(Clone, Debug)]
 pub struct CopyInstruction {
-    pub src: TackyValue,
-    pub dst: TackyVariable,
+    pub src: TackyValue, // constant or variable
+    pub dst: TackyVariable, // variable only
     pub pop_context: Option<PoppedTokenContext>
 }
 impl CopyInstruction {
@@ -298,6 +320,48 @@ impl ToTackyInstruction for LabelInstruction {
 }
 
 #[derive(Clone, Debug)]
+pub struct AnnotationStartInstruction {
+    pub label: Identifier,
+    pub pop_context: Option<PoppedTokenContext>
+}
+impl AnnotationStartInstruction {
+    pub fn new(
+        label: Identifier, pop_context: Option<PoppedTokenContext>
+    ) -> AnnotationStartInstruction {
+        // TODO: use this in places where we convert AST to a block
+        //  of multiple Tacky instructions
+        AnnotationStartInstruction {
+            label, pop_context
+        }
+    }
+}
+impl ToTackyInstruction for AnnotationStartInstruction {
+    fn to_tacky_instruction(&self) -> TackyInstruction {
+        TackyInstruction::AnnotationStartInstruction(self.clone())
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct AnnotationEndInstruction {
+    pub label: Identifier,
+    pub pop_context: Option<PoppedTokenContext>
+}
+impl AnnotationEndInstruction {
+    pub fn new(
+        label: Identifier, pop_context: Option<PoppedTokenContext>
+    ) -> AnnotationEndInstruction {
+        AnnotationEndInstruction {
+            label, pop_context
+        }
+    }
+}
+impl ToTackyInstruction for AnnotationEndInstruction {
+    fn to_tacky_instruction(&self) -> TackyInstruction {
+        TackyInstruction::AnnotationEndInstruction(self.clone())
+    }
+}
+
+#[derive(Clone, Debug, Display)]
 pub enum TackyInstruction {
     UnaryInstruction(UnaryInstruction),
     BinaryInstruction(BinaryInstruction),
@@ -306,6 +370,8 @@ pub enum TackyInstruction {
     JumpIfZeroInstruction(JumpIfZeroInstruction),
     JumpIfNotZeroInstruction(JumpIfNotZeroInstruction),
     LabelInstruction(LabelInstruction),
+    AnnotationStartInstruction(AnnotationStartInstruction),
+    AnnotationEndInstruction(AnnotationEndInstruction),
     Return(TackyValue),
 }
 impl ToTackyInstruction for TackyInstruction {
@@ -313,6 +379,7 @@ impl ToTackyInstruction for TackyInstruction {
         self.clone()
     }
 }
+
 impl TackyInstruction {
     pub fn unroll_short_circuit(
         left: ExpressionVariant,
@@ -439,13 +506,19 @@ impl TackyInstruction {
         expr_item: ExpressionVariant,
         var_counter: u64
     ) -> UnrollResult {
-        match expr_item {
+        let annotation_identifier =
+            Identifier::new(format!("EXPR_UNROLL_{}", var_counter));
+
+        let unroll_result = match expr_item {
             ExpressionVariant::Constant(ast_constant) => {
                 UnrollResult::new(
                     Vec::new(),
                     TackyValue::Constant(ast_constant.clone()),
                     var_counter
-                )
+                ).with_annotation(AnnotationStartInstruction::new(
+                    annotation_identifier,
+                    ast_constant.pop_context
+                ))
             },
             ExpressionVariant::UnaryOperation(
                 operator, sub_expr
@@ -474,9 +547,27 @@ impl TackyInstruction {
                     instructions,
                     TackyValue::Var(new_var),
                     var_counter
-                )
+                ).with_annotation(AnnotationStartInstruction::new(
+                    annotation_identifier,
+                    sub_expr.pop_context.clone()
+                ))
             }
-            ExpressionVariant::BinaryOperation(operator, left, right) => {
+            ExpressionVariant::BinaryOperation(
+                operator, left, right
+            ) => {
+                let bin_pop_context = if let (
+                    Some(left_ctx), Some(right_ctx)
+                ) = (&left.pop_context, &right.pop_context) {
+                    // both sides have pop contexts, merge them
+                    Some(left_ctx | right_ctx)
+                } else if let Some(left_ctx) = &left.pop_context {
+                    Some(left_ctx.clone())
+                } else if let Some(right_ctx) = &right.pop_context {
+                    Some(right_ctx.clone())
+                } else {
+                    None
+                };
+
                 if operator.is_short_circuit() {
                     return Self::unroll_short_circuit(
                         left.expr_item.clone(),
@@ -504,7 +595,7 @@ impl TackyInstruction {
                     left: left_unroll.value,
                     right: right_unroll.value,
                     dst: new_var.clone(),
-                    pop_context: right.pop_context.clone()
+                    pop_context: None
                 };
 
                 let left_instructions = left_unroll.instructions;
@@ -517,13 +608,17 @@ impl TackyInstruction {
                     instructions,
                     TackyValue::Var(new_var),
                     var_counter
-                )
+                ).with_annotation(AnnotationStartInstruction::new(
+                    annotation_identifier,
+                    bin_pop_context
+                ))
             }
             ExpressionVariant::ParensWrapped(sub_expr) => {
                 let inner_variant = sub_expr.expr_item;
                 Self::unroll_expression(inner_variant, var_counter)
             }
-        }
+        };
+        unroll_result
     }
 }
 impl PrintableTacky for TackyInstruction {
@@ -563,7 +658,10 @@ impl TackyFunction {
         let inner_unroll = TackyInstruction::unroll_expression(expr_item, 0);
 
         let temp_value = inner_unroll.value;
-        let mut sub_instructions = inner_unroll.instructions;
+        let mut sub_instructions = vec![];
+        // TODO: add annotated instructions for function start
+
+        sub_instructions.extend(inner_unroll.instructions);
         let return_instruction = TackyInstruction::Return(temp_value);
         sub_instructions.push(return_instruction);
 

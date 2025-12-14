@@ -8,6 +8,7 @@ pub mod parser;
 pub mod tacky;
 pub mod asm_gen;
 pub mod automata;
+pub mod constants;
 
 /// Formats the sum of two numbers as string.
 #[pyfunction]

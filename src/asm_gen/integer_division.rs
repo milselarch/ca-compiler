@@ -1,5 +1,5 @@
-use crate::asm_gen::asm_symbols::SCRATCH_REGISTER;
 use crate::asm_gen::asm_symbols::{AsmOperand, AsmSymbol};
+use crate::asm_gen::registers::SCRATCH_REGISTER;
 use crate::asm_gen::helpers::{
     DiffableHashMap, StackAllocationResult, ToStackAllocated
 };

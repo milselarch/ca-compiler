@@ -40,6 +40,7 @@ jobs:
           python writing-a-c-compiler-tests/test_compiler ./target/release/ca-compiler --chapter 4 --stage lex; 
           python writing-a-c-compiler-tests/test_compiler ./target/release/ca-compiler --chapter 4 --stage parse; 
           python writing-a-c-compiler-tests/test_compiler ./target/release/ca-compiler --chapter 4 --stage tacky; 
+          python writing-a-c-compiler-tests/test_compiler ./target/release/ca-compiler --chapter 4 --stage codegen; 
 
       - name: Test full chapters
         run: |

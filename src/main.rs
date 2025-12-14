@@ -8,7 +8,8 @@ use crate::tacky::tacky_symbols::PrintableTacky;
 
 pub mod lexer;
 pub mod parser;
-mod generator;
+pub mod constants;
+pub mod generator;
 pub mod tacky;
 pub mod asm_gen;
 pub mod potato_cpu;

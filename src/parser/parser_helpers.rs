@@ -1,5 +1,6 @@
 use std::collections::VecDeque;
-use std::fmt::{Debug, Display, Formatter};
+use std::fmt::{Debug, Display};
+use std::ops::BitOr;
 use crate::lexer::lexer::{
     LexerFromFileError, Tokens, WrappedToken
 };
@@ -215,7 +216,29 @@ pub struct PoppedTokenContext {
     pub start_source_position: usize,
     pub end_source_position: usize,
 }
+impl PoppedTokenContext {
+    pub(crate) fn format_as_string(&self) -> String {
+        format!(
+            "TokenRange[{}, {}], SourceRange[{}, {}]",
+            self.start_token_position,
+            self.end_token_position,
+            self.start_source_position,
+            self.end_source_position
+        )
+    }
+}
+impl BitOr for &PoppedTokenContext {
+    type Output = PoppedTokenContext;
 
+    fn bitor(self, rhs: Self) -> Self::Output {
+        PoppedTokenContext {
+            start_token_position: self.start_token_position,
+            end_token_position: rhs.end_token_position,
+            start_source_position: self.start_source_position,
+            end_source_position: rhs.end_source_position,
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct StackPopper<'a> {

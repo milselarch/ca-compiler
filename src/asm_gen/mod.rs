@@ -1,5 +1,8 @@
-pub(crate) mod asm_symbols;
-mod helpers;
-mod unary_instruction;
-mod binary_instruction;
-mod interger_division;
+pub mod asm_symbols;
+pub mod helpers;
+pub mod unary_instruction;
+pub mod binary_instruction;
+pub mod integer_division;
+pub mod mov_instruction;
+pub mod cmp_instruction;
+pub mod registers;

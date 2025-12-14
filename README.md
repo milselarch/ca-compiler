@@ -45,6 +45,12 @@ cargo build && \
 writing-a-c-compiler-tests/test_compiler ./target/debug/ca-compiler --chapter 2 --stage codegen
 ```
 
+Run code generation for a single file:
+```bash
+cargo build && \
+./target/debug/ca-compiler writing-a-c-compiler-tests/tests/chapter_3/valid/unop_parens.c --stage codegen
+```
+
 Supported stages:
 - lex
 - parse
