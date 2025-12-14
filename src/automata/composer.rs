@@ -1,9 +1,10 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::Hash;
 use std::ops::Mul;
 use enum_iterator::Sequence;
 
 type TapeKey = usize;
+type TapeCellState = u32;
 
 /*
 TODO:
@@ -14,7 +15,8 @@ TODO:
     - theres a lot of runtime behavior that might be movable to compile time
 */
 
-const VOID_STATE: u32 = 0;
+const VOID_STATE: TapeCellState = 0;
+const HALT_STATE: TapeCellState = 1;
 
 pub fn get_cell_expectation_combo_product(
     expectations1: &HashSet<CellExpectationCombo>,
@@ -50,12 +52,12 @@ pub enum Direction {
 #[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub struct TapeState {
     tape_key: TapeKey,
-    tape_cell_state: u32
+    tape_cell_state: TapeCellState
 }
 impl TapeState {
     pub fn new(
         tape_key: TapeKey,
-        tape_cell_state: u32
+        tape_cell_state: TapeCellState
     ) -> TapeState {
         TapeState {
             tape_key,
@@ -222,27 +224,41 @@ impl WriteRule {
 
 
 #[derive(Debug, Clone)]
+pub struct BidirectionalTape {
+    // cells extending rightwards
+    data: Vec<TapeCellState>,
+    // cells extending leftwards
+    rev_data: Vec<TapeCellState>
+}
+impl BidirectionalTape {
+    pub fn new(
+        data: Vec<TapeCellState>,
+    ) -> BidirectionalTape {
+        BidirectionalTape {
+            data,
+            rev_data: vec![],
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct Tape {
     tape_index: usize,
     write_rules: Vec<WriteRule>,
-    allowed_states: HashSet<u32>,
-    // cells extending rightwards
-    data: Vec<u32>,
-    // cells extending leftwards
-    rev_data: Vec<u32>
+    allowed_states: HashSet<TapeCellState>,
+    data: BidirectionalTape
 }
 impl Tape {
     pub fn new(
         write_rules: Vec<WriteRule>,
         tape_index: usize,
-        data: Vec<u32>,
+        data: Vec<TapeCellState>,
     ) -> Tape {
         Tape {
             write_rules,
             allowed_states: Default::default(),
             tape_index,
-            data,
-            rev_data: vec![],
+            data: BidirectionalTape::new(data)
         }
     }
     pub fn get_tape_key(&self) -> TapeKey {
@@ -260,7 +276,7 @@ impl Tape {
     }
 
     pub fn build_cell_expectation(
-        &self, tape_cell_state: u32, direction: Direction
+        &self, tape_cell_state: TapeCellState, direction: Direction
     ) -> CellExpectation {
         let tape_state = TapeState::new(
             self.tape_index,
@@ -291,6 +307,13 @@ impl Tape {
         }
 
         combinations
+    }
+
+    pub fn get_normal_states(&self) -> HashSet<TapeCellState> {
+        // get all states except for VOID_STATE and HALT_STATE
+        self.allowed_states.clone().into_iter().filter(|x| {
+            *x != VOID_STATE && *x != HALT_STATE
+        }).collect()
     }
 }
 
@@ -367,7 +390,63 @@ impl MultiTape {
         /*
         Generates the multi-tape equations for all tapes
         */
-        todo!()
+        // represents which states can overlap with which other states
+        let mut state_direction_map: HashMap<
+            TapeState, HashMap<Direction, HashSet<TapeState>>
+        > = HashMap::new();
+
+        let mut frontier = HashSet::new();
+        frontier.insert(self.input_tape_key);
+        let input_tape = self.get_tape_by_key(self.input_tape_key).unwrap();
+
+        let input_state_neighbors_map_template = HashMap::new();
+        for state in input_tape.get_normal_states() {
+            let tape_state =
+                TapeState::new(self.input_tape_key, state);
+            state_direction_map.insert(
+                tape_state.clone(), input_state_neighbors_map_template.clone()
+            );
+        }
+
+        let input_tape_void: TapeState = TapeState::new(self.input_tape_key, VOID_STATE);
+        // let input_tape_halt: TapeState = TapeState::new(self.input_tape_key, HALT_STATE);
+
+        for state in input_tape.get_normal_states() {
+            /*
+            Every state on the input tape can have void neighbors on the left
+            and right, and every state can have left, right, and middle overlaps
+            with every other input state
+            */
+            for direction in enum_iterator::all::<Direction>() {
+                let input_state_neighbors_map =
+                    input_state_neighbors_map_template.clone();
+
+                match direction {
+                    Direction::Left => {
+                        // every state can have void as a left neighbor
+                        let mut left_neighbors =
+                            input_state_neighbors_map.get(&Direction::Left).unwrap();
+                        left_neighbors.insert(input_tape_void.clone());
+                    },
+                    Direction::Right => {
+                        // every state can have void as a right neighbor
+                        let mut right_neighbors =
+                            input_state_neighbors_map.get(&Direction::Right).unwrap();
+                        right_neighbors.insert(input_tape_void.clone());
+                    }
+                    Direction::Middle => {}
+                };
+
+                let tape_state =
+                    TapeState::new(self.input_tape_key, state);
+                let mut direction_map = state_direction_map.get_mut(&tape_state).unwrap();
+                direction_map.insert(direction.clone(), HashSet::new());
+            }
+        }
+
+        while !queue.is_empty() {
+
+        }
     }
     // TODO: a method to propagate all possible state combinations
 }
