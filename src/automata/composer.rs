@@ -223,11 +223,7 @@ impl WriteRule {
 
 #[derive(Debug, Clone)]
 pub struct Tape {
-    // whether cellular automata rules applied to cells on
-    // this tape can write to the tape itself
-    self_writeable: bool,
     tape_index: usize,
-
     write_rules: Vec<WriteRule>,
     allowed_states: HashSet<u32>,
     // cells extending rightwards
@@ -237,19 +233,11 @@ pub struct Tape {
 }
 impl Tape {
     pub fn new(
-        self_writeable: bool,
         write_rules: Vec<WriteRule>,
         tape_index: usize,
         data: Vec<u32>,
     ) -> Tape {
-        if !self_writeable {
-            assert_eq!(
-                write_rules.len(), 0,
-                "Non-self-writeable tapes cannot have write rules"
-            );
-        }
         Tape {
-            self_writeable,
             write_rules,
             allowed_states: Default::default(),
             tape_index,
@@ -308,38 +296,18 @@ impl Tape {
 
 #[derive(Debug, Clone)]
 pub struct MultiTape {
-    read_tapes: Vec<Tape>,
-    write_tapes: Vec<Tape>,
+    tapes: Vec<Tape>,
     input_tape_key: TapeKey,
     tape_names_map: HashMap<String, TapeKey>,
     rules: Vec<WriteRule>,
 }
 impl MultiTape {
     pub fn new(
-        read_tapes: Vec<Tape>,
-        write_tapes: Vec<Tape>,
+        tapes: Vec<Tape>,
         input_tape_key: TapeKey,
     ) -> MultiTape {
-        for (index, tape) in read_tapes.iter().enumerate() {
-            assert_eq!(
-                tape.self_writeable, false,
-                "Read tape at index {} is self-writeable",
-                index
-            );
-            assert_eq!(tape.tape_index, index);
-        }
-        for (index, tape) in write_tapes.iter().enumerate() {
-            assert_eq!(
-                tape.self_writeable, true,
-                "Write tape at index {} is not self-writeable",
-                index
-            );
-            assert_eq!(tape.tape_index, index);
-        }
-
         MultiTape {
-            read_tapes,
-            write_tapes,
+            tapes,
             input_tape_key,
             tape_names_map: Default::default(),
             rules: vec![],
@@ -350,30 +318,25 @@ impl MultiTape {
     }
     pub fn insert_named_tape(
         &mut self, name: String, tape: Tape
-    ) -> TapeKey {
-        let tape_key = if tape.self_writeable {
-            let tape_index = self.write_tapes.len();
-            self.write_tapes.push(tape);
-            TapeKey::Writable(WritableTapeKey { tape_index })
-        } else {
-            let tape_index = self.read_tapes.len();
-            self.read_tapes.push(tape);
-            TapeKey::Readable(ReadableTapeKey { tape_index })
-        };
+    ) -> Result<TapeKey, TapeKey> {
+        let get_result = self.tape_names_map.get(name.as_str());
 
-        self.tape_names_map.insert(name, tape_key.clone());
-        tape_key
+        match get_result {
+            Some(existing_key) => {
+                Err(existing_key.clone())
+            },
+            None => {
+                let tape_index: TapeKey = self.tapes.len();
+                self.tapes.push(tape);
+                let tape_key  = tape_index;
+                self.tape_names_map.insert(name, tape_key.clone());
+                Ok(tape_key)
+            }
+        }
     }
 
-    pub fn get_tape_by_key(&self, tape_key: &TapeKey) -> Option<&Tape> {
-        match tape_key {
-            TapeKey::Readable(readable_key) => {
-                self.read_tapes.get(readable_key.tape_index)
-            },
-            TapeKey::Writable(writable_key) => {
-                self.write_tapes.get(writable_key.tape_index)
-            },
-        }
+    pub fn get_tape_by_key(&self, tape_key: TapeKey) -> Option<&Tape> {
+        self.tapes.get(tape_key)
     }
 
     pub fn get_tapes_that_write_to_tape(
@@ -385,7 +348,7 @@ impl MultiTape {
         */
         let mut writing_tape_keys = HashSet::new();
 
-        for tape in &self.write_tapes {
+        for tape in &self.tapes {
             for rule in &tape.write_rules {
                 let output_tape_keys = rule.get_output_tape_keys();
                 if !output_tape_keys.contains(target_tape_key) {
@@ -400,20 +363,10 @@ impl MultiTape {
         }
         writing_tape_keys
     }
-    pub fn generate_tape_equation(&self, tape_key: TapeKey) {
+    pub fn generate_tape_equation(&self) {
         /*
-        If we are a readable tape,
-        the equations would be a product of all the write rules
-        of the write tape that writes to us (if any), and all possible
-        combinations within our own tape.
-
-        If we are a writable tape,
-        the equations would simply be our own tape's write rules
+        Generates the multi-tape equations for all tapes
         */
-        let tape = self.get_tape_by_key(&tape_key).unwrap();
-        let dependent_tape_keys = tape.get_dependent_tape_keys();
-
-
         todo!()
     }
     // TODO: a method to propagate all possible state combinations
