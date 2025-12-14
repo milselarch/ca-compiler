@@ -74,7 +74,7 @@ impl SupportedUnaryOperators {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SupportedBinaryOperators {
     Add,
     Subtract,
@@ -183,6 +183,18 @@ pub enum ExpressionVariant {
     UnaryOperation(SupportedUnaryOperators, Box<Expression>),
     ParensWrapped(Box<Expression>),
     BinaryOperation(SupportedBinaryOperators, Box<Expression>, Box<Expression>)
+}
+impl ExpressionVariant {
+    pub fn get_pop_context(&self) -> Option<PoppedTokenContext> {
+        match self {
+            ExpressionVariant::Constant(constant) => constant.pop_context.clone(),
+            ExpressionVariant::UnaryOperation(_, expr) => expr.pop_context.clone(),
+            ExpressionVariant::ParensWrapped(expr) => expr.pop_context.clone(),
+            ExpressionVariant::BinaryOperation(_, left_expr, right_expr) => {
+                todo!()
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -412,7 +424,7 @@ impl Expression {
 
 pub struct Statement {
     pub(crate) expression: Expression,
-    pop_context: Option<PoppedTokenContext>
+    pub(crate) pop_context: Option<PoppedTokenContext>
 }
 impl Statement {
     pub fn new(expression: Expression) -> Statement {

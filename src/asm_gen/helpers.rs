@@ -1,8 +1,8 @@
 use std::collections::HashMap;
-use crate::tacky::tacky_symbols::TackyVariable;
 
 #[derive(Clone)]
 pub struct AppendOnlyHashMap<K, V> {
+    // This might all be a bit overkill
     map: HashMap<K, V>,
 }
 impl<K: std::hash::Hash + Eq + Clone, V: Clone> AppendOnlyHashMap<K, V> {

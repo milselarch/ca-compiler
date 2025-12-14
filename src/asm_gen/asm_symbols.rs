@@ -1,28 +1,19 @@
 use std::collections::HashMap;
-use std::fmt::format;
-use crate::parser::parse::{
-    Expression, ExpressionVariant, Statement,
-    SupportedBinaryOperators, SupportedUnaryOperators
-};
+use crate::parser::parse::{Expression, ExpressionVariant, Identifier, Statement};
 use helpers::ToStackAllocated;
-use crate::asm_gen::binary_instruction::{AsmBinaryInstruction, AsmBinaryOperators};
+use crate::constants::{STACK_VARIABLE_SIZE, TAB};
+use crate::asm_gen::binary_instruction::{AsmBinaryInstruction};
+use crate::asm_gen::cmp_instruction::{AsmCompareInstruction, AsmJumpConditionalInstruction, AsmSetConditionalInstruction, ConditionalCompareTypes};
 use crate::asm_gen::helpers;
 use crate::asm_gen::helpers::{
     AppendOnlyHashMap, BufferedHashMap, DiffableHashMap, StackAllocationResult
 };
-use crate::asm_gen::interger_division::AsmIntegerDivision;
+use crate::asm_gen::registers::{BASE_REGISTER, STACK_REGISTER};
+use crate::asm_gen::integer_division::AsmIntegerDivision;
+use crate::asm_gen::mov_instruction::MovInstruction;
 use crate::asm_gen::unary_instruction::AsmUnaryInstruction;
 use crate::parser::parser_helpers::{ParseError, PoppedTokenContext};
-use crate::tacky::tacky_symbols::{tacky_gen_from_filepath, BinaryInstruction, TackyFunction, TackyInstruction, TackyProgram, TackyValue, TackyVariable};
-
-const STACK_VARIABLE_SIZE: u64 = 4; // bytes
-pub const TAB: &str = "    ";
-pub const SCRATCH_REGISTER: &str = "%r10d";
-pub const MUL_SCRATCH_REGISTER: &str = "%r11d";
-const STACK_REGISTER: &str = "%rsp";
-// base of current stack frame
-const BASE_REGISTER: &str = "%rbp";
-
+use crate::tacky::tacky_symbols::{tacky_gen_from_filepath, JumpInstruction, LabelInstruction, TackyFunction, TackyInstruction, TackyProgram, TackyValue, TackyVariable};
 
 #[derive(Debug)]
 pub enum AsmGenError {
@@ -274,13 +265,49 @@ impl PseudoRegister {
 }
 
 #[derive(Clone, Debug)]
+pub struct AnnotationInstruction {
+    pub label: String,
+    pub pop_context: Option<PoppedTokenContext>
+}
+impl AnnotationInstruction {
+    pub fn new(
+        label: String,
+        pop_context: Option<PoppedTokenContext>
+    ) -> Self {
+        AnnotationInstruction { label, pop_context }
+    }
+    pub fn to_asm_instruction(self) -> AsmInstruction {
+        AsmInstruction::Annotation(self)
+    }
+    pub fn to_asm_code(self) -> Result<String, AsmGenError> {
+        let mut code = String::new();
+        // TODO: support multi-line labels?
+        assert!(!self.label.contains('\n'), "Annotation label cannot contain newlines");
+        code.push_str(format!("# {}", self.label).as_str());
+
+        if let Some(pop_context) = self.pop_context {
+            code.push_str("\n");
+            let pop_context_str = pop_context.format_as_string();
+            code.push_str(format!("# {}", pop_context_str).as_str());
+        }
+        Ok(code)
+    }
+}
+
+#[derive(Clone, Debug)]
 pub enum AsmInstruction {
     Mov(MovInstruction),
     Unary(AsmUnaryInstruction),
     Binary(AsmBinaryInstruction),
-    IntegerDivision(AsmIntegerDivision),
+    Compare(AsmCompareInstruction),
+    IntegerDivision(AsmIntegerDivision), // CDQ in textbook
+    Jump(AsmJumpInstruction),
+    JumpConditional(AsmJumpConditionalInstruction),
+    SetConditional(AsmSetConditionalInstruction),
     SignExtension,
     AllocateStack(StackAllocation),
+    LabelInstruction(AsmLabelInstruction),
+    Annotation(AnnotationInstruction),
     Ret,
 }
 impl AsmSymbol for AsmInstruction {
@@ -311,9 +338,15 @@ impl AsmSymbol for AsmInstruction {
                 code.push_str("ret\n");
                 Ok(code.to_string())
             },
+            AsmInstruction::Annotation(annotation) => {
+                Ok(annotation.to_asm_code()?)
+            },
             _ => {
                 Err(AsmGenError::InvalidInstructionType(
-                    format!("Unsupported AsmInstruction: {:?}", self)
+                    format!(
+                        "AsmInstruction variant not implemented for to_asm_code: {:?}",
+                        self
+                    )
                 ))
             }
         }
@@ -364,11 +397,63 @@ impl AsmInstruction {
             TackyInstruction::BinaryInstruction(binary_instruction) => {
                 AsmBinaryInstruction::unpack_from_tacky(binary_instruction)
             },
-            _ => {
-                panic!(
-                    "Unsupported TackyInstruction for AsmInstruction conversion: {:?}",
-                    tacky_instruction
+            TackyInstruction::LabelInstruction(label_instruction) => {
+                AsmLabelInstruction::unpack_from_tacky(label_instruction)
+            }
+            TackyInstruction::CopyInstruction(copy_instruction) => {
+                let src_operand =
+                    AsmOperand::from_tacky_value(copy_instruction.src);
+                let dst_operand =
+                    AsmOperand::from_tacky_value(copy_instruction.dst.to_tacky_value());
+
+                let asm_mov_instruction = MovInstruction::new(src_operand, dst_operand);
+                vec![AsmInstruction::Mov(asm_mov_instruction)]
+            }
+            TackyInstruction::JumpInstruction(jump_instruction) => {
+                AsmJumpInstruction::unpack_from_tacky(jump_instruction)
+            },
+            TackyInstruction::JumpIfZeroInstruction(jump_if_zero_instruction) => {
+                // check if 0 == condition's value
+                let cmp_instruction = AsmCompareInstruction::new(
+                    AsmOperand::ImmediateValue(AsmImmediateValue::new(0)),
+                    AsmOperand::from_tacky_value(jump_if_zero_instruction.condition)
                 );
+                let cond_jump_instruction = AsmJumpConditionalInstruction::new(
+                    jump_if_zero_instruction.target,
+                    ConditionalCompareTypes::Equal
+                );
+                vec![
+                    AsmInstruction::Compare(cmp_instruction),
+                    AsmInstruction::JumpConditional(cond_jump_instruction)
+                ]
+            }
+            TackyInstruction::JumpIfNotZeroInstruction(jump_if_not_zero_instruction) => {
+                // check if 0 == condition's value
+                let cmp_instruction = AsmCompareInstruction::new(
+                    AsmOperand::ImmediateValue(AsmImmediateValue::new(0)),
+                    AsmOperand::from_tacky_value(jump_if_not_zero_instruction.condition)
+                );
+                let cond_jump_instruction = AsmJumpConditionalInstruction::new(
+                    jump_if_not_zero_instruction.target,
+                    ConditionalCompareTypes::NotEqual
+                );
+                vec![
+                    AsmInstruction::Compare(cmp_instruction),
+                    AsmInstruction::JumpConditional(cond_jump_instruction)
+                ]
+            }
+            TackyInstruction::AnnotationStartInstruction(annotation_start) => {
+                let label = format!(">>> {}", annotation_start.label.name);
+                let asm_instruction = AnnotationInstruction::new(
+                    label, annotation_start.pop_context.clone()
+                ).to_asm_instruction();
+                vec![asm_instruction]
+            },
+            TackyInstruction::AnnotationEndInstruction(annotation_end) => {
+                let label = format!("<<< {}", annotation_end.label.name);
+                let asm_instruction =
+                    AnnotationInstruction::new(label, None).to_asm_instruction();
+                vec![asm_instruction]
             }
         }
     }
@@ -412,70 +497,91 @@ impl ToStackAllocated for AsmInstruction {
                 // Return does not affect stack allocations
                 (self.clone(), StackAllocationResult::new(stack_value))
             },
+            AsmInstruction::Compare(cmp_instruction) => {
+                // TODO: refactor this out to its own ToStackAllocated impl
+                let (left, left_alloc_result) =
+                    cmp_instruction.left.to_stack_allocated(stack_value, allocations);
+                let stack_value = left_alloc_result.new_stack_value;
+                let (right, right_alloc_result) =
+                    cmp_instruction.right.to_stack_allocated(stack_value, allocations);
+                let stack_value = right_alloc_result.new_stack_value;
+
+                let new_cmp_instruction = AsmCompareInstruction { left, right };
+                let mut alloc_buffer = BufferedHashMap::new(allocations);
+                alloc_buffer.apply_changes(left_alloc_result.new_stack_allocations).unwrap();
+                alloc_buffer.apply_changes(right_alloc_result.new_stack_allocations).unwrap();
+
+                let alloc_result = StackAllocationResult::new_from_buffered(
+                    stack_value, alloc_buffer
+                );
+                (AsmInstruction::Compare(new_cmp_instruction), alloc_result)
+            }
+            AsmInstruction::Jump(_jump_instruction) => {
+                // Jump does not affect stack allocations
+                (self.clone(), StackAllocationResult::new(stack_value))
+            }
+            AsmInstruction::JumpConditional(_cond_jump_instruction) => {
+                // Jump conditional does not affect stack allocations
+                (self.clone(), StackAllocationResult::new(stack_value))
+            }
+            AsmInstruction::SetConditional(set_cond_instruction) => {
+                // TODO: refactor this out to its own ToStackAllocated impl
+                let (destination, dest_alloc_result) =
+                    set_cond_instruction.destination.to_stack_allocated(
+                        stack_value, allocations
+                    );
+                let stack_value = dest_alloc_result.new_stack_value;
+
+                let new_set_cond_instruction = AsmSetConditionalInstruction {
+                    destination,
+                    condition: set_cond_instruction.condition.clone(),
+                };
+                let mut alloc_buffer = BufferedHashMap::new(allocations);
+                alloc_buffer.apply_changes(dest_alloc_result.new_stack_allocations).unwrap();
+                let alloc_result = StackAllocationResult::new_from_buffered(
+                    stack_value, alloc_buffer
+                );
+                (AsmInstruction::SetConditional(new_set_cond_instruction), alloc_result)
+            }
+            AsmInstruction::LabelInstruction(_label_instruction) => {
+                (self.clone(), StackAllocationResult::new(stack_value))
+            },
+            AsmInstruction::Annotation(_annotation_instruction) => {
+                (self.clone(), StackAllocationResult::new(stack_value))
+            }
         }
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct MovInstruction {
-    pub(crate) source: AsmOperand,
-    pub(crate) destination: AsmOperand,
+pub struct AsmLabelInstruction {
+    pub identifier: Identifier
 }
-impl MovInstruction {
-    pub fn new(source: AsmOperand, destination: AsmOperand) -> Self {
-        MovInstruction { source, destination }
+impl AsmLabelInstruction {
+    pub fn new(identifier: Identifier) -> Self {
+        AsmLabelInstruction { identifier }
+    }
+    pub fn unpack_from_tacky(
+        label_instruction: LabelInstruction
+    ) -> Vec<AsmInstruction> {
+        let label_instruction = AsmLabelInstruction::new(label_instruction.label);
+        vec![AsmInstruction::LabelInstruction(label_instruction)]
     }
 }
-impl AsmSymbol for MovInstruction {
-    fn to_asm_code(self) -> Result<String, AsmGenError> {
-        let is_src_stack_addr = self.source.is_stack_address();
-        let is_src_constant = self.source.is_constant();
-        let is_dst_stack_addr = self.destination.is_stack_address();
-        println!("MOV_PRE {}", format!("{:?}, {:?}", &self.source, &self.destination));
 
-        let src_asm = self.source.to_asm_code()?;
-        let dst_asm = self.destination.to_asm_code()?;
-
-        if (is_src_stack_addr || is_src_constant) && is_dst_stack_addr {
-            /*
-            Apparently moving stack allocated values and constants
-            directly to stack addresses is not allowed in x86-64 assembly.
-            So we move the value to a scratch register first,
-            then move it to the stack address.
-            */
-            let mut asm_code: String = String::new();
-            asm_code.push_str(&format!("movl {src_asm}, {SCRATCH_REGISTER}\n"));
-            asm_code.push_str(&format!("movl {SCRATCH_REGISTER}, {dst_asm}"));
-            Ok(asm_code)
-        } else {
-            Ok(format!("mov {}, {}", src_asm, dst_asm))
-        }
-    }
+#[derive(Clone, Debug)]
+pub struct AsmJumpInstruction {
+    pub identifier: Identifier
 }
-impl ToStackAllocated for MovInstruction {
-    fn to_stack_allocated(
-        &self, stack_value: u64,
-        allocations: &dyn DiffableHashMap<u64, u64>
-    ) -> (Self, StackAllocationResult) {
-        let mut alloc_buffer = BufferedHashMap::new(allocations);
-
-        let (source, src_alloc_result) =
-            self.source.to_stack_allocated(stack_value, alloc_buffer.get_source_ref());
-        let stack_value = src_alloc_result.new_stack_value;
-        alloc_buffer.apply_changes(src_alloc_result.new_stack_allocations).unwrap();
-
-        let (destination, dst_alloc_result) =
-            self.destination.to_stack_allocated(stack_value, alloc_buffer.get_source_ref());
-        let stack_value = dst_alloc_result.new_stack_value;
-        alloc_buffer.apply_changes(dst_alloc_result.new_stack_allocations).unwrap();
-
-        let new_instruction = MovInstruction { source, destination };
-        let alloc_result = StackAllocationResult::new_with_allocations(
-            stack_value,
-            alloc_buffer.build_changes().to_hash_map()
-        );
-
-        (new_instruction, alloc_result)
+impl AsmJumpInstruction {
+    pub fn new(identifier: Identifier) -> Self {
+        AsmJumpInstruction { identifier }
+    }
+    pub fn unpack_from_tacky(
+        jump_instruction: JumpInstruction
+    ) -> Vec<AsmInstruction> {
+        let asm_jump_instruction = AsmJumpInstruction::new(jump_instruction.target);
+        vec![AsmInstruction::Jump(asm_jump_instruction)]
     }
 }
 
