@@ -51,6 +51,12 @@ cargo build && \
 ./target/debug/ca-compiler writing-a-c-compiler-tests/tests/chapter_3/valid/unop_parens.c --stage codegen
 ```
 
+Run assembly code emission for a single file:
+```bash
+cargo build && \
+./target/debug/ca-compiler ./writing-a-c-compiler-tests/tests/chapter_4/valid/precedence_2.c
+```
+
 Supported stages:
 - lex
 - parse
