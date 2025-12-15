@@ -390,7 +390,10 @@ impl MultiTape {
         /*
         Generates the multi-tape equations for all tapes
         */
-        // represents which states can overlap with which other states
+        /*
+        represents which states can overlap with which other states
+        in which directions (left, right, middle)
+        */
         let mut state_direction_map: HashMap<
             TapeState, HashMap<Direction, HashSet<TapeState>>
         > = HashMap::new();
@@ -398,16 +401,6 @@ impl MultiTape {
         let mut frontier = HashSet::new();
         frontier.insert(self.input_tape_key);
         let input_tape = self.get_tape_by_key(self.input_tape_key).unwrap();
-
-        let input_state_neighbors_map_template = HashMap::new();
-        for state in input_tape.get_normal_states() {
-            let tape_state =
-                TapeState::new(self.input_tape_key, state);
-            state_direction_map.insert(
-                tape_state.clone(), input_state_neighbors_map_template.clone()
-            );
-        }
-
         let input_tape_void: TapeState = TapeState::new(self.input_tape_key, VOID_STATE);
         // let input_tape_halt: TapeState = TapeState::new(self.input_tape_key, HALT_STATE);
 
@@ -416,37 +409,55 @@ impl MultiTape {
             Every state on the input tape can have void neighbors on the left
             and right, and every state can have left, right, and middle overlaps
             with every other input state
+            TODO: this initialization is already so damn long, refactor
             */
             for direction in enum_iterator::all::<Direction>() {
-                let input_state_neighbors_map =
-                    input_state_neighbors_map_template.clone();
+                // all the neighbors for the current state in the current direction
+                let mut input_state_neighbors_map:
+                    HashMap<Direction, HashSet<TapeState>> = HashMap::new();
+
+                for other_state in input_tape.get_normal_states() {
+                    // every input state can overlap with every other input state
+                    // (including itself) in any direction
+                    let neighbor_tape_state =
+                        TapeState::new(self.input_tape_key, other_state);
+                    let neighbors_set =
+                        input_state_neighbors_map.get_mut(&direction).unwrap();
+                    neighbors_set.insert(neighbor_tape_state);
+                }
 
                 match direction {
                     Direction::Left => {
                         // every state can have void as a left neighbor
-                        let mut left_neighbors =
-                            input_state_neighbors_map.get(&Direction::Left).unwrap();
+                        let left_neighbors: &mut HashSet<TapeState> =
+                            input_state_neighbors_map.get_mut(&Direction::Left).unwrap();
                         left_neighbors.insert(input_tape_void.clone());
                     },
                     Direction::Right => {
                         // every state can have void as a right neighbor
-                        let mut right_neighbors =
-                            input_state_neighbors_map.get(&Direction::Right).unwrap();
+                        let right_neighbors: &mut HashSet<TapeState> =
+                            input_state_neighbors_map.get_mut(&Direction::Right).unwrap();
                         right_neighbors.insert(input_tape_void.clone());
                     }
                     Direction::Middle => {}
                 };
-            }
 
-            let tape_state =
-                TapeState::new(self.input_tape_key, state);
-            state_direction_map.insert(
-                tape_state,
-            );
+                let current_tape_state = TapeState::new(self.input_tape_key, state);
+                state_direction_map.insert(
+                    current_tape_state.clone(),
+                    input_state_neighbors_map.clone()
+                );
+            }
         }
 
         while !frontier.is_empty() {
-            todo!()
+            let mut next_frontier = HashSet::new();
+
+            for tape_key in &frontier {
+                let tape = self.get_tape_by_key(*tape_key).unwrap();
+                todo!()
+            }
+            frontier = next_frontier;
         }
     }
     // TODO: a method to propagate all possible state combinations
