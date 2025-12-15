@@ -32,6 +32,16 @@ impl ConditionalCompareTypes {
             )),
         }
     }
+    pub fn to_suffix(&self) -> &str {
+        match self {
+            ConditionalCompareTypes::Equal => "e",
+            ConditionalCompareTypes::NotEqual => "ne",
+            ConditionalCompareTypes::GreaterThan => "g",
+            ConditionalCompareTypes::GreaterThanOrEqual => "ge",
+            ConditionalCompareTypes::LessThan => "l",
+            ConditionalCompareTypes::LessThanOrEqual => "le",
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -99,6 +109,11 @@ impl AsmJumpConditionalInstruction {
             condition
         }
     }
+    pub fn to_asm_code(self) -> Result<String, AsmGenError> {
+        let condition_suffix = self.condition.to_suffix();
+        let condition_str = format!("j{}", condition_suffix);
+        Ok(format!("{} .L{}", condition_str, self.identifier.name_to_string()))
+    }
 }
 #[derive(Clone, Debug)]
 pub struct AsmSetConditionalInstruction {
@@ -115,5 +130,11 @@ impl AsmSetConditionalInstruction {
             destination,
             condition
         }
+    }
+    pub fn to_asm_code(self) -> Result<String, AsmGenError> {
+        let condition_suffix = self.condition.to_suffix();
+        let condition_str = format!("set{}", condition_suffix);
+        let dest_asm = self.destination.to_asm_code()?;
+        Ok(format!("{} {}", condition_str, dest_asm))
     }
 }

@@ -1,6 +1,9 @@
-use crate::asm_gen::asm_symbols::{AsmGenError, AsmOperand, AsmSymbol};
+use crate::asm_gen::asm_symbols::{AsmGenError, AsmImmediateValue, AsmInstruction, AsmOperand, AsmSymbol};
+use crate::asm_gen::cmp_instruction::{AsmCompareInstruction, AsmSetConditionalInstruction, ConditionalCompareTypes};
 use crate::asm_gen::helpers::{DiffableHashMap, StackAllocationResult, ToStackAllocated};
+use crate::asm_gen::mov_instruction::MovInstruction;
 use crate::parser::parse::SupportedUnaryOperators;
+use crate::tacky::tacky_symbols::{TackyValue, UnaryInstruction};
 
 #[derive(Clone, Debug)]
 pub struct AsmUnaryInstruction {
@@ -17,6 +20,55 @@ impl AsmUnaryInstruction {
             _ => Err(AsmGenError::UnsupportedInstruction(
                 format!("Unsupported unary operator: {:?}", operator)
             )),
+        }
+    }
+    pub fn unpack_from_tacky(
+        unary_instruction: UnaryInstruction
+    ) -> Vec<AsmInstruction> {
+        let src_operand = AsmOperand::from_tacky_value(unary_instruction.src);
+        let dst_operand = AsmOperand::from_tacky_value(
+            TackyValue::Var(unary_instruction.dst)
+        );
+
+        match unary_instruction.operator {
+            SupportedUnaryOperators::Not => {
+                /*
+                Unary(Not, src, dst)
+                ------------------------------
+                translates to:
+                ------------------------------
+                Cmp(Imm(0), src)
+                Mov(Imm(0), dst) // SetCC doesn't clear all bits (only a nibble lol)
+                SetCC(E, dst)
+                */
+                let cmp_instruction = AsmCompareInstruction::new(
+                    AsmImmediateValue::new(0).to_operand(), src_operand
+                );
+                let mov_instruction = MovInstruction::new(
+                    AsmImmediateValue::new(0).to_operand(), dst_operand.clone()
+                );
+                let set_cc_instruction = AsmSetConditionalInstruction::new(
+                    dst_operand, ConditionalCompareTypes::Equal
+                );
+                vec![
+                    AsmInstruction::Compare(cmp_instruction),
+                    AsmInstruction::Mov(mov_instruction),
+                    AsmInstruction::SetConditional(set_cc_instruction)
+                ]
+            }
+            SupportedUnaryOperators::BitwiseNot | SupportedUnaryOperators::Subtract => {
+                let asm_mov_instruction = MovInstruction::new(
+                    src_operand, dst_operand.clone()
+                );
+                let asm_unary_instruction = AsmUnaryInstruction {
+                    operator: unary_instruction.operator,
+                    destination: dst_operand
+                };
+                vec![
+                    AsmInstruction::Mov(asm_mov_instruction),
+                    AsmInstruction::Unary(asm_unary_instruction)
+                ]
+            }
         }
     }
 }

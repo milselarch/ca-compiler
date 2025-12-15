@@ -45,7 +45,7 @@ impl Identifier {
 }
 
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum SupportedUnaryOperators {
     Subtract,
     BitwiseNot,

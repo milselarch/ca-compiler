@@ -112,7 +112,7 @@ impl AsmBinaryInstruction {
             right_operand, left_operand
         ));
         let clear_dst_instruction = MovInstruction::new(
-            AsmOperand::ImmediateValue(AsmImmediateValue::new(0)), dst_operand.clone()
+            AsmImmediateValue::new(0).to_operand(), dst_operand.clone()
         );
         let set_cc_instruction = AsmInstruction::SetConditional(
             AsmSetConditionalInstruction::new(dst_operand, comparison_flag)
