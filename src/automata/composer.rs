@@ -436,16 +436,17 @@ impl MultiTape {
                     }
                     Direction::Middle => {}
                 };
-
-                let tape_state =
-                    TapeState::new(self.input_tape_key, state);
-                let mut direction_map = state_direction_map.get_mut(&tape_state).unwrap();
-                direction_map.insert(direction.clone(), HashSet::new());
             }
+
+            let tape_state =
+                TapeState::new(self.input_tape_key, state);
+            state_direction_map.insert(
+                tape_state,
+            );
         }
 
-        while !queue.is_empty() {
-
+        while !frontier.is_empty() {
+            todo!()
         }
     }
     // TODO: a method to propagate all possible state combinations
