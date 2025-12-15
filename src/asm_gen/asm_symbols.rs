@@ -1,5 +1,6 @@
+use std::cmp::PartialEq;
 use std::collections::HashMap;
-use crate::parser::parse::{Expression, ExpressionVariant, Identifier, Statement};
+use crate::parser::parse::{Expression, ExpressionVariant, Identifier, Statement, SupportedUnaryOperators};
 use helpers::ToStackAllocated;
 use crate::constants::{STACK_VARIABLE_SIZE, TAB};
 use crate::asm_gen::binary_instruction::{AsmBinaryInstruction};
@@ -360,6 +361,7 @@ impl AsmSymbol for AsmInstruction {
         }
     }
 }
+
 impl AsmInstruction {
     pub fn from_tacky_instruction(
         tacky_instruction: TackyInstruction
@@ -386,21 +388,7 @@ impl AsmInstruction {
                 ]
             },
             TackyInstruction::UnaryInstruction(unary_instruction) => {
-                let src_operand = AsmOperand::from_tacky_value(unary_instruction.src);
-                let dst_operand = AsmOperand::from_tacky_value(
-                    TackyValue::Var(unary_instruction.dst)
-                );
-                let asm_mov_instruction = MovInstruction::new(
-                    src_operand, dst_operand.clone()
-                );
-                let asm_unary_instruction = AsmUnaryInstruction {
-                    operator: unary_instruction.operator,
-                    destination: dst_operand
-                };
-                vec![
-                    AsmInstruction::Mov(asm_mov_instruction),
-                    AsmInstruction::Unary(asm_unary_instruction)
-                ]
+                AsmUnaryInstruction::unpack_from_tacky(unary_instruction)
             },
             TackyInstruction::BinaryInstruction(binary_instruction) => {
                 AsmBinaryInstruction::unpack_from_tacky(binary_instruction)
@@ -746,7 +734,6 @@ impl AsmImmediateValue {
             pop_contexts: vec![]
         }
     }
-
     pub fn from_expression(expr: Expression) -> Self {
         match expr.expr_item {
             ExpressionVariant::Constant(ref constant) => {
@@ -763,9 +750,11 @@ impl AsmImmediateValue {
             }
         }
     }
-
     pub fn from_statement(statement: Statement) -> Self {
         Self::from_expression(statement.expression)
+    }
+    pub fn to_operand(self) -> AsmOperand {
+        AsmOperand::ImmediateValue(self)
     }
 }
 impl HasPopContexts for AsmImmediateValue {
