@@ -6,3 +6,4 @@ pub mod integer_division;
 pub mod mov_instruction;
 pub mod cmp_instruction;
 pub mod registers;
+mod jmp_instruction;

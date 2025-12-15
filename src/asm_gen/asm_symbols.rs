@@ -10,6 +10,7 @@ use crate::asm_gen::helpers::{
 };
 use crate::asm_gen::registers::{BASE_REGISTER, STACK_REGISTER};
 use crate::asm_gen::integer_division::AsmIntegerDivision;
+use crate::asm_gen::jmp_instruction::AsmJumpInstruction;
 use crate::asm_gen::mov_instruction::MovInstruction;
 use crate::asm_gen::unary_instruction::AsmUnaryInstruction;
 use crate::parser::parser_helpers::{ParseError, PoppedTokenContext};
@@ -341,13 +342,20 @@ impl AsmSymbol for AsmInstruction {
             AsmInstruction::Annotation(annotation) => {
                 Ok(annotation.to_asm_code()?)
             },
-            _ => {
-                Err(AsmGenError::InvalidInstructionType(
-                    format!(
-                        "AsmInstruction variant not implemented for to_asm_code: {:?}",
-                        self
-                    )
-                ))
+            AsmInstruction::Compare(compare_instruction) => {
+                Ok(compare_instruction.to_asm_code()?)
+            }
+            AsmInstruction::Jump(jump_instruction) => {
+                Ok(jump_instruction.to_asm_code()?)
+            }
+            AsmInstruction::JumpConditional(cond_jump_instruction) => {
+                Ok(cond_jump_instruction.to_asm_code()?)
+            },
+            AsmInstruction::SetConditional(set_conditional) => {
+                Ok(set_conditional.to_asm_code()?)
+            }
+            AsmInstruction::LabelInstruction(label_instruction) => {
+                Ok(label_instruction.to_asm_code()?)
             }
         }
     }
@@ -567,21 +575,8 @@ impl AsmLabelInstruction {
         let label_instruction = AsmLabelInstruction::new(label_instruction.label);
         vec![AsmInstruction::LabelInstruction(label_instruction)]
     }
-}
-
-#[derive(Clone, Debug)]
-pub struct AsmJumpInstruction {
-    pub identifier: Identifier
-}
-impl AsmJumpInstruction {
-    pub fn new(identifier: Identifier) -> Self {
-        AsmJumpInstruction { identifier }
-    }
-    pub fn unpack_from_tacky(
-        jump_instruction: JumpInstruction
-    ) -> Vec<AsmInstruction> {
-        let asm_jump_instruction = AsmJumpInstruction::new(jump_instruction.target);
-        vec![AsmInstruction::Jump(asm_jump_instruction)]
+    pub fn to_asm_code(self) -> Result<String, AsmGenError> {
+        Ok(format!(".L{}:", self.identifier.name_to_string()))
     }
 }
 
