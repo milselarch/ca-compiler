@@ -1,5 +1,6 @@
+use std::cmp::PartialEq;
 use std::collections::HashMap;
-use crate::parser::parse::{Expression, ExpressionVariant, Identifier, Statement};
+use crate::parser::parse::{Expression, ExpressionVariant, Identifier, Statement, SupportedUnaryOperators};
 use helpers::ToStackAllocated;
 use crate::constants::{STACK_VARIABLE_SIZE, TAB};
 use crate::asm_gen::binary_instruction::{AsmBinaryInstruction};
@@ -10,6 +11,7 @@ use crate::asm_gen::helpers::{
 };
 use crate::asm_gen::registers::{BASE_REGISTER, STACK_REGISTER};
 use crate::asm_gen::integer_division::AsmIntegerDivision;
+use crate::asm_gen::jmp_instruction::AsmJumpInstruction;
 use crate::asm_gen::mov_instruction::MovInstruction;
 use crate::asm_gen::unary_instruction::AsmUnaryInstruction;
 use crate::parser::parser_helpers::{ParseError, PoppedTokenContext};
@@ -341,17 +343,25 @@ impl AsmSymbol for AsmInstruction {
             AsmInstruction::Annotation(annotation) => {
                 Ok(annotation.to_asm_code()?)
             },
-            _ => {
-                Err(AsmGenError::InvalidInstructionType(
-                    format!(
-                        "AsmInstruction variant not implemented for to_asm_code: {:?}",
-                        self
-                    )
-                ))
+            AsmInstruction::Compare(compare_instruction) => {
+                Ok(compare_instruction.to_asm_code()?)
+            }
+            AsmInstruction::Jump(jump_instruction) => {
+                Ok(jump_instruction.to_asm_code()?)
+            }
+            AsmInstruction::JumpConditional(cond_jump_instruction) => {
+                Ok(cond_jump_instruction.to_asm_code()?)
+            },
+            AsmInstruction::SetConditional(set_conditional) => {
+                Ok(set_conditional.to_asm_code()?)
+            }
+            AsmInstruction::LabelInstruction(label_instruction) => {
+                Ok(label_instruction.to_asm_code()?)
             }
         }
     }
 }
+
 impl AsmInstruction {
     pub fn from_tacky_instruction(
         tacky_instruction: TackyInstruction
@@ -378,21 +388,7 @@ impl AsmInstruction {
                 ]
             },
             TackyInstruction::UnaryInstruction(unary_instruction) => {
-                let src_operand = AsmOperand::from_tacky_value(unary_instruction.src);
-                let dst_operand = AsmOperand::from_tacky_value(
-                    TackyValue::Var(unary_instruction.dst)
-                );
-                let asm_mov_instruction = MovInstruction::new(
-                    src_operand, dst_operand.clone()
-                );
-                let asm_unary_instruction = AsmUnaryInstruction {
-                    operator: unary_instruction.operator,
-                    destination: dst_operand
-                };
-                vec![
-                    AsmInstruction::Mov(asm_mov_instruction),
-                    AsmInstruction::Unary(asm_unary_instruction)
-                ]
+                AsmUnaryInstruction::unpack_from_tacky(unary_instruction)
             },
             TackyInstruction::BinaryInstruction(binary_instruction) => {
                 AsmBinaryInstruction::unpack_from_tacky(binary_instruction)
@@ -567,21 +563,8 @@ impl AsmLabelInstruction {
         let label_instruction = AsmLabelInstruction::new(label_instruction.label);
         vec![AsmInstruction::LabelInstruction(label_instruction)]
     }
-}
-
-#[derive(Clone, Debug)]
-pub struct AsmJumpInstruction {
-    pub identifier: Identifier
-}
-impl AsmJumpInstruction {
-    pub fn new(identifier: Identifier) -> Self {
-        AsmJumpInstruction { identifier }
-    }
-    pub fn unpack_from_tacky(
-        jump_instruction: JumpInstruction
-    ) -> Vec<AsmInstruction> {
-        let asm_jump_instruction = AsmJumpInstruction::new(jump_instruction.target);
-        vec![AsmInstruction::Jump(asm_jump_instruction)]
+    pub fn to_asm_code(self) -> Result<String, AsmGenError> {
+        Ok(format!(".L{}:", self.identifier.name_to_string()))
     }
 }
 
@@ -751,7 +734,6 @@ impl AsmImmediateValue {
             pop_contexts: vec![]
         }
     }
-
     pub fn from_expression(expr: Expression) -> Self {
         match expr.expr_item {
             ExpressionVariant::Constant(ref constant) => {
@@ -768,9 +750,11 @@ impl AsmImmediateValue {
             }
         }
     }
-
     pub fn from_statement(statement: Statement) -> Self {
         Self::from_expression(statement.expression)
+    }
+    pub fn to_operand(self) -> AsmOperand {
+        AsmOperand::ImmediateValue(self)
     }
 }
 impl HasPopContexts for AsmImmediateValue {

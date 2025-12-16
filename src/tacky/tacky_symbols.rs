@@ -419,27 +419,6 @@ impl TackyInstruction {
         result = CondJumpValue
         Label(short_circuit_end_label)
         */
-        let jump_label =
-            Identifier::new(format!("short_circuit_jmp_{}", var_counter));
-        let end_label =
-            Identifier::new(format!("short_circuit_end_{}", var_counter));
-
-        let build_conditional_jump = |
-            value: TackyValue
-        | -> TackyInstruction {
-            if is_and {
-                // we short circuit if one of the operands is zero
-                JumpIfZeroInstruction::new(
-                    value, jump_label.clone()
-                ).to_tacky_instruction()
-            } else {
-                // we short circuit if one of the operands is non-zero
-                JumpIfNotZeroInstruction::new(
-                    value, jump_label.clone()
-                ).to_tacky_instruction()
-            }
-        };
-
         let no_jump_result_value = if is_and {
             TackyValue::Constant(ASTConstant::new("1"))
         } else {
@@ -458,6 +437,31 @@ impl TackyInstruction {
         // contains the result of the short-circuit and operation
         let result_tacky_var = TackyVariable::new(var_counter);
         let var_counter = var_counter + 1;
+
+        /*
+        Note that we build the jump and end labels here after the var_counter
+        has been incremented to ensure label uniqueness across multiple
+        short-circuit unrolls.
+        */
+        let jump_label =
+            Identifier::new(format!("short_circuit_jmp_{}", var_counter));
+        let end_label =
+            Identifier::new(format!("short_circuit_end_{}", var_counter));
+        let build_conditional_jump = |
+            value: TackyValue
+        | -> TackyInstruction {
+            if is_and {
+                // we short circuit if one of the operands is zero
+                JumpIfZeroInstruction::new(
+                    value, jump_label.clone()
+                ).to_tacky_instruction()
+            } else {
+                // we short circuit if one of the operands is non-zero
+                JumpIfNotZeroInstruction::new(
+                    value, jump_label.clone()
+                ).to_tacky_instruction()
+            }
+        };
 
         let mut circuit_instructions: Vec<TackyInstruction> = vec![];
         // <instructions for e1>
