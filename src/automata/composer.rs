@@ -202,24 +202,8 @@ impl Mul for CellExpectationCombo {
 #[derive(Debug, Clone)]
 pub struct WriteRule {
     expectations: CellExpectationCombo,
-    // cell transitions to apply to other tape cells
-    // at the same position
-    writes: Vec<(TapeKey, TapeState)>,
-}
-impl WriteRule {
-    pub fn get_output_tape_keys(&self) -> HashSet<TapeKey> {
-        /*
-        Returns the tape keys for the tapes
-        that this tape write rule would write to
-        */
-        let mut output_tape_keys = HashSet::new();
-        for (output_tape_key, _) in &self.writes {
-            output_tape_keys.insert(
-                output_tape_key.clone()
-            );
-        }
-        output_tape_keys
-    }
+    // new state to apply to cell at current position, current tape
+    write_output: TapeCellState,
 }
 
 
@@ -266,6 +250,11 @@ impl Tape {
     }
 
     pub fn get_dependent_tape_keys(&self) -> HashSet<TapeKey> {
+        /*
+        Get the tape keys of all tapes that this tape uses as its input
+        i.e. get all tape keys for all the tapes where the state of cells
+        in the current tape are dependent on the states of cells in those tapes
+        */
         let mut dependent_tape_keys = HashSet::new();
         for rule in &self.write_rules {
             for expectation in rule.expectations.cell_expectations.values() {
@@ -455,6 +444,8 @@ impl MultiTape {
 
             for tape_key in &frontier {
                 let tape = self.get_tape_by_key(*tape_key).unwrap();
+                let dependent_tape_keys =
+                    self.get_tapes_that_write_to_tape(tape_key, true);
                 todo!()
             }
             frontier = next_frontier;
