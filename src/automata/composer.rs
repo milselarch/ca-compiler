@@ -200,6 +200,7 @@ impl Mul for CellExpectationCombo {
 }
 
 #[derive(Debug, Clone)]
+#[derive(Eq, Hash, PartialEq)]
 pub struct WriteRule {
     expectations: CellExpectationCombo,
     // new state to apply to cell at current position, current tape
@@ -249,16 +250,26 @@ impl Tape {
         self.tape_index
     }
 
-    pub fn get_dependent_tape_keys(&self) -> HashSet<TapeKey> {
+    pub fn get_dependent_tape_keys(&self) -> HashMap<TapeKey, HashSet<WriteRule>> {
         /*
-        Get the tape keys of all tapes that this tape uses as its input
-        i.e. get all tape keys for all the tapes where the state of cells
+        Get the tape keys of all tapes that the current tape uses as its input
+        i.e. get all tape keys of all the tapes where the state of cells
         in the current tape are dependent on the states of cells in those tapes
+
+        For every tape key, we also store the set of WriteRules that contain
+        that tape key as one of its input expectations
         */
-        let mut dependent_tape_keys = HashSet::new();
+        let mut dependent_tape_keys: HashMap<
+            TapeKey, HashSet<WriteRule>
+        > = HashMap::new();
+
         for rule in &self.write_rules {
-            for expectation in rule.expectations.cell_expectations.values() {
-                dependent_tape_keys.insert(expectation.expected_state.tape_key.clone());
+            let cell_expectations = &rule.expectations;
+            for expectation in cell_expectations.cell_expectations.values() {
+                let tape_key = expectation.expected_state.tape_key;
+                let tape_key_entry =
+                    dependent_tape_keys.entry(tape_key).or_insert_with(HashSet::new);
+                tape_key_entry.insert(rule.clone());
             }
         }
         dependent_tape_keys
@@ -444,8 +455,14 @@ impl MultiTape {
 
             for tape_key in &frontier {
                 let tape = self.get_tape_by_key(*tape_key).unwrap();
-                let dependent_tape_keys =
-                    self.get_tapes_that_write_to_tape(tape_key, true);
+                let dependent_tape_keys = tape.get_dependent_tape_keys();
+
+                for frontier_tape_key in frontier.iter() {
+                    if !dependent_tape_keys.contains_key(frontier_tape_key) { continue; }
+                    next_frontier.insert(frontier_tape_key.clone());
+                }
+
+
                 todo!()
             }
             frontier = next_frontier;
