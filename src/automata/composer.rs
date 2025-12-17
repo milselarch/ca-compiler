@@ -403,7 +403,6 @@ impl MultiTape {
                     neighbors_set.insert(neighbor_tape_state);
                 }
 
-                // TODO: this can be moved out of the loop
                 match direction {
                     Direction::Left => {
                         // every state can have void (own tape) as a left neighbor
@@ -421,17 +420,29 @@ impl MultiTape {
                 };
             }
 
+            for k in 0..self.tapes.len() {
+                /*
+                The void state of all other tapes can overlap positionally
+                with every the tape states in all directions
+                */
+                let tape_key = k as TapeKey;
+                if tape_key == self.input_tape_key { continue; }
+                let tape_void_state = TapeState::new(tape_key, VOID_STATE);
+
+                for direction in enum_iterator::all::<Direction>() {
+                    let neighbors = input_state_neighbors_map.get_mut(&direction).unwrap();
+                    neighbors.insert(tape_void_state.clone());
+                }
+            }
+
             state_direction_map.insert(
                 current_tape_state.clone(), input_state_neighbors_map.clone()
             );
         }
 
-        for k in 0..self.tapes.len() {
-            let tape_key = k as TapeKey;
-            if tape_key == self.input_tape_key { continue;  }
-            let tape = self.get_tape_by_key(tape_key).unwrap();
-            todo!()
-        }
+        let get_is_write_rule_satisfiable = |write_rule: WriteRule| {
+            
+        };
 
         while !frontier.is_empty() {
             let mut next_frontier = HashSet::new();
