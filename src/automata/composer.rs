@@ -362,30 +362,6 @@ impl MultiTape {
         self.tapes.get(tape_key)
     }
 
-    pub fn get_tapes_that_write_to_tape(
-        &self, target_tape_key: &TapeKey, exclude_self: bool
-    ) -> HashSet<TapeKey> {
-        /*
-        Returns the tape keys of the write tapes that would write to
-        the given target tape key
-        */
-        let mut writing_tape_keys = HashSet::new();
-
-        for tape in &self.tapes {
-            for rule in &tape.write_rules {
-                let output_tape_keys = rule.get_output_tape_keys();
-                if !output_tape_keys.contains(target_tape_key) {
-                    continue;
-                }
-                let tape_key = tape.get_tape_key();
-                if exclude_self && &tape_key == target_tape_key {
-                    continue;
-                }
-                writing_tape_keys.insert(tape_key);
-            }
-        }
-        writing_tape_keys
-    }
     pub fn generate_tape_equation(&self) {
         /*
         Generates the multi-tape equations for all tapes
@@ -411,11 +387,12 @@ impl MultiTape {
             with every other input state
             TODO: this initialization is already so damn long, refactor
             */
-            for direction in enum_iterator::all::<Direction>() {
-                // all the neighbors for the current state in the current direction
-                let mut input_state_neighbors_map:
-                    HashMap<Direction, HashSet<TapeState>> = HashMap::new();
+            let current_tape_state = TapeState::new(self.input_tape_key, state);
+            // all the possible overlaps for the current state in every direction
+            let mut input_state_neighbors_map:
+                HashMap<Direction, HashSet<TapeState>> = HashMap::new();
 
+            for direction in enum_iterator::all::<Direction>() {
                 for other_state in input_tape.get_normal_states() {
                     // every input state can overlap with every other input state
                     // (including itself) in any direction
@@ -426,28 +403,34 @@ impl MultiTape {
                     neighbors_set.insert(neighbor_tape_state);
                 }
 
+                // TODO: this can be moved out of the loop
                 match direction {
                     Direction::Left => {
-                        // every state can have void as a left neighbor
+                        // every state can have void (own tape) as a left neighbor
                         let left_neighbors: &mut HashSet<TapeState> =
                             input_state_neighbors_map.get_mut(&Direction::Left).unwrap();
                         left_neighbors.insert(input_tape_void.clone());
                     },
                     Direction::Right => {
-                        // every state can have void as a right neighbor
+                        // every state can have void (own tape) as a right neighbor
                         let right_neighbors: &mut HashSet<TapeState> =
                             input_state_neighbors_map.get_mut(&Direction::Right).unwrap();
                         right_neighbors.insert(input_tape_void.clone());
                     }
                     Direction::Middle => {}
                 };
-
-                let current_tape_state = TapeState::new(self.input_tape_key, state);
-                state_direction_map.insert(
-                    current_tape_state.clone(),
-                    input_state_neighbors_map.clone()
-                );
             }
+
+            state_direction_map.insert(
+                current_tape_state.clone(), input_state_neighbors_map.clone()
+            );
+        }
+
+        for k in 0..self.tapes.len() {
+            let tape_key = k as TapeKey;
+            if tape_key == self.input_tape_key { continue;  }
+            let tape = self.get_tape_by_key(tape_key).unwrap();
+            todo!()
         }
 
         while !frontier.is_empty() {
@@ -460,10 +443,13 @@ impl MultiTape {
                 for frontier_tape_key in frontier.iter() {
                     if !dependent_tape_keys.contains_key(frontier_tape_key) { continue; }
                     next_frontier.insert(frontier_tape_key.clone());
+
+                    let write_rules =
+                        dependent_tape_keys.get(frontier_tape_key).unwrap();
+                    for write_rule in write_rules {
+
+                    }
                 }
-
-
-                todo!()
             }
             frontier = next_frontier;
         }
