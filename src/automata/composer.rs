@@ -49,7 +49,7 @@ pub enum Direction {
     Middle,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub struct TapeState {
     tape_key: TapeKey,
     tape_cell_state: TapeCellState
@@ -203,7 +203,14 @@ impl Mul for CellExpectationCombo {
 #[derive(Eq, Hash, PartialEq)]
 pub struct WriteRule {
     expectations: CellExpectationCombo,
-    // new state to apply to cell at current position, current tape
+    /*
+    New state to apply to cell at current position, current tape
+
+    Current position = Direction::Middle
+    Which is to say if there was an input cell expectation at
+    Direction::Middle, then the position being written to is the same
+    as the position of said cell expectation
+    */
     write_output: TapeCellState,
 }
 
@@ -318,6 +325,60 @@ impl Tape {
 }
 
 #[derive(Debug, Clone)]
+pub struct DirectionOverlaps {
+    overlaps: HashSet<TapeState>
+}
+impl DirectionOverlaps {
+    pub fn new() -> DirectionOverlaps {
+        DirectionOverlaps {
+            overlaps: HashSet::new(),
+        }
+    }
+    pub fn insert(&mut self, tape_state: TapeState) {
+        self.overlaps.insert(tape_state);
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct StateDirectionOverlaps {
+    map: HashMap<Direction, DirectionOverlaps>
+}
+impl StateDirectionOverlaps {
+    pub fn new() -> StateDirectionOverlaps {
+        StateDirectionOverlaps {
+            map: HashMap::new(),
+        }
+    }
+    pub fn get_or_insert_entry(
+        &mut self, direction: Direction
+    ) -> &mut DirectionOverlaps {
+        self.map.entry(direction).or_insert(DirectionOverlaps::new())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct AutomataStateDirectionOverlaps {
+    /*
+    represents which states can overlap with which other states
+    in which directions (left, right, middle)
+    */
+    map: HashMap<TapeState, StateDirectionOverlaps>,
+}
+impl AutomataStateDirectionOverlaps {
+    pub fn new() -> AutomataStateDirectionOverlaps {
+        AutomataStateDirectionOverlaps {
+            map: HashMap::new(),
+        }
+    }
+    pub fn get_or_insert_entry(
+        &mut self, tape_state: TapeState
+    ) -> &mut StateDirectionOverlaps {
+        self.map.entry(tape_state).or_insert(StateDirectionOverlaps::new())
+    }
+}
+
+
+#[derive(Debug, Clone)]
 pub struct MultiTape {
     tapes: Vec<Tape>,
     input_tape_key: TapeKey,
@@ -362,20 +423,8 @@ impl MultiTape {
         self.tapes.get(tape_key)
     }
 
-    pub fn generate_tape_equation(&self) {
-        /*
-        Generates the multi-tape equations for all tapes
-        */
-        /*
-        represents which states can overlap with which other states
-        in which directions (left, right, middle)
-        */
-        let mut state_direction_map: HashMap<
-            TapeState, HashMap<Direction, HashSet<TapeState>>
-        > = HashMap::new();
-
-        let mut frontier = HashSet::new();
-        frontier.insert(self.input_tape_key);
+    pub fn init_state_direction_map(&self) -> AutomataStateDirectionOverlaps {
+        let mut all_state_direction_overlaps = AutomataStateDirectionOverlaps::new();
         let input_tape = self.get_tape_by_key(self.input_tape_key).unwrap();
         let input_tape_void: TapeState = TapeState::new(self.input_tape_key, VOID_STATE);
         // let input_tape_halt: TapeState = TapeState::new(self.input_tape_key, HALT_STATE);
@@ -389,8 +438,8 @@ impl MultiTape {
             */
             let current_tape_state = TapeState::new(self.input_tape_key, state);
             // all the possible overlaps for the current state in every direction
-            let mut input_state_neighbors_map:
-                HashMap<Direction, HashSet<TapeState>> = HashMap::new();
+            let mut state_direction_overlaps =
+                all_state_direction_overlaps.get_or_insert_entry(current_tape_state);
 
             for direction in enum_iterator::all::<Direction>() {
                 for other_state in input_tape.get_normal_states() {
@@ -424,6 +473,9 @@ impl MultiTape {
                 /*
                 The void state of all other tapes can overlap positionally
                 with every the tape states in all directions
+
+                TODO: fill in the neighbor states for the void states
+                    of all other tapes as well in initialization
                 */
                 let tape_key = k as TapeKey;
                 if tape_key == self.input_tape_key { continue; }
@@ -435,13 +487,31 @@ impl MultiTape {
                 }
             }
 
-            state_direction_map.insert(
+            all_state_direction_overlaps.insert(
                 current_tape_state.clone(), input_state_neighbors_map.clone()
             );
         }
 
-        let get_is_write_rule_satisfiable = |write_rule: WriteRule| {
-            
+        all_state_direction_overlaps
+    }
+
+    pub fn generate_tape_equation(&self) {
+        /*
+        Generates the multi-tape equations for all tapes
+        */
+        /*
+        represents which states can overlap with which other states
+        in which directions (left, right, middle)
+        */
+        let mut state_direction_map = self.init_state_direction_map();
+
+        let mut frontier = HashSet::new();
+        frontier.insert(self.input_tape_key);
+
+        let get_is_write_rule_satisfiable = |
+            write_rule: WriteRule,
+        | -> bool {
+            todo!()
         };
 
         while !frontier.is_empty() {
