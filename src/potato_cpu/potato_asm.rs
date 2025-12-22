@@ -2,7 +2,7 @@ use crate::asm_gen::asm_symbols::AnnotationInstruction;
 use crate::parser::parser_helpers::PoppedTokenContext;
 use crate::potato_cpu::bit_allocation::GrowableBitAllocation;
 use crate::potato_cpu::potato_cpu::{PotatoCPU, PotatoCodes, PotatoSpec, Registers};
-use crate::tacky::tacky_symbols::{TackyFunction, TackyInstruction, TackyProgram, TackyValue};
+use crate::tacky::tacky_symbols::{TackyFunction, TackyInstruction, TackyProgram, TackyValue, TackyVariable};
 
 pub struct PotatoProgram {
     // Define the structure of a Potato assembly program
@@ -34,6 +34,58 @@ impl PotatoProgram {
         let return_value = return_register.to_i64().unwrap();
         return_value
     }
+}
+
+
+#[derive(Clone, Debug)]
+pub struct PotatoAnnotationInstruction {
+    pub label: String,
+    pub pop_context: Option<PoppedTokenContext>
+}
+impl PotatoAnnotationInstruction {
+    pub fn new(
+        label: String,
+        pop_context: Option<PoppedTokenContext>
+    ) -> Self {
+        PotatoAnnotationInstruction {
+            label,
+            pop_context,
+        }
+    }
+    pub fn to_potato_asm_instruction(&self) -> PotatoAsmInstruction {
+        PotatoAsmInstruction::Annotation(self.clone())
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PotatoStackAddress {
+    // TODO: translate from StackAddress
+    pub(crate) offset: u64,
+    pub(crate) offset_size: u64,
+    pub(crate) pop_contexts: Vec<PoppedTokenContext>,
+    pub(crate) tacky_var: Option<TackyVariable>,
+}
+
+#[derive(Clone, Debug)]
+pub enum  PotatoAsmOperand {
+    ImmediateValue,
+    Register(Register),
+    Pseudo(PseudoRegister),
+    Stack()
+}
+
+#[derive(Clone, Debug)]
+pub struct PotatoMovInstruction {
+    pub(crate) source: PotatoAsmOperand,
+    pub(crate) destination: PotatoAsmOperand,
+}
+
+#[derive(Clone, Debug)]
+pub enum PotatoAsmInstruction {
+    // tentatively use AsmInstruction for reference
+    Mov(),
+    Annotation(PotatoAnnotationInstruction),
+    Ret
 }
 
 pub struct PotatoFunction {
