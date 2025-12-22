@@ -4,7 +4,7 @@ from typing import Final
 from compiler_tester import CompilerTester
 
 
-DEFAULT_CHAPTERS_TO_TEST: Final[list[int]] = [1]
+DEFAULT_CHAPTERS_TO_TEST: Final[list[int]] = [1, 2]
 
 
 if __name__ == '__main__':

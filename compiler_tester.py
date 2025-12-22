@@ -103,7 +103,7 @@ class CompilerTester(object):
             ["ls", test_dir], capture_output=True, text=True
         )
         if ls_result.returncode != 0:
-            raise RuntimeError("Failed to list tests.")
+            raise RuntimeError(f"Failed to list tests for {repr(test_dir)}")
 
         test_files = ls_result.stdout.strip().split('\n')
         c_test_files = [f for f in test_files if f.endswith('.c')]
