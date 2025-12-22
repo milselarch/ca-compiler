@@ -1,4 +1,5 @@
-use crate::asm_gen::asm_symbols::AnnotationInstruction;
+use crate::asm_gen::asm_symbols::{AnnotationInstruction, FromPseudoRegisterResult, PseudoRegister, StackAddress};
+use crate::asm_gen::helpers::DiffableHashMap;
 use crate::parser::parser_helpers::PoppedTokenContext;
 use crate::potato_cpu::bit_allocation::GrowableBitAllocation;
 use crate::potato_cpu::potato_cpu::{PotatoCPU, PotatoCodes, PotatoSpec, Registers};
@@ -60,18 +61,59 @@ impl PotatoAnnotationInstruction {
 #[derive(Clone, Debug)]
 pub struct PotatoStackAddress {
     // TODO: translate from StackAddress
+    // TODO: is there a way / need to deduplicate this with StackAddress?
     pub(crate) offset: u64,
     pub(crate) offset_size: u64,
     pub(crate) pop_contexts: Vec<PoppedTokenContext>,
     pub(crate) tacky_var: Option<TackyVariable>,
 }
+impl PotatoStackAddress {
+    pub fn new(
+        offset: u64,
+        offset_size: u64,
+        pop_contexts: Vec<PoppedTokenContext>,
+        tacky_var: Option<TackyVariable>,
+    ) -> Self {
+        PotatoStackAddress {
+            offset,
+            offset_size,
+            pop_contexts,
+            tacky_var,
+        }
+    }
+    pub fn from_pseudo_register(
+        pseudo_register: &PseudoRegister, current_stack_offset: u64,
+        offset_size: u64, existing_allocations: &dyn DiffableHashMap<u64, u64>
+    ) -> FromPseudoRegisterResult {
+        /*
+        Returns the StackAddress ASM Symbol and a boolean indicating
+        whether the pseudo register has been newly allocated to the stack in the current call.
+        */
+        let existing_allocation = existing_allocations.get(&pseudo_register.id);
+        let stack_value = match existing_allocation {
+            Some(&addr) => addr,
+            None => current_stack_offset
+        };
+
+        let stack_address = StackAddress {
+            offset: stack_value,
+            offset_size,
+            pop_contexts: pseudo_register.pop_contexts.clone(),
+            tacky_var: pseudo_register.tacky_var.clone(),
+        };
+        let newly_allocated = existing_allocation.is_none();
+        FromPseudoRegisterResult {
+            stack_address,
+            newly_allocated
+        }
+    }}
 
 #[derive(Clone, Debug)]
-pub enum  PotatoAsmOperand {
+pub enum PotatoAsmOperand {
     ImmediateValue,
-    Register(Register),
+    Register(Registers),
     Pseudo(PseudoRegister),
-    Stack()
+    Stack(PotatoStackAddress)
 }
 
 #[derive(Clone, Debug)]
