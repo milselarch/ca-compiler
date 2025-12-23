@@ -135,8 +135,9 @@ impl MultiplyComboConflict {
 pub struct CellExpectationCombo {
     /*
     Represents the expectation that a bunch of adjacent cells
-    certain corresponding states
+    have certain corresponding states
     */
+    // TODO: this is all very wrong, should be direction > tape key > tape state
     cell_expectations: HashMap<TapeCellIdentifier, CellExpectation>
 }
 impl CellExpectationCombo {
@@ -334,7 +335,7 @@ impl DirectionOverlaps {
             overlaps: HashSet::new(),
         }
     }
-    pub fn insert(&mut self, tape_state: TapeState) {
+    pub fn insert_overlap(&mut self, tape_state: TapeState) {
         self.overlaps.insert(tape_state);
     }
 }
@@ -438,58 +439,49 @@ impl MultiTape {
             */
             let current_tape_state = TapeState::new(self.input_tape_key, state);
             // all the possible overlaps for the current state in every direction
-            let mut state_direction_overlaps =
+            let state_direction_overlaps =
                 all_state_direction_overlaps.get_or_insert_entry(current_tape_state);
 
             for direction in enum_iterator::all::<Direction>() {
+                let direction_overlaps =
+                    state_direction_overlaps.get_or_insert_entry(direction.clone());
+
                 for other_state in input_tape.get_normal_states() {
                     // every input state can overlap with every other input state
                     // (including itself) in any direction
                     let neighbor_tape_state =
                         TapeState::new(self.input_tape_key, other_state);
-                    let neighbors_set =
-                        input_state_neighbors_map.get_mut(&direction).unwrap();
-                    neighbors_set.insert(neighbor_tape_state);
+                    direction_overlaps.insert_overlap(neighbor_tape_state);
                 }
 
                 match direction {
                     Direction::Left => {
                         // every state can have void (own tape) as a left neighbor
-                        let left_neighbors: &mut HashSet<TapeState> =
-                            input_state_neighbors_map.get_mut(&Direction::Left).unwrap();
-                        left_neighbors.insert(input_tape_void.clone());
+                        direction_overlaps.insert_overlap(input_tape_void.clone());
                     },
                     Direction::Right => {
                         // every state can have void (own tape) as a right neighbor
-                        let right_neighbors: &mut HashSet<TapeState> =
-                            input_state_neighbors_map.get_mut(&Direction::Right).unwrap();
-                        right_neighbors.insert(input_tape_void.clone());
+                        direction_overlaps.insert_overlap(input_tape_void.clone());
                     }
                     Direction::Middle => {}
                 };
             }
 
-            for k in 0..self.tapes.len() {
+            for _other_tape_key in 0..self.tapes.len() {
                 /*
                 The void state of all other tapes can overlap positionally
-                with every the tape states in all directions
-
-                TODO: fill in the neighbor states for the void states
-                    of all other tapes as well in initialization
+                with every input tape state in all directions
                 */
-                let tape_key = k as TapeKey;
-                if tape_key == self.input_tape_key { continue; }
-                let tape_void_state = TapeState::new(tape_key, VOID_STATE);
+                let other_tape_key = _other_tape_key as TapeKey;
+                if other_tape_key == self.input_tape_key { continue; }
+                let other_tape_void_state = TapeState::new(other_tape_key, VOID_STATE);
 
                 for direction in enum_iterator::all::<Direction>() {
-                    let neighbors = input_state_neighbors_map.get_mut(&direction).unwrap();
-                    neighbors.insert(tape_void_state.clone());
+                    let direction_overlaps =
+                        state_direction_overlaps.get_or_insert_entry(direction);
+                    direction_overlaps.insert_overlap(other_tape_void_state.clone());
                 }
             }
-
-            all_state_direction_overlaps.insert(
-                current_tape_state.clone(), input_state_neighbors_map.clone()
-            );
         }
 
         all_state_direction_overlaps
