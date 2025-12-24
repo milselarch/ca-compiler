@@ -106,7 +106,23 @@ impl PotatoStackAddress {
             stack_address,
             newly_allocated
         }
-    }}
+    }
+}
+
+pub struct PotatoAsmImmediateValue {
+    pub(crate) value: GrowableBitAllocation,
+    pub(crate) pop_contexts: Vec<PoppedTokenContext>
+}
+impl PotatoAsmImmediateValue {
+    pub fn new(
+        value: GrowableBitAllocation,
+    ) -> Self {
+        PotatoAsmImmediateValue {
+            value,
+            pop_contexts: vec![],
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub enum PotatoAsmOperand {
@@ -114,6 +130,20 @@ pub enum PotatoAsmOperand {
     Register(Registers),
     Pseudo(PseudoRegister),
     Stack(PotatoStackAddress)
+}
+impl PotatoAsmOperand {
+    pub fn is_stack_address(&self) -> bool {
+        match self {
+            PotatoAsmOperand::Stack(_) => true,
+            _ => false
+        }
+    }
+    pub fn is_constant(&self) -> bool {
+        match self {
+            PotatoAsmOperand::ImmediateValue => true,
+            _ => false
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
