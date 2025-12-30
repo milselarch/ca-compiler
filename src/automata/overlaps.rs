@@ -1,0 +1,93 @@
+use std::collections::{HashMap};
+use std::hash::{Hash, Hasher};
+use crate::automata::composer::{Direction, TapeKey, TapeState};
+use indexmap::{IndexMap, IndexSet};
+
+#[derive(Debug, Clone)]
+#[derive(Eq)]
+#[derive(PartialEq)]
+pub struct StateOverlaps {
+    overlaps: IndexSet<TapeState>
+}
+impl StateOverlaps {
+    pub fn new() -> StateOverlaps {
+        StateOverlaps {
+            // we use index set to ensure deterministic hashes
+            overlaps: IndexSet::new(),
+        }
+    }
+    pub fn insert_overlap(&mut self, tape_state: TapeState) {
+        self.overlaps.insert(tape_state);
+    }
+    pub fn get_tape_keys(&self) -> IndexSet<TapeKey> {
+        let mut tape_keys = IndexSet::new();
+        for overlap in self.overlaps.iter() {
+            tape_keys.insert(overlap.get_tape_key());
+        }
+        tape_keys
+    }
+}
+impl Hash for StateOverlaps {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        for overlap in self.overlaps.iter() {
+            overlap.hash(state);
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct DirectionStateOverlaps {
+    // we use index map to ensure deterministic hashes
+    map: IndexMap<Direction, StateOverlaps>
+}
+impl DirectionStateOverlaps {
+    pub fn new() -> DirectionStateOverlaps {
+        DirectionStateOverlaps {
+            map: IndexMap::new(),
+        }
+    }
+    pub fn get_or_insert_entry(
+        &mut self, direction: Direction
+    ) -> &mut StateOverlaps {
+        self.map.entry(direction).or_insert(StateOverlaps::new())
+    }
+    pub fn get_tape_keys(&self) -> IndexSet<TapeKey> {
+        let mut tape_keys = IndexSet::new();
+        for (_direction, state_overlaps) in self.map.iter() {
+            let overlaps_keys = state_overlaps.get_tape_keys();
+            for key in overlaps_keys.into_iter() {
+                tape_keys.insert(key);
+            }
+        }
+        tape_keys
+    }
+}
+impl Hash for DirectionStateOverlaps {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        for (direction, state_overlaps) in self.map.iter() {
+            direction.hash(state);
+            state_overlaps.hash(state);
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct AutomataDirectionStateOverlaps {
+    /*
+    represents which states can overlap with which other states
+    in which directions (left, right, middle)
+    */
+    map: HashMap<TapeState, DirectionStateOverlaps>,
+}
+impl AutomataDirectionStateOverlaps {
+    pub fn new() -> AutomataDirectionStateOverlaps {
+        AutomataDirectionStateOverlaps {
+            map: HashMap::new(),
+        }
+    }
+    pub fn get_or_insert_entry(
+        &mut self, tape_state: TapeState
+    ) -> &mut DirectionStateOverlaps {
+        self.map.entry(tape_state).or_insert(DirectionStateOverlaps::new())
+    }
+}

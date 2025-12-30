@@ -1,9 +1,10 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
-use std::ops::Mul;
 use enum_iterator::Sequence;
+use indexmap::{IndexMap, IndexSet};
+use crate::automata::overlaps::{AutomataDirectionStateOverlaps, DirectionStateOverlaps};
 
-type TapeKey = usize;
+pub(crate) type TapeKey = usize;
 type TapeCellState = u32;
 
 /*
@@ -17,30 +18,6 @@ TODO:
 
 const VOID_STATE: TapeCellState = 0;
 const HALT_STATE: TapeCellState = 1;
-
-pub fn get_cell_expectation_combo_product(
-    expectations1: &HashSet<CellExpectationCombo>,
-    expectations2: &HashSet<CellExpectationCombo>,
-) -> Result<HashSet<CellExpectationCombo>, MultiplyComboConflict> {
-    /*
-    Returns the Cartesian product of two sets of cell expectation combos
-    */
-    let mut product_combos = HashSet::new();
-
-    for combo1 in expectations1 {
-        for combo2 in expectations2 {
-            let product_res = combo1.multiply(combo2);
-            let product_combo = match product_res {
-                Ok(combo) => combo,
-                Err(_conflict) => {
-                    return Err(_conflict);
-                }
-            };
-            product_combos.insert(product_combo);
-        }
-    }
-    Ok(product_combos)
-}
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd, Sequence)]
 pub enum Direction {
@@ -63,6 +40,9 @@ impl TapeState {
             tape_key,
             tape_cell_state,
         }
+    }
+    pub fn get_tape_key(&self) -> TapeKey {
+        self.tape_key
     }
 }
 
@@ -131,79 +111,10 @@ impl MultiplyComboConflict {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CellExpectationCombo {
-    /*
-    Represents the expectation that a bunch of adjacent cells
-    have certain corresponding states
-    */
-    // TODO: this is all very wrong, should be direction > tape key > tape state
-    cell_expectations: HashMap<TapeCellIdentifier, CellExpectation>
-}
-impl CellExpectationCombo {
-    pub fn new(
-        cell_expectations: HashMap<TapeCellIdentifier, CellExpectation>
-    ) -> CellExpectationCombo {
-        CellExpectationCombo { cell_expectations }
-    }
-    pub fn new_empty() -> CellExpectationCombo {
-        CellExpectationCombo {
-            cell_expectations: HashMap::new()
-        }
-    }
-    pub fn insert_expectation(
-        &mut self, expectation: CellExpectation
-    ) {
-        let identifier = expectation.to_identifier();
-        // ensure no duplicate expectations for same tape cell
-        let prev_value = self.cell_expectations.insert(identifier, expectation);
-        assert_eq!(prev_value, None);
-    }
-    pub fn multiply(
-        &self, other: &CellExpectationCombo
-    ) -> Result<CellExpectationCombo, MultiplyComboConflict> {
-        let mut combined_expectations = self.cell_expectations.clone();
-        for (identifier, expectation) in &other.cell_expectations {
-            let prev_value = combined_expectations.insert(
-                identifier.clone(), expectation.clone()
-            );
-
-            if let Some(existing_expectation) = prev_value {
-                // conflict detected
-                return Err(MultiplyComboConflict::new(
-                    identifier.clone(),
-                    existing_expectation,
-                    expectation.clone(),
-                ));
-            }
-        }
-        Ok(CellExpectationCombo {
-            cell_expectations: combined_expectations
-        })
-    }
-}
-impl Hash for CellExpectationCombo {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        let mut expectations_vec: Vec<&CellExpectation> =
-            self.cell_expectations.values().collect();
-        expectations_vec.sort();
-        for expectation in expectations_vec {
-            expectation.hash(state);
-        }
-    }
-}
-impl Mul for CellExpectationCombo {
-    type Output = Result<CellExpectationCombo, MultiplyComboConflict>;
-
-    fn mul(self, rhs: Self) -> Self::Output {
-        self.multiply(&rhs)
-    }
-}
-
 #[derive(Debug, Clone)]
 #[derive(Eq, Hash, PartialEq)]
 pub struct WriteRule {
-    expectations: CellExpectationCombo,
+    expectations: DirectionStateOverlaps,
     /*
     New state to apply to cell at current position, current tape
 
@@ -258,7 +169,7 @@ impl Tape {
         self.tape_index
     }
 
-    pub fn get_dependent_tape_keys(&self) -> HashMap<TapeKey, HashSet<WriteRule>> {
+    pub fn get_dependent_tape_keys(&self) -> IndexMap<TapeKey, IndexSet<WriteRule>> {
         /*
         Get the tape keys of all tapes that the current tape uses as its input
         i.e. get all tape keys of all the tapes where the state of cells
@@ -267,16 +178,17 @@ impl Tape {
         For every tape key, we also store the set of WriteRules that contain
         that tape key as one of its input expectations
         */
-        let mut dependent_tape_keys: HashMap<
-            TapeKey, HashSet<WriteRule>
-        > = HashMap::new();
+        let mut dependent_tape_keys: IndexMap<
+            TapeKey, IndexSet<WriteRule>
+        > = IndexMap::new();
 
         for rule in &self.write_rules {
             let cell_expectations = &rule.expectations;
-            for expectation in cell_expectations.cell_expectations.values() {
-                let tape_key = expectation.expected_state.tape_key;
+            let cell_expectations_tape_keys = cell_expectations.get_tape_keys();
+
+            for tape_key in cell_expectations_tape_keys.iter() {
                 let tape_key_entry =
-                    dependent_tape_keys.entry(tape_key).or_insert_with(HashSet::new);
+                    dependent_tape_keys.entry(*tape_key).or_insert_with(IndexSet::new);
                 tape_key_entry.insert(rule.clone());
             }
         }
@@ -296,27 +208,6 @@ impl Tape {
         );
         cell_expectation
     }
-    pub fn generate_all_combinations(&self) -> HashSet<CellExpectationCombo> {
-        /*
-        Generates all possible combinations of cells within a 1-cell radius
-        */
-        let mut combinations = HashSet::new();
-
-        for direction in enum_iterator::all::<Direction>() {
-            let mut combination = CellExpectationCombo::new_empty();
-            for tape_cell_state in &self.allowed_states {
-                let cell_expectation = self.build_cell_expectation(
-                    *tape_cell_state, direction.clone()
-                );
-                combination.insert_expectation(cell_expectation);
-            }
-
-            combinations.insert(combination);
-        }
-
-        combinations
-    }
-
     pub fn get_normal_states(&self) -> HashSet<TapeCellState> {
         // get all states except for VOID_STATE and HALT_STATE
         self.allowed_states.clone().into_iter().filter(|x| {
@@ -324,60 +215,6 @@ impl Tape {
         }).collect()
     }
 }
-
-#[derive(Debug, Clone)]
-pub struct DirectionOverlaps {
-    overlaps: HashSet<TapeState>
-}
-impl DirectionOverlaps {
-    pub fn new() -> DirectionOverlaps {
-        DirectionOverlaps {
-            overlaps: HashSet::new(),
-        }
-    }
-    pub fn insert_overlap(&mut self, tape_state: TapeState) {
-        self.overlaps.insert(tape_state);
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct StateDirectionOverlaps {
-    map: HashMap<Direction, DirectionOverlaps>
-}
-impl StateDirectionOverlaps {
-    pub fn new() -> StateDirectionOverlaps {
-        StateDirectionOverlaps {
-            map: HashMap::new(),
-        }
-    }
-    pub fn get_or_insert_entry(
-        &mut self, direction: Direction
-    ) -> &mut DirectionOverlaps {
-        self.map.entry(direction).or_insert(DirectionOverlaps::new())
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct AutomataStateDirectionOverlaps {
-    /*
-    represents which states can overlap with which other states
-    in which directions (left, right, middle)
-    */
-    map: HashMap<TapeState, StateDirectionOverlaps>,
-}
-impl AutomataStateDirectionOverlaps {
-    pub fn new() -> AutomataStateDirectionOverlaps {
-        AutomataStateDirectionOverlaps {
-            map: HashMap::new(),
-        }
-    }
-    pub fn get_or_insert_entry(
-        &mut self, tape_state: TapeState
-    ) -> &mut StateDirectionOverlaps {
-        self.map.entry(tape_state).or_insert(StateDirectionOverlaps::new())
-    }
-}
-
 
 #[derive(Debug, Clone)]
 pub struct MultiTape {
@@ -424,8 +261,12 @@ impl MultiTape {
         self.tapes.get(tape_key)
     }
 
-    pub fn init_state_direction_map(&self) -> AutomataStateDirectionOverlaps {
-        let mut all_state_direction_overlaps = AutomataStateDirectionOverlaps::new();
+    pub fn init_state_direction_map(&self) -> AutomataDirectionStateOverlaps {
+        /*
+        Build the initial map of which states can overlap with which other states
+        in every direction (left, right, same position)
+        */
+        let mut all_state_direction_overlaps = AutomataDirectionStateOverlaps::new();
         let input_tape = self.get_tape_by_key(self.input_tape_key).unwrap();
         let input_tape_void: TapeState = TapeState::new(self.input_tape_key, VOID_STATE);
         // let input_tape_halt: TapeState = TapeState::new(self.input_tape_key, HALT_STATE);
@@ -435,7 +276,6 @@ impl MultiTape {
             Every state on the input tape can have void neighbors on the left
             and right, and every state can have left, right, and middle overlaps
             with every other input state
-            TODO: this initialization is already so damn long, refactor
             */
             let current_tape_state = TapeState::new(self.input_tape_key, state);
             // all the possible overlaps for the current state in every direction

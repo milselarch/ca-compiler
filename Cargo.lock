@@ -51,6 +51,7 @@ dependencies = [
  "arbitrary-int",
  "enum-iterator",
  "indent",
+ "indexmap",
  "log",
  "num-bigint",
  "num-traits",
