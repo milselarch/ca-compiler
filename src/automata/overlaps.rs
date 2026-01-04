@@ -7,7 +7,7 @@ use indexmap::{IndexMap, IndexSet};
 #[derive(Eq)]
 #[derive(PartialEq)]
 pub struct StateOverlaps {
-    overlaps: IndexSet<TapeState>
+    pub overlaps: IndexSet<TapeState>
 }
 impl StateOverlaps {
     pub fn new() -> StateOverlaps {
@@ -51,6 +51,11 @@ impl DirectionStateOverlaps {
     ) -> &mut StateOverlaps {
         self.map.entry(direction).or_insert(StateOverlaps::new())
     }
+    pub fn read_entry(
+        &self, direction: &Direction
+    ) -> Option<&StateOverlaps> {
+        self.map.get(direction)
+    }
     pub fn get_tape_keys(&self) -> IndexSet<TapeKey> {
         let mut tape_keys = IndexSet::new();
         for (_direction, state_overlaps) in self.map.iter() {
@@ -61,6 +66,15 @@ impl DirectionStateOverlaps {
         }
         tape_keys
     }
+    pub fn contains_pair(
+        &self, direction: Direction, tape_state: &TapeState
+    ) -> bool {
+        if let Some(state_overlaps) = self.read_entry(direction) {
+            state_overlaps.overlaps.contains(tape_state)
+        } else {
+            false
+        }
+    })
 }
 impl Hash for DirectionStateOverlaps {
     fn hash<H: Hasher>(&self, state: &mut H) {
@@ -89,5 +103,10 @@ impl AutomataDirectionStateOverlaps {
         &mut self, tape_state: TapeState
     ) -> &mut DirectionStateOverlaps {
         self.map.entry(tape_state).or_insert(DirectionStateOverlaps::new())
+    }
+    pub fn read_entry(
+        &self, tape_state: &TapeState
+    ) -> Option<&DirectionStateOverlaps> {
+        self.map.get(tape_state)
     }
 }

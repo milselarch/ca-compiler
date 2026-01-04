@@ -125,6 +125,92 @@ pub struct WriteRule {
     */
     write_output: TapeCellState,
 }
+impl WriteRule {
+    pub fn new(
+        expectations: DirectionStateOverlaps,
+        write_output: TapeCellState,
+    ) -> WriteRule {
+        WriteRule {
+            expectations,
+            write_output,
+        }
+    }
+    pub fn to_pairs(&self) -> Vec<(Direction, TapeState)> {
+        /*
+        Convert the write rule expectations to a list of
+        (direction, state) pairs
+        */
+        let mut pairs: Vec<(Direction, TapeState)> = vec![];
+
+        for direction in enum_iterator::all::<Direction>() {
+            let dir_overlaps_opt =
+                self.expectations.read_entry(&direction);
+            let dir_overlaps = match dir_overlaps_opt {
+                Some(entry) => entry,
+                None => continue,
+            };
+
+            for state in dir_overlaps.overlaps.iter() {
+                pairs.push((direction.clone(), state.clone()));
+            }
+        }
+        pairs
+    }
+    pub fn is_satisfiable_for(
+        &self, state_direction_map: &AutomataDirectionStateOverlaps
+    ) -> bool {
+        /*
+        write rule expectations can be construed as
+        (direction, state) pairs.
+
+        The plan here is:
+        if for every (direction, state) pair in the
+        write rule expectations, all the other pairs exist in the
+        state_direction_map, then the write rule is satisfiable.
+        TODO: refactor using pairs
+        */
+        for direction in enum_iterator::all::<Direction>() {
+            let rule_dir_overlaps_opt =
+                self.expectations.read_entry(&direction);
+            let rule_dir_overlaps = match rule_dir_overlaps_opt {
+                Some(entry) => entry,
+                None => continue,
+            };
+
+            for state in rule_dir_overlaps.overlaps.iter() {
+                let state_direction_overlaps_opt =
+                    state_direction_map.read_entry(state);
+                let state_direction_overlaps = match state_direction_overlaps_opt {
+                    Some(entry) => entry,
+                    None => return false,
+                };
+
+                for other_direction in enum_iterator::all::<Direction>() {
+                    let other_rule_dir_overlaps_opt =
+                        self.expectations.read_entry(&other_direction);
+                    let other_rule_dir_overlaps = match other_rule_dir_overlaps_opt {
+                        Some(entry) => entry,
+                        None => continue,
+                    };
+
+                    for other_state in other_rule_dir_overlaps.overlaps.iter() {
+                        let other_state_direction_overlaps_opt =
+                            state_direction_overlaps.read_entry(&other_direction);
+                        let other_state_direction_overlaps = match other_state_direction_overlaps_opt {
+                            Some(entry) => entry,
+                            None => return false,
+                        };
+
+                        if !other_state_direction_overlaps.overlaps.contains(other_state) {
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+        true
+    }
+}
 
 
 #[derive(Debug, Clone)]
