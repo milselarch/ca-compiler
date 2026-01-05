@@ -46,6 +46,15 @@ impl DirectionStateOverlaps {
             map: IndexMap::new(),
         }
     }
+    pub fn to_pairs(&self) -> IndexSet<(Direction, TapeState)> {
+        let mut pairs = IndexSet::new();
+        for (direction, state_overlaps) in self.map.iter() {
+            for tape_state in state_overlaps.overlaps.iter() {
+                pairs.insert((direction.clone(), tape_state.clone()));
+            }
+        }
+        pairs
+    }
     pub fn get_or_insert_entry(
         &mut self, direction: Direction
     ) -> &mut StateOverlaps {
@@ -67,14 +76,14 @@ impl DirectionStateOverlaps {
         tape_keys
     }
     pub fn contains_pair(
-        &self, direction: Direction, tape_state: &TapeState
+        &self, direction: &Direction, tape_state: &TapeState
     ) -> bool {
         if let Some(state_overlaps) = self.read_entry(direction) {
             state_overlaps.overlaps.contains(tape_state)
         } else {
             false
         }
-    })
+    }
 }
 impl Hash for DirectionStateOverlaps {
     fn hash<H: Hasher>(&self, state: &mut H) {

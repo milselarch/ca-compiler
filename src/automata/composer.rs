@@ -25,6 +25,36 @@ pub enum Direction {
     Right,
     Middle,
 }
+impl Direction {
+    pub fn to_left(&self) -> Option<Direction> {
+        match self {
+            Direction::Left => None,
+            Direction::Right => Some(Direction::Middle),
+            Direction::Middle => Some(Direction::Left),
+        }
+    }
+    pub fn to_right(&self) -> Option<Direction> {
+        match self {
+            Direction::Left => Some(Direction::Middle),
+            Direction::Right => None,
+            Direction::Middle => Some(Direction::Right),
+        }
+    }
+    pub fn to_offset(&self) -> i32 {
+        match self {
+            Direction::Left => -1,
+            Direction::Middle => 0,
+            Direction::Right => 1,
+        }
+    }
+    pub fn offset_direction(&self, direction: Direction) -> Option<Direction> {
+        match direction {
+            Direction::Left => self.to_left(),
+            Direction::Middle => Some(self.clone()),
+            Direction::Right => self.to_right(),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub struct TapeState {
@@ -135,26 +165,12 @@ impl WriteRule {
             write_output,
         }
     }
-    pub fn to_pairs(&self) -> Vec<(Direction, TapeState)> {
+    pub fn to_pairs(&self) -> IndexSet<(Direction, TapeState)> {
         /*
         Convert the write rule expectations to a list of
         (direction, state) pairs
         */
-        let mut pairs: Vec<(Direction, TapeState)> = vec![];
-
-        for direction in enum_iterator::all::<Direction>() {
-            let dir_overlaps_opt =
-                self.expectations.read_entry(&direction);
-            let dir_overlaps = match dir_overlaps_opt {
-                Some(entry) => entry,
-                None => continue,
-            };
-
-            for state in dir_overlaps.overlaps.iter() {
-                pairs.push((direction.clone(), state.clone()));
-            }
-        }
-        pairs
+        self.expectations.to_pairs()
     }
     pub fn is_satisfiable_for(
         &self, state_direction_map: &AutomataDirectionStateOverlaps
@@ -169,46 +185,17 @@ impl WriteRule {
         state_direction_map, then the write rule is satisfiable.
         TODO: refactor using pairs
         */
-        for direction in enum_iterator::all::<Direction>() {
-            let rule_dir_overlaps_opt =
-                self.expectations.read_entry(&direction);
-            let rule_dir_overlaps = match rule_dir_overlaps_opt {
-                Some(entry) => entry,
-                None => continue,
-            };
+        let rule_pairs = self.to_pairs();
 
-            for state in rule_dir_overlaps.overlaps.iter() {
-                let state_direction_overlaps_opt =
-                    state_direction_map.read_entry(state);
-                let state_direction_overlaps = match state_direction_overlaps_opt {
-                    Some(entry) => entry,
-                    None => return false,
-                };
+        for rule_pair in rule_pairs.iter() {
+            for other_rule_pair in rule_pairs.iter() {
+                if rule_pair == other_rule_pair { continue; }
 
-                for other_direction in enum_iterator::all::<Direction>() {
-                    let other_rule_dir_overlaps_opt =
-                        self.expectations.read_entry(&other_direction);
-                    let other_rule_dir_overlaps = match other_rule_dir_overlaps_opt {
-                        Some(entry) => entry,
-                        None => continue,
-                    };
 
-                    for other_state in other_rule_dir_overlaps.overlaps.iter() {
-                        let other_state_direction_overlaps_opt =
-                            state_direction_overlaps.read_entry(&other_direction);
-                        let other_state_direction_overlaps = match other_state_direction_overlaps_opt {
-                            Some(entry) => entry,
-                            None => return false,
-                        };
-
-                        if !other_state_direction_overlaps.overlaps.contains(other_state) {
-                            return false;
-                        }
-                    }
-                }
             }
         }
-        true
+
+        todo!()
     }
 }
 
