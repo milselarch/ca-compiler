@@ -40,6 +40,13 @@ impl Direction {
             Direction::Middle => Some(Direction::Right),
         }
     }
+    pub fn flip(&self) -> Direction {
+        match self {
+            Direction::Left => Direction::Right,
+            Direction::Right => Direction::Left,
+            Direction::Middle => Direction::Middle,
+        }
+    }
     pub fn to_offset(&self) -> i32 {
         match self {
             Direction::Left => -1,
@@ -47,11 +54,18 @@ impl Direction {
             Direction::Right => 1,
         }
     }
-    pub fn offset_direction(&self, direction: Direction) -> Option<Direction> {
+    pub fn add_direction(&self, direction: Direction) -> Option<Direction> {
         match direction {
             Direction::Left => self.to_left(),
             Direction::Middle => Some(self.clone()),
             Direction::Right => self.to_right(),
+        }
+    }
+    pub fn subtract_direction(&self, direction: Direction) -> Option<Direction> {
+        match direction {
+            Direction::Left => self.to_right(),
+            Direction::Middle => Some(self.clone()),
+            Direction::Right => self.to_left(),
         }
     }
 }
@@ -191,11 +205,41 @@ impl WriteRule {
             for other_rule_pair in rule_pairs.iter() {
                 if rule_pair == other_rule_pair { continue; }
 
+                let rule_direction = &rule_pair.0;
+                let rule_tape_state = &rule_pair.1;
+                let other_rule_direction = &other_rule_pair.0;
+                let other_rule_tape_state = &other_rule_pair.1;
+                // in practice one of the directions has to be middle
+                // otherwise it would go out of bounds in the state direction map
+                let offset_direction = rule_direction.add_direction(
+                    other_rule_direction.clone()
+                ).unwrap();
 
+                let state_overlaps_opt =
+                    state_direction_map.read_entry(&rule_tape_state);
+                let state_overlaps = match state_overlaps_opt {
+                    Some(so) => so,
+                    None => { return false; }
+                };
+                if !state_overlaps.contains_pair(
+                    &offset_direction, other_rule_tape_state
+                ) {
+                    return false;
+                }
             }
         }
+        true
+    }
+    pub fn write_info(
+        &self, state_direction_map: &mut AutomataDirectionStateOverlaps
+    ) {
+        /*
+        Update the state_direction_map with the information
+        from this write rule
+        */
+        state_direction_map.get_or_insert_entry(
 
-        todo!()
+        )
     }
 }
 
@@ -400,6 +444,10 @@ impl MultiTape {
         all_state_direction_overlaps
     }
 
+    pub fn get_output_tapes_map(&self) {
+        // TODO: map all input tapes to output tapes
+    }
+
     pub fn generate_tape_equation(&self) {
         /*
         Generates the multi-tape equations for all tapes
@@ -409,18 +457,11 @@ impl MultiTape {
         in which directions (left, right, middle)
         */
         let mut state_direction_map = self.init_state_direction_map();
-
-        let mut frontier = HashSet::new();
+        let mut frontier = IndexSet::new();
         frontier.insert(self.input_tape_key);
 
-        let get_is_write_rule_satisfiable = |
-            write_rule: WriteRule,
-        | -> bool {
-            todo!()
-        };
-
         while !frontier.is_empty() {
-            let mut next_frontier = HashSet::new();
+            let mut next_frontier = IndexSet::new();
 
             for tape_key in &frontier {
                 let tape = self.get_tape_by_key(*tape_key).unwrap();
@@ -433,6 +474,12 @@ impl MultiTape {
                     let write_rules =
                         dependent_tape_keys.get(frontier_tape_key).unwrap();
                     for write_rule in write_rules {
+                        let write_rule_satisfiable = write_rule.is_satisfiable_for(
+                            &state_direction_map
+                        );
+                        if !write_rule_satisfiable { continue; }
+
+                        let output = write_rule.write_output;
 
                     }
                 }
