@@ -113,6 +113,15 @@ impl AutomataDirectionStateOverlaps {
     ) -> &mut DirectionStateOverlaps {
         self.map.entry(tape_state).or_insert(DirectionStateOverlaps::new())
     }
+    pub fn insert_entry(
+        &mut self, tape_state: TapeState,
+        direction_overlaps: DirectionStateOverlaps
+    ) {
+        if self.map.contains_key(&tape_state) {
+            panic!("Entry for tape state already exists");
+        }
+        self.map.insert(tape_state, direction_overlaps);
+    }
     pub fn read_entry(
         &self, tape_state: &TapeState
     ) -> Option<&DirectionStateOverlaps> {

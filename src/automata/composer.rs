@@ -197,7 +197,6 @@ impl WriteRule {
         if for every (direction, state) pair in the
         write rule expectations, all the other pairs exist in the
         state_direction_map, then the write rule is satisfiable.
-        TODO: refactor using pairs
         */
         let rule_pairs = self.to_pairs();
 
@@ -229,17 +228,6 @@ impl WriteRule {
             }
         }
         true
-    }
-    pub fn write_info(
-        &self, state_direction_map: &mut AutomataDirectionStateOverlaps
-    ) {
-        /*
-        Update the state_direction_map with the information
-        from this write rule
-        */
-        state_direction_map.get_or_insert_entry(
-
-        )
     }
 }
 
@@ -445,7 +433,43 @@ impl MultiTape {
     }
 
     pub fn get_output_tapes_map(&self) {
-        // TODO: map all input tapes to output tapes
+        // match each tape to the set of tapes that it can effect state change directly
+        let output_tapes_map: IndexMap<TapeKey, IndexSet<TapeKey>> = IndexMap::new();
+
+        for tape in &self.tapes {
+            let tape_key = tape.get_tape_key();
+            let dependent_tape_keys = tape.get_dependent_tape_keys();
+
+            for dependent_tape_key in dependent_tape_keys.keys() {
+                let output_tapes_entry =
+                    output_tapes_map.entry(*dependent_tape_key).or_insert_with(IndexSet::new);
+                output_tapes_entry.insert(tape_key);
+                todo!()
+            }
+        }
+    }
+
+    pub fn apply_write_rule(
+        &mut self, write_rule: WriteRule, tape_key: TapeKey,
+        state_direction_map: &mut AutomataDirectionStateOverlaps,
+    ) {
+        let output_tape_state = TapeState::new(
+            tape_key, write_rule.write_output,
+        );
+        state_direction_map.insert_entry(
+            output_tape_state, write_rule.expectations.clone()
+        );
+        let input_pairs = write_rule.expectations.to_pairs();
+        for pair in input_pairs {
+            let (direction, input_tape_state) = pair;
+            let inv_direction = direction.flip();
+
+            let tape_direction_state_overlaps_opt =
+                state_direction_map.get_or_insert_entry(input_tape_state);
+            let tape_state_overlaps_opt =
+                tape_direction_state_overlaps_opt.get_or_insert_entry(inv_direction);
+            tape_state_overlaps_opt.insert_overlap(output_tape_state.clone());
+        }
     }
 
     pub fn generate_tape_equation(&self) {
