@@ -432,9 +432,12 @@ impl MultiTape {
         all_state_direction_overlaps
     }
 
-    pub fn get_output_tapes_map(&self) {
-        // match each tape to the set of tapes that it can effect state change directly
-        let output_tapes_map: IndexMap<TapeKey, IndexSet<TapeKey>> = IndexMap::new();
+    pub fn build_output_tapes_map(&self) -> IndexMap<TapeKey, IndexSet<TapeKey>> {
+        /*
+        match each tape to the set of tapes that it can effect state change directly
+        i.e. match each tape to the other tapes that it can "write to"
+        */
+        let mut output_tapes_map: IndexMap<TapeKey, IndexSet<TapeKey>> = IndexMap::new();
 
         for tape in &self.tapes {
             let tape_key = tape.get_tape_key();
@@ -444,9 +447,9 @@ impl MultiTape {
                 let output_tapes_entry =
                     output_tapes_map.entry(*dependent_tape_key).or_insert_with(IndexSet::new);
                 output_tapes_entry.insert(tape_key);
-                todo!()
             }
         }
+        output_tapes_map
     }
 
     pub fn apply_write_rule(
@@ -480,6 +483,7 @@ impl MultiTape {
         represents which states can overlap with which other states
         in which directions (left, right, middle)
         */
+        let output_tapes_map = self.build_output_tapes_map();
         let mut state_direction_map = self.init_state_direction_map();
         let mut frontier = IndexSet::new();
         frontier.insert(self.input_tape_key);
@@ -503,8 +507,17 @@ impl MultiTape {
                         );
                         if !write_rule_satisfiable { continue; }
 
-                        let output = write_rule.write_output;
+                        let output_tape_cell_state = write_rule.write_output;
+                        let output_tape_state = TapeState::new(
+                            *tape_key, output_tape_cell_state
+                        );
+                        // get overlapping states for any state
+                        state_direction_map.insert_entry(
+                            output_tape_state, write_rule.expectations.clone()
+                        );
 
+                        // find out what other downstream tapes are affected
+                        // using this write rule and output_tapes_map
                     }
                 }
             }
