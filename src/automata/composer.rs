@@ -543,6 +543,21 @@ impl MultiTape {
             }
             frontier = next_frontier;
         }
+
+        let output_tape_states = state_direction_map.load_tape_states();
+
+        for output_tape_state in output_tape_states {
+            let direction_state_overlaps =
+                state_direction_map.read_entry(&output_tape_state).unwrap();
+
+            for direction in enum_iterator::all::<Direction>() {
+                let state_overlaps =
+                    direction_state_overlaps.read_entry(&direction).unwrap();
+                
+            }
+            todo!()
+        }
+
         // TODO: propagate all possible state combinations here instead?
     }
     // TODO: a method to propagate all possible state combinations

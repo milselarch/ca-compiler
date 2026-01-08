@@ -106,12 +106,12 @@ pub struct AutomataDirectionStateOverlaps {
     represents which states can overlap with which other states
     in which directions (left, right, middle)
     */
-    map: HashMap<TapeState, DirectionStateOverlaps>,
+    map: IndexMap<TapeState, DirectionStateOverlaps>,
 }
 impl AutomataDirectionStateOverlaps {
     pub fn new() -> AutomataDirectionStateOverlaps {
         AutomataDirectionStateOverlaps {
-            map: HashMap::new(),
+            map: IndexMap::new(),
         }
     }
     pub fn get_or_insert_entry(
@@ -132,5 +132,12 @@ impl AutomataDirectionStateOverlaps {
         &self, tape_state: &TapeState
     ) -> Option<&DirectionStateOverlaps> {
         self.map.get(tape_state)
+    }
+    pub fn load_tape_states(&self) -> IndexSet<TapeState> {
+        let mut tape_states = IndexSet::new();
+        for (tape_state, _direction_overlaps) in self.map.iter() {
+            tape_states.insert(tape_state.clone());
+        }
+        tape_states
     }
 }
