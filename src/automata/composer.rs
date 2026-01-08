@@ -493,29 +493,49 @@ impl MultiTape {
 
             for tape_key in &frontier {
                 let tape = self.get_tape_by_key(*tape_key).unwrap();
-                let dependent_tape_keys = tape.get_dependent_tape_keys();
+                let output_tapes_opt = output_tapes_map.get(tape_key);
+                let output_tapes = match output_tapes_opt {
+                    Some(ot) => ot,
+                    None => { continue; }
+                };
 
-                for frontier_tape_key in frontier.iter() {
-                    if !dependent_tape_keys.contains_key(frontier_tape_key) { continue; }
-                    next_frontier.insert(frontier_tape_key.clone());
-
+                for output_tape_key in output_tapes {
                     let write_rules =
-                        dependent_tape_keys.get(frontier_tape_key).unwrap();
+                        tape.get_dependent_tape_keys().get(output_tape_key).unwrap().clone();
+
                     for write_rule in write_rules {
-                        let write_rule_satisfiable = write_rule.is_satisfiable_for(
-                            &state_direction_map
-                        );
+                        let write_rule_satisfiable =
+                            write_rule.is_satisfiable_for(&state_direction_map);
                         if !write_rule_satisfiable { continue; }
 
                         let output_tape_cell_state = write_rule.write_output;
                         let output_tape_state = TapeState::new(
                             *tape_key, output_tape_cell_state
                         );
-                        // get overlapping states for any state
+                        // add output tape state to the new frontier
+                        // now that we know the current write rule is satisfiable
+                        next_frontier.insert(*output_tape_key);
+                        // insert all neighbors of the output tape state
+                        // (from write rule inputs)
                         state_direction_map.insert_entry(
                             output_tape_state, write_rule.expectations.clone()
                         );
 
+                        // insert the output tape state as a neighbor
+                        // to all the input tape states in the write rule
+                        let input_pairs = write_rule.expectations.to_pairs();
+                        for input_pair in input_pairs {
+                            let input_direction = &input_pair.0;
+                            let input_tape_state = &input_pair.1;
+                            // from the perspective of the input tape state,
+                            // the output tape state is in the opposite direction
+                            let inv_direction = input_direction.flip();
+                            let input_direction_state_neighbors =
+                                state_direction_map.get_or_insert_entry(*input_tape_state);
+                            input_direction_state_neighbors.insert_pair(
+                                inv_direction, output_tape_state
+                            );
+                        }
                         // find out what other downstream tapes are affected
                         // using this write rule and output_tapes_map
                     }
@@ -523,6 +543,7 @@ impl MultiTape {
             }
             frontier = next_frontier;
         }
+        // TODO: propagate all possible state combinations here instead?
     }
     // TODO: a method to propagate all possible state combinations
 }

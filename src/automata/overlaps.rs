@@ -16,8 +16,8 @@ impl StateOverlaps {
             overlaps: IndexSet::new(),
         }
     }
-    pub fn insert_overlap(&mut self, tape_state: TapeState) {
-        self.overlaps.insert(tape_state);
+    pub fn insert_overlap(&mut self, tape_state: TapeState) -> bool {
+        self.overlaps.insert(tape_state)
     }
     pub fn get_tape_keys(&self) -> IndexSet<TapeKey> {
         let mut tape_keys = IndexSet::new();
@@ -83,6 +83,12 @@ impl DirectionStateOverlaps {
         } else {
             false
         }
+    }
+    pub fn insert_pair(
+        &mut self, direction: Direction, tape_state: TapeState
+    ) -> bool {
+        let state_overlaps = self.get_or_insert_entry(direction);
+        state_overlaps.insert_overlap(tape_state)
     }
 }
 impl Hash for DirectionStateOverlaps {
