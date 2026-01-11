@@ -26,6 +26,9 @@ impl StateOverlaps {
         }
         tape_keys
     }
+    pub fn iter(&self) -> indexmap::set::Iter<'_, TapeState> {
+        self.overlaps.iter()
+    }
 }
 impl Hash for StateOverlaps {
     fn hash<H: Hasher>(&self, state: &mut H) {

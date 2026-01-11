@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use enum_iterator::Sequence;
@@ -549,12 +550,18 @@ impl MultiTape {
         for output_tape_state in output_tape_states {
             let direction_state_overlaps =
                 state_direction_map.read_entry(&output_tape_state).unwrap();
+            let state_overlap_factors = vec![
+                direction_state_overlaps.read_entry(&Direction::Left).unwrap(),
+                direction_state_overlaps.read_entry(&Direction::Middle).unwrap(),
+                direction_state_overlaps.read_entry(&Direction::Right).unwrap(),
+            ];
+            // TODO: https://docs.rs/cartesian/latest/cartesian/
+            let product: Vec<Vec<TapeState>> = state_overlap_factors
+                .iter().map(|s| s.iter())
+                .multi_cartesian_product()
+                .map(|v| v.into_iter().cloned())
+                .collect();
 
-            for direction in enum_iterator::all::<Direction>() {
-                let state_overlaps =
-                    direction_state_overlaps.read_entry(&direction).unwrap();
-                
-            }
             todo!()
         }
 

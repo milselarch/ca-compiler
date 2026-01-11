@@ -52,6 +52,7 @@ dependencies = [
  "enum-iterator",
  "indent",
  "indexmap",
+ "itertools",
  "log",
  "num-bigint",
  "num-traits",
