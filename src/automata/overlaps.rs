@@ -2,6 +2,7 @@ use std::collections::{HashMap};
 use std::hash::{Hash, Hasher};
 use crate::automata::composer::{Direction, TapeKey, TapeState};
 use indexmap::{IndexMap, IndexSet};
+use indexmap::set::Iter as IndexSetIter;
 
 #[derive(Debug, Clone)]
 #[derive(Eq)]
@@ -35,6 +36,14 @@ impl Hash for StateOverlaps {
         for overlap in self.overlaps.iter() {
             overlap.hash(state);
         }
+    }
+}
+impl<'a> IntoIterator for &'a StateOverlaps {
+    type Item = &'a TapeState;
+    type IntoIter = IndexSetIter<'a, TapeState>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.overlaps.iter()
     }
 }
 

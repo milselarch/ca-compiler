@@ -49,6 +49,7 @@ name = "ca-compiler"
 version = "0.1.0"
 dependencies = [
  "arbitrary-int",
+ "cartesian",
  "enum-iterator",
  "indent",
  "indexmap",
@@ -63,6 +64,12 @@ dependencies = [
  "strum",
  "strum_macros",
 ]
+
+[[package]]
+name = "cartesian"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "122ed4e53e9ab84859df66242a77326d649beec563bcf4b63d028ba00193681c"
 
 [[package]]
 name = "cc"

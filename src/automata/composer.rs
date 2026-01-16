@@ -1,6 +1,7 @@
 use itertools::Itertools;
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
+use cartesian::cartesian;
 use enum_iterator::Sequence;
 use indexmap::{IndexMap, IndexSet};
 use crate::automata::overlaps::{AutomataDirectionStateOverlaps, DirectionStateOverlaps};
@@ -548,21 +549,20 @@ impl MultiTape {
         let output_tape_states = state_direction_map.load_tape_states();
 
         for output_tape_state in output_tape_states {
+            // get all possible 1-radius combination of states
             let direction_state_overlaps =
                 state_direction_map.read_entry(&output_tape_state).unwrap();
-            let state_overlap_factors = vec![
+            let state_overlap_products = cartesian!(
                 direction_state_overlaps.read_entry(&Direction::Left).unwrap(),
                 direction_state_overlaps.read_entry(&Direction::Middle).unwrap(),
                 direction_state_overlaps.read_entry(&Direction::Right).unwrap(),
-            ];
-            // TODO: https://docs.rs/cartesian/latest/cartesian/
-            let product: Vec<Vec<TapeState>> = state_overlap_factors
-                .iter().map(|s| s.iter())
-                .multi_cartesian_product()
-                .map(|v| v.into_iter().cloned())
-                .collect();
+            );
 
-            todo!()
+            for (left, middle, right) in state_overlap_products {
+                let state_overlap_factors: Vec<&IndexSet<TapeState>> = vec![
+                    left, middle, right,
+                ];
+            }
         }
 
         // TODO: propagate all possible state combinations here instead?
