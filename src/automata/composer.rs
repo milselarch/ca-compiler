@@ -22,6 +22,11 @@ const VOID_STATE: TapeCellState = 0;
 const HALT_STATE: TapeCellState = 1;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd, Sequence)]
+/*
+relative position of a cell with respect to the current cell
+we assume left / right means a -1 / +1 offset from the current cell
+position respectively, and middle means the current cell position itself
+*/
 pub enum Direction {
     Left,
     Right,
@@ -188,10 +193,13 @@ impl WriteRule {
         */
         self.expectations.to_pairs()
     }
-    pub fn is_satisfiable_for(
-        &self, state_direction_map: &AutomataDirectionStateOverlaps
+    pub fn is_satisfiable_for_automata_overlaps(
+        &self, automata_state_overlaps: &AutomataDirectionStateOverlaps
     ) -> bool {
         /*
+        Check if the input conditions of the right rule are satisfiable
+        given the current state_direction_map (set of all possible state overlaps)
+
         write rule expectations can be construed as
         (direction, state) pairs.
 
@@ -217,7 +225,7 @@ impl WriteRule {
                 ).unwrap();
 
                 let state_overlaps_opt =
-                    state_direction_map.read_entry(&rule_tape_state);
+                    automata_state_overlaps.read_entry(&rule_tape_state);
                 let state_overlaps = match state_overlaps_opt {
                     Some(so) => so,
                     None => { return false; }
@@ -225,6 +233,49 @@ impl WriteRule {
                 if !state_overlaps.contains_pair(
                     &offset_direction, other_rule_tape_state
                 ) {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+    pub fn is_satisfiable_for_overlaps(
+        &self, state_overlaps: &DirectionStateOverlaps
+    ) -> bool {
+        /*
+        Checks if the state overlaps
+
+        for each direction, the direction state overlaps
+        should be the same or a superset of the direction state overlaps
+        in the write rule expectations
+        */
+        for direction in enum_iterator::all::<Direction>() {
+            let dir_rule_overlaps_opt = self.expectations.read_entry(&direction);
+            let dir_state_overlaps_opt = state_overlaps.read_entry(&direction);
+
+            let dir_rule_overlaps = match dir_rule_overlaps_opt {
+                Some(ro) => ro,
+                None => {
+                    /*
+                    if the write rule doesn't have any expectations for the
+                    current direction then we can skip the check for this direction
+                    */
+                    continue;
+                }
+            };
+            let dir_state_overlaps_dir = match dir_state_overlaps_opt {
+                Some(so) => so,
+                None => {
+                    /*
+                    rule overlaps exist for the current direction but there
+                    are no state overlaps in the current direction,
+                    so the rule is not satisfiable
+                    */
+                    return false;
+                }
+            };
+            for rule_overlap in dir_rule_overlaps.overlaps.iter() {
+                if !dir_state_overlaps_dir.overlaps.contains(rule_overlap) {
                     return false;
                 }
             }
@@ -323,11 +374,18 @@ impl Tape {
     }
 }
 
+pub struct BuildFrontierResult {
+    pub state_direction_map: AutomataDirectionStateOverlaps,
+    pub output_tapes_map: IndexMap<TapeKey, IndexSet<TapeKey>>,
+    pub frontier: IndexSet<TapeKey>,
+}
+
 #[derive(Debug, Clone)]
 pub struct MultiTape {
     tapes: Vec<Tape>,
     input_tape_key: TapeKey,
     tape_names_map: HashMap<String, TapeKey>,
+    // rules that write to the cells of the current tape
     rules: Vec<WriteRule>,
 }
 impl MultiTape {
@@ -477,16 +535,17 @@ impl MultiTape {
         }
     }
 
-    pub fn generate_tape_equation(&self) {
-        /*
-        Generates the multi-tape equations for all tapes
-        */
-        /*
-        represents which states can overlap with which other states
-        in which directions (left, right, middle)
-        */
+    pub fn build_frontier(&self) -> BuildFrontierResult {
         let output_tapes_map = self.build_output_tapes_map();
+        /*
+        represents which tape states might overlap with which other tape states
+        in which directions (left, right, middle) across all tapes
+        */
         let mut state_direction_map = self.init_state_direction_map();
+        /*
+        The frontier contains all the tape keys whose corresponding tapes
+        might contribute to new write rules that have not yet been processed
+        */
         let mut frontier = IndexSet::new();
         frontier.insert(self.input_tape_key);
 
@@ -507,7 +566,7 @@ impl MultiTape {
 
                     for write_rule in write_rules {
                         let write_rule_satisfiable =
-                            write_rule.is_satisfiable_for(&state_direction_map);
+                            write_rule.is_satisfiable_for_automata_overlaps(&state_direction_map);
                         if !write_rule_satisfiable { continue; }
 
                         let output_tape_cell_state = write_rule.write_output;
@@ -545,7 +604,19 @@ impl MultiTape {
             }
             frontier = next_frontier;
         }
+        BuildFrontierResult {
+            state_direction_map,
+            output_tapes_map,
+            frontier,
+        }
+    }
 
+    pub fn generate_tape_equation(&self) {
+        /*
+        Generates the multi-tape equations for all tapes
+        */
+        let build_frontier_result = self.build_frontier();
+        let state_direction_map = build_frontier_result.state_direction_map;
         let output_tape_states = state_direction_map.load_tape_states();
 
         for output_tape_state in output_tape_states {
@@ -559,9 +630,11 @@ impl MultiTape {
             );
 
             for (left, middle, right) in state_overlap_products {
-                let state_overlap_factors: Vec<&IndexSet<TapeState>> = vec![
-                    left, middle, right,
-                ];
+                let state_overlap_factors: DirectionStateOverlaps::from_pairs(vec![
+                    (Direction::Left, left),
+                    (Direction::Middle, middle),
+                    (Direction::Right, right),
+                ]);
             }
         }
 

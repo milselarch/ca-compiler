@@ -49,7 +49,7 @@ impl<'a> IntoIterator for &'a StateOverlaps {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct DirectionStateOverlaps {
-    // we use index map to ensure deterministic hashes
+    // we use index map to ensure deterministic hashes of the struct
     map: IndexMap<Direction, StateOverlaps>
 }
 impl DirectionStateOverlaps {
@@ -57,6 +57,16 @@ impl DirectionStateOverlaps {
         DirectionStateOverlaps {
             map: IndexMap::new(),
         }
+    }
+    pub fn from_pairs(
+        pairs: &IndexSet<(Direction, TapeState)>
+    ) -> DirectionStateOverlaps {
+        let mut direction_state_overlaps = DirectionStateOverlaps::new();
+        for (direction, tape_state) in pairs.iter() {
+            direction_state_overlaps
+                .insert_pair(direction.clone(), tape_state.clone());
+        }
+        direction_state_overlaps
     }
     pub fn to_pairs(&self) -> IndexSet<(Direction, TapeState)> {
         let mut pairs = IndexSet::new();
