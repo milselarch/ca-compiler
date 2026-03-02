@@ -58,6 +58,16 @@ impl DirectionStateOverlaps {
             map: IndexMap::new(),
         }
     }
+    pub fn from_vec_pairs(
+        pairs: &Vec<(Direction, &TapeState)>
+    ) -> DirectionStateOverlaps {
+        let mut direction_state_overlaps = DirectionStateOverlaps::new();
+        for (direction, tape_state) in pairs.iter() {
+            direction_state_overlaps
+                .insert_pair(direction.clone(), *tape_state.clone());
+        }
+        direction_state_overlaps
+    }
     pub fn from_pairs(
         pairs: &IndexSet<(Direction, TapeState)>
     ) -> DirectionStateOverlaps {

@@ -1,6 +1,7 @@
 use itertools::Itertools;
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
+use std::ops::Index;
 use cartesian::cartesian;
 use enum_iterator::Sequence;
 use indexmap::{IndexMap, IndexSet};
@@ -115,7 +116,7 @@ impl CellExpectation {
 
     pub fn to_identifier(&self) -> TapeCellIdentifier {
         TapeCellIdentifier::new(
-            self.expected_state.tape_key.clone(),
+            self.expected_state.tape_key,
             self.direction.clone(),
         )
     }
@@ -376,6 +377,7 @@ impl Tape {
 
 pub struct BuildFrontierResult {
     pub state_direction_map: AutomataDirectionStateOverlaps,
+    pub output_tape_state_to_rule_map: IndexMap<TapeState, IndexSet<WriteRule>>,
     pub output_tapes_map: IndexMap<TapeKey, IndexSet<TapeKey>>,
     pub frontier: IndexSet<TapeKey>,
 }
@@ -410,13 +412,13 @@ impl MultiTape {
 
         match get_result {
             Some(existing_key) => {
-                Err(existing_key.clone())
+                Err(*existing_key)
             },
             None => {
                 let tape_index: TapeKey = self.tapes.len();
                 self.tapes.push(tape);
                 let tape_key  = tape_index;
-                self.tape_names_map.insert(name, tape_key.clone());
+                self.tape_names_map.insert(name, tape_key);
                 Ok(tape_key)
             }
         }
@@ -543,6 +545,12 @@ impl MultiTape {
         */
         let mut state_direction_map = self.init_state_direction_map();
         /*
+        Map output tape states to the write rules that produce those tape states as output
+        */
+        let mut output_tape_state_to_rule_map: IndexMap<
+            TapeState, IndexSet<WriteRule>
+        > = IndexMap::new();
+        /*
         The frontier contains all the tape keys whose corresponding tapes
         might contribute to new write rules that have not yet been processed
         */
@@ -573,14 +581,26 @@ impl MultiTape {
                         let output_tape_state = TapeState::new(
                             *tape_key, output_tape_cell_state
                         );
-                        // add output tape state to the new frontier
-                        // now that we know the current write rule is satisfiable
+                        /*
+                        add output tape state to the new frontier
+                        now that we know the current write rule is satisfiable
+                        */
                         next_frontier.insert(*output_tape_key);
-                        // insert all neighbors of the output tape state
-                        // (from write rule inputs)
+                        /*
+                        insert all neighbors of the output tape state
+                        (from write rule inputs)
+                        */
                         state_direction_map.insert_entry(
                             output_tape_state, write_rule.expectations.clone()
                         );
+                        /*
+                        add the write rule to the set of rules that
+                        produce the output tape state
+                        */
+                        let tape_key_write_rules_set = output_tape_state_to_rule_map
+                            .entry(output_tape_state)
+                            .or_insert(IndexSet::new());
+                        tape_key_write_rules_set.insert(write_rule.clone());
 
                         // insert the output tape state as a neighbor
                         // to all the input tape states in the write rule
@@ -606,6 +626,7 @@ impl MultiTape {
         }
         BuildFrontierResult {
             state_direction_map,
+            output_tape_state_to_rule_map,
             output_tapes_map,
             frontier,
         }
@@ -618,6 +639,11 @@ impl MultiTape {
         let build_frontier_result = self.build_frontier();
         let state_direction_map = build_frontier_result.state_direction_map;
         let output_tape_states = state_direction_map.load_tape_states();
+        let output_tape_state_to_rule_map =
+            build_frontier_result.output_tape_state_to_rule_map;
+        let mut input_to_output_state_map: HashMap<
+            DirectionStateOverlaps, TapeState
+        >  = HashMap::new();
 
         for output_tape_state in output_tape_states {
             // get all possible 1-radius combination of states
@@ -629,12 +655,30 @@ impl MultiTape {
                 direction_state_overlaps.read_entry(&Direction::Right).unwrap(),
             );
 
+            // write rules that produce the current output tape state
+            let relevant_write_rules_opt =
+                output_tape_state_to_rule_map.get(&output_tape_state);
+            let relevant_write_rules = match relevant_write_rules_opt {
+                Some(rwr) => rwr.clone(),
+                None => IndexSet::new(),
+            };
+
             for (left, middle, right) in state_overlap_products {
-                let state_overlap_factors: DirectionStateOverlaps::from_pairs(vec![
+                let state_overlap_factors = DirectionStateOverlaps::from_vec_pairs(&vec![
                     (Direction::Left, left),
                     (Direction::Middle, middle),
                     (Direction::Right, right),
                 ]);
+                for write_rule in &relevant_write_rules {
+                    if !write_rule.is_satisfiable_for_overlaps(&state_overlap_factors) {
+                        continue
+                    }
+                    let prev_value_opt = input_to_output_state_map.insert(
+                        state_overlap_factors.clone(), output_tape_state
+                    );
+                    // TODO: prev_value should be the same as output_tape_state if it exists,
+                    //  otherwise there is a conflict
+                }
             }
         }
 
