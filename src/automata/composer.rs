@@ -6,6 +6,7 @@ use cartesian::cartesian;
 use enum_iterator::Sequence;
 use indexmap::{IndexMap, IndexSet};
 use crate::automata::overlaps::{AutomataDirectionStateOverlaps, DirectionStateOverlaps};
+use crate::automata::terms::Expression;
 
 pub(crate) type TapeKey = usize;
 type TapeCellState = u32;
@@ -632,7 +633,7 @@ impl MultiTape {
         }
     }
 
-    pub fn generate_tape_equation(&self) -> HashMap<DirectionStateOverlaps, TapeState> {
+    pub fn generate_multi_tape_overlaps(&self) -> HashMap<DirectionStateOverlaps, TapeState> {
         /*
         Generates the multi-tape equations for all tapes
         */
@@ -695,5 +696,11 @@ impl MultiTape {
             }
         }
         input_to_output_state_map
+    }
+
+    pub fn to_state_equations(
+        &self, input_to_output_state_map: HashMap<DirectionStateOverlaps, TapeState>
+    ) -> Expression {
+        todo!()
     }
 }
