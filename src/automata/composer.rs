@@ -632,7 +632,7 @@ impl MultiTape {
         }
     }
 
-    pub fn generate_tape_equation(&self) {
+    pub fn generate_tape_equation(&self) -> HashMap<DirectionStateOverlaps, TapeState> {
         /*
         Generates the multi-tape equations for all tapes
         */
@@ -673,16 +673,27 @@ impl MultiTape {
                     if !write_rule.is_satisfiable_for_overlaps(&state_overlap_factors) {
                         continue
                     }
-                    let prev_value_opt = input_to_output_state_map.insert(
+                    let existing_value_opt = input_to_output_state_map.insert(
                         state_overlap_factors.clone(), output_tape_state
                     );
-                    // TODO: prev_value should be the same as output_tape_state if it exists,
-                    //  otherwise there is a conflict
+                    match existing_value_opt {
+                        Some(existing_value) => {
+                            if existing_value != output_tape_state {
+                                // this means that the same combination of input
+                                // states can lead to multiple different output states
+                                // which is a conflict that needs to be resolved
+                                panic!(
+                                    "Conflict detected for input combination {:?}: \
+                                    previously mapped to {:?}, now mapped to {:?}",
+                                    state_overlap_factors, existing_value, output_tape_state
+                                );
+                            }
+                        }
+                        None => {}
+                    }
                 }
             }
         }
-
-        // TODO: propagate all possible state combinations here instead?
+        input_to_output_state_map
     }
-    // TODO: a method to propagate all possible state combinations
 }
