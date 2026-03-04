@@ -58,6 +58,15 @@ impl DirectionStateOverlaps {
             map: IndexMap::new(),
         }
     }
+    pub fn get_all_tape_states(&self) -> IndexSet<TapeState> {
+        let mut tape_states = IndexSet::new();
+        for (_direction, state_overlaps) in self.map.iter() {
+            for tape_state in state_overlaps.overlaps.clone() {
+                tape_states.insert(tape_state.clone());
+            }
+        }
+        tape_states
+    }
     pub fn from_vec_pairs(
         pairs: &Vec<(Direction, &TapeState)>
     ) -> DirectionStateOverlaps {
@@ -92,11 +101,13 @@ impl DirectionStateOverlaps {
     ) -> &mut StateOverlaps {
         self.map.entry(direction).or_insert(StateOverlaps::new())
     }
+
     pub fn read_entry(
         &self, direction: &Direction
     ) -> Option<&StateOverlaps> {
         self.map.get(direction)
     }
+
     pub fn get_tape_keys(&self) -> IndexSet<TapeKey> {
         let mut tape_keys = IndexSet::new();
         for (_direction, state_overlaps) in self.map.iter() {
@@ -145,6 +156,21 @@ impl AutomataDirectionStateOverlaps {
         AutomataDirectionStateOverlaps {
             map: IndexMap::new(),
         }
+    }
+    pub fn get_all_tape_keys(&self) -> IndexSet<TapeKey> {
+        /*
+        Get all tape keys that are present in the overlaps,
+        including both the input tape states and the overlap requirements
+        */
+        let mut tape_keys = IndexSet::new();
+        for (_tape_state, direction_overlaps) in self.map.iter() {
+            tape_keys.insert(_tape_state.get_tape_key());
+            let overlaps_keys = direction_overlaps.get_tape_keys();
+            for key in overlaps_keys.into_iter() {
+                tape_keys.insert(key);
+            }
+        }
+        tape_keys
     }
     pub fn get_or_insert_entry(
         &mut self, tape_state: TapeState

@@ -701,6 +701,12 @@ impl MultiTape {
     pub fn to_state_equations(
         &self, input_to_output_state_map: HashMap<DirectionStateOverlaps, TapeState>
     ) -> Expression {
+
+
+        for (input_combo, output_state) in input_to_output_state_map.iter() {
+            let input_combo_tape_keys = input_combo.get_tape_keys();
+
+        }
         todo!()
     }
 }
