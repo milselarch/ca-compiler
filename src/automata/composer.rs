@@ -633,7 +633,7 @@ impl MultiTape {
         }
     }
 
-    pub fn generate_multi_tape_overlaps(&self) -> HashMap<DirectionStateOverlaps, TapeState> {
+    pub fn generate_multi_tape_overlaps(&self) -> IndexMap<DirectionStateOverlaps, TapeState> {
         /*
         Generates the multi-tape equations for all tapes
         */
@@ -642,9 +642,9 @@ impl MultiTape {
         let output_tape_states = state_direction_map.load_tape_states();
         let output_tape_state_to_rule_map =
             build_frontier_result.output_tape_state_to_rule_map;
-        let mut input_to_output_state_map: HashMap<
+        let mut input_to_output_state_map: IndexMap<
             DirectionStateOverlaps, TapeState
-        >  = HashMap::new();
+        >  = IndexMap::new();
 
         for output_tape_state in output_tape_states {
             // get all possible 1-radius combination of states
@@ -699,14 +699,25 @@ impl MultiTape {
     }
 
     pub fn to_state_equations(
-        &self, input_to_output_state_map: HashMap<DirectionStateOverlaps, TapeState>
+        &self, input_to_output_state_map: IndexMap<DirectionStateOverlaps, TapeState>
     ) -> Expression {
-
+        /*
+        Collect all the tape states that exist across all tapes,
+        so that we can reassign them to a global state space
+        for the final multi-tape equations
+        */
+        let mut tape_states_map: IndexMap<TapeKey, TapeState> = IndexMap::new();
 
         for (input_combo, output_state) in input_to_output_state_map.iter() {
-            let input_combo_tape_keys = input_combo.get_tape_keys();
-
+            let combo_tape_states = input_combo.get_tape_states();
+            tape_states_map.entry(output_state.tape_key).or_insert(output_state.clone());
+            combo_tape_states.iter().for_each(|tape_state| {
+                tape_states_map.entry(tape_state.tape_key).or_insert(tape_state.clone());
+            });
         }
+
+        let mut global_state_counter: TapeCellState = 2;
+        let mut global_tape_state_map: IndexMap<TapeState, TapeCellState> = IndexMap::new();
         todo!()
     }
 }

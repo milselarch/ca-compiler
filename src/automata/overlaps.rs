@@ -118,6 +118,18 @@ impl DirectionStateOverlaps {
         }
         tape_keys
     }
+    pub fn get_tape_states(&self) -> IndexSet<TapeState> {
+        /*
+        Get all the tape states that are present in the overlaps
+        */
+        let mut tape_states = IndexSet::new();
+        for (_direction, state_overlaps) in self.map.iter() {
+            for tape_state in state_overlaps.overlaps.clone() {
+                tape_states.insert(tape_state.clone());
+            }
+        }
+        tape_states
+    }
     pub fn contains_pair(
         &self, direction: &Direction, tape_state: &TapeState
     ) -> bool {
