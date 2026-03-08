@@ -6,7 +6,7 @@ use cartesian::cartesian;
 use enum_iterator::Sequence;
 use indexmap::{IndexMap, IndexSet};
 use crate::automata::overlaps::{AutomataDirectionStateOverlaps, DirectionStateOverlaps};
-use crate::automata::terms::Expression;
+use crate::automata::terms::{Expression, Term};
 
 pub(crate) type TapeKey = usize;
 type TapeCellState = u32;
@@ -706,18 +706,45 @@ impl MultiTape {
         so that we can reassign them to a global state space
         for the final multi-tape equations
         */
-        let mut tape_states_map: IndexMap<TapeKey, TapeState> = IndexMap::new();
-
+        let mut all_tape_states: IndexSet<TapeState> = IndexSet::new();
         for (input_combo, output_state) in input_to_output_state_map.iter() {
             let combo_tape_states = input_combo.get_tape_states();
-            tape_states_map.entry(output_state.tape_key).or_insert(output_state.clone());
-            combo_tape_states.iter().for_each(|tape_state| {
-                tape_states_map.entry(tape_state.tape_key).or_insert(tape_state.clone());
-            });
+            all_tape_states.insert(*output_state);
+            for tape_state in combo_tape_states {
+                all_tape_states.insert(tape_state);
+            }
         }
-
         let mut global_state_counter: TapeCellState = 2;
         let mut global_tape_state_map: IndexMap<TapeState, TapeCellState> = IndexMap::new();
+        for tape_state in all_tape_states.iter() {
+            global_tape_state_map.insert(*tape_state, global_state_counter);
+            global_state_counter += 1;
+        }
+
+        // map new state to expression that would produce it
+        let output_to_expr_map: IndexMap<TapeCellState, Expression> = IndexMap::new();
+
+        for (input_combo, output_state) in input_to_output_state_map.iter() {
+            let input_combo_pairs = input_combo.to_pairs();
+            let mut product_terms: IndexSet<Term> = IndexSet::new();
+
+            for pair in input_combo_pairs.iter() {
+                let (direction, tape_state) = pair;
+                let offset = direction.to_offset();
+                let global_tape_state = *global_tape_state_map.get(tape_state).unwrap();
+                let term = Term::new(offset.into(), global_tape_state as u8, false);
+                product_terms.insert(term);
+            }
+
+            let global_output_state = global_tape_state_map.get(output_state).unwrap();
+            // TODO: construct product, then expression = sum of products
+            // let mut input_state_terms = vec![];
+            /*
+            for tape_state in combo_tape_states {
+                let global_input_state = global_tape_state_map.get(&tape_state).unwrap();
+            }
+            */
+        }
         todo!()
     }
 }

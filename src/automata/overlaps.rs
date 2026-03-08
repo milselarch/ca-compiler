@@ -72,8 +72,9 @@ impl DirectionStateOverlaps {
     ) -> DirectionStateOverlaps {
         let mut direction_state_overlaps = DirectionStateOverlaps::new();
         for (direction, tape_state) in pairs.iter() {
+            let cloned_state = (*tape_state).clone();
             direction_state_overlaps
-                .insert_pair(direction.clone(), *tape_state.clone());
+                .insert_pair(direction.clone(), cloned_state);
         }
         direction_state_overlaps
     }
