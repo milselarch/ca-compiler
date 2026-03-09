@@ -732,7 +732,7 @@ impl MultiTape {
                 let (direction, tape_state) = pair;
                 let offset = direction.to_offset();
                 let global_tape_state = *global_tape_state_map.get(tape_state).unwrap();
-                let term = Term::new(offset.into(), global_tape_state as u8, false);
+                let term = Term::new(offset.into(), global_tape_state, false);
                 product_terms.insert(term);
             }
 

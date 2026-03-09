@@ -4,19 +4,20 @@ use std::hash::{Hash, Hasher};
 use std::ops::{BitOr, Mul};
 use rayon::iter::IntoParallelRefIterator;
 
+type CellState = u32;
 pub fn clip_after_space(s: String) -> String {
     s.split_whitespace().next().unwrap_or(&s).to_string()
 }
 
 pub trait AbstractExpression: Mul + BitOr + Eq + Sized {
     fn copy(&self) -> Self;
-    fn _sub(&self, substitutions: &HashMap<i64, u8>, default: u8) -> bool;
+    fn _sub(&self, substitutions: &HashMap<i64, CellState>, default: CellState) -> bool;
     fn offset(&self, offset: i64) -> Self;
     fn _expand(
-        &self, expansion_mapping: &HashMap<u8, Expression>
+        &self, expansion_mapping: &HashMap<CellState, Expression>
     ) -> Expression;
     fn _expand_steps(
-        &self, expansion_mapping: &HashMap<u8, Expression>, steps: u64
+        &self, expansion_mapping: &HashMap<CellState, Expression>, steps: u64
     ) -> Expression;
     fn to_expression(&self) -> Expression;
     fn _to_string(&self, name: &str) -> String;
@@ -51,7 +52,7 @@ impl ExprDebugInfo {
 pub struct Term {
     // position within the cellular automata tape
     pub (crate) position: i64,
-    pub state: u8,
+    pub state: CellState,
     // TODO: implement optimization
     pub (crate) _optimized: bool,
     // position of the term within an expression
@@ -64,7 +65,7 @@ impl Hash for Term {
     }
 }
 impl Term {
-    pub fn new(position: i64, state: u8, optimized: bool) -> Term {
+    pub fn new(position: i64, state: CellState, optimized: bool) -> Term {
         Term {
             position, state, _optimized: optimized,
             _debug_info: ExprDebugInfo::spawn_empty(),
@@ -200,7 +201,9 @@ impl AbstractExpression for Term {
         self.clone()
     }
 
-    fn _sub(&self, substitutions: &HashMap<i64, u8>, default: u8) -> bool {
+    fn _sub(
+        &self, substitutions: &HashMap<i64, CellState>, default: CellState
+    ) -> bool {
         substitutions.get(&self.position).unwrap_or(&default) == &self.state
     }
 
@@ -208,7 +211,7 @@ impl AbstractExpression for Term {
         Term::new(self.position + offset, self.state, self._optimized)
     }
 
-    fn _expand(&self, expansion_mapping: &HashMap<u8, Expression>) -> Expression {
+    fn _expand(&self, expansion_mapping: &HashMap<CellState, Expression>) -> Expression {
         let mut expanded_expr = expansion_mapping[&self.state].offset(self.position);
         expanded_expr._assign_parent_debug_info(&self._debug_info);
         expanded_expr._assign_base_expansion_indexes();
@@ -216,7 +219,7 @@ impl AbstractExpression for Term {
     }
 
     fn _expand_steps(
-        &self, expansion_mapping: &HashMap<u8, Expression>, steps: u64
+        &self, expansion_mapping: &HashMap<CellState, Expression>, steps: u64
     ) -> Expression {
         let mut expr = self.to_expression();
         expr._assign_base_indexes();
@@ -375,7 +378,7 @@ impl AbstractExpression for Product {
     fn copy(&self) -> Self {
         Product::new(self._terms.clone())
     }
-    fn _sub(&self, substitutions: &HashMap<i64, u8>, default: u8) -> bool {
+    fn _sub(&self, substitutions: &HashMap<i64, CellState>, default: CellState) -> bool {
         for term in self._terms.iter() {
             if !term._sub(substitutions, default) {
                 return false;
@@ -390,7 +393,7 @@ impl AbstractExpression for Product {
         }
         Product::new(new_terms)
     }
-    fn _expand(&self, expansion_mapping: &HashMap<u8, Expression>) -> Expression {
+    fn _expand(&self, expansion_mapping: &HashMap<CellState, Expression>) -> Expression {
         if self._terms.len() == 0 {
             return Expression::new(vec![]);
         }
@@ -406,7 +409,9 @@ impl AbstractExpression for Product {
         result._assign_expr_positions();
         result
     }
-    fn _expand_steps(&self, expansion_mapping: &HashMap<u8, Expression>, steps: u64) -> Expression {
+    fn _expand_steps(
+        &self, expansion_mapping: &HashMap<CellState, Expression>, steps: u64
+    ) -> Expression {
         let mut copy = self.copy();
         copy._assign_indexes_as_base();
         let mut result = copy._expand(expansion_mapping);
@@ -607,7 +612,9 @@ impl AbstractExpression for Expression {
         }
         Expression { products, _optimized: self._optimized }
     }
-    fn _sub(&self, substitutions: &HashMap<i64, u8>, default: u8) -> bool {
+    fn _sub(
+        &self, substitutions: &HashMap<i64, CellState>, default: CellState
+    ) -> bool {
         for product in self.products.iter() {
             if product._sub(substitutions, default) {
                 return true;
@@ -622,7 +629,9 @@ impl AbstractExpression for Expression {
         }
         Expression::new(products)
     }
-    fn _expand(&self, expansion_mapping: &HashMap<u8, Expression>) -> Expression {
+    fn _expand(
+        &self, expansion_mapping: &HashMap<CellState, Expression>
+    ) -> Expression {
         /*
         // non-parallelized implementation
         let mut expanded_expression = Expression::new(vec![]);
@@ -642,7 +651,7 @@ impl AbstractExpression for Expression {
         expanded_expression
     }
     fn _expand_steps(
-        &self, expansion_mapping: &HashMap<u8, Expression>, steps: u64
+        &self, expansion_mapping: &HashMap<CellState, Expression>, steps: u64
     ) -> Expression {
         let mut result = self.copy();
         result._assign_base_indexes();
@@ -724,7 +733,7 @@ mod tests {
         let pos_exp: Expression = spawn_test_pos_empty_expr();
         let neg_exp: Expression = spawn_test_neg_empty_expr();
 
-        let expr_mapping: HashMap<u8, Expression> = [
+        let expr_mapping: HashMap<CellState, Expression> = [
             (0, pos_exp.clone()),
             (1, neg_exp.clone())
         ].iter().cloned().collect();
@@ -747,7 +756,7 @@ mod tests {
         let pos_exp: Expression = spawn_test_pos_empty_expr();
         let neg_exp: Expression = spawn_test_neg_empty_expr();
 
-        let expr_mapping: HashMap<u8, Expression> = [
+        let expr_mapping: HashMap<CellState, Expression> = [
             (0, pos_exp.clone()),
             (1, neg_exp.clone())
         ].iter().cloned().collect();
@@ -770,7 +779,7 @@ mod tests {
         let pos_exp: Expression = spawn_test_pos_empty_expr();
         let neg_exp: Expression = spawn_test_neg_empty_expr();
 
-        let expr_mapping: HashMap<u8, Expression> = [
+        let expr_mapping: HashMap<CellState, Expression> = [
             (0, pos_exp.clone()),
             (1, neg_exp.clone())
         ].iter().cloned().collect();
@@ -792,7 +801,7 @@ mod tests {
         let pos_exp: Expression = spawn_test_pos_empty_expr();
         let neg_exp: Expression = spawn_test_neg_empty_expr();
 
-        let expr_mapping: HashMap<u8, Expression> = [
+        let expr_mapping: HashMap<CellState, Expression> = [
             (0, pos_exp.clone()),
             (1, neg_exp.clone())
         ].iter().cloned().collect();
@@ -812,7 +821,7 @@ mod tests {
         let pos_exp: Expression = spawn_test_pos_empty_expr();
         let neg_exp: Expression = spawn_test_neg_empty_expr();
 
-        let expr_mapping: HashMap<u8, Expression> = [
+        let expr_mapping: HashMap<CellState, Expression> = [
             (0, pos_exp.clone()),
             (1, neg_exp.clone())
         ].iter().cloned().collect();
