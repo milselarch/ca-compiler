@@ -722,18 +722,21 @@ impl MultiTape {
         }
 
         // map new state to expression that would produce it
-        let output_to_expr_map: IndexMap<TapeCellState, Expression> = IndexMap::new();
+        // TODO: do expression reduction in terms.rs instead
+        let output_to_set_expr_map: IndexMap<
+            TapeCellState, IndexSet<IndexSet<Term>>
+        > = IndexMap::new();
 
         for (input_combo, output_state) in input_to_output_state_map.iter() {
             let input_combo_pairs = input_combo.to_pairs();
-            let mut product_terms: IndexSet<Term> = IndexSet::new();
+            let mut product_terms_set: IndexSet<Term> = IndexSet::new();
 
             for pair in input_combo_pairs.iter() {
                 let (direction, tape_state) = pair;
                 let offset = direction.to_offset();
                 let global_tape_state = *global_tape_state_map.get(tape_state).unwrap();
                 let term = Term::new(offset.into(), global_tape_state, false);
-                product_terms.insert(term);
+                product_terms_set.insert(term);
             }
 
             let global_output_state = global_tape_state_map.get(output_state).unwrap();

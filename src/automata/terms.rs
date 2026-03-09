@@ -2,6 +2,7 @@ use rayon::iter::ParallelIterator;
 use std::collections::{HashMap};
 use std::hash::{Hash, Hasher};
 use std::ops::{BitOr, Mul};
+use indexmap::IndexSet;
 use rayon::iter::IntoParallelRefIterator;
 
 type CellState = u32;
@@ -25,13 +26,13 @@ pub trait AbstractExpression: Mul + BitOr + Eq + Sized {
     fn _assign_indexes_as_base(&mut self);
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExprPosition {
     pub (crate) product_idx: u64,
     pub (crate) term_idx: u64
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExprDebugInfo {
     pub (crate) expansion_index: u16,
     pub (crate) position_info: Option<ExprPosition>,
@@ -47,8 +48,7 @@ impl ExprDebugInfo {
     }
 }
 
-
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq)]
 pub struct Term {
     // position within the cellular automata tape
     pub (crate) position: i64,
@@ -58,6 +58,24 @@ pub struct Term {
     // position of the term within an expression
     pub (crate) _debug_info: ExprDebugInfo,
 }
+
+impl PartialEq<Term> for Term {
+    fn eq(&self, other: &Self) -> bool {
+        self.position == other.position && self.state == other.state
+    }
+}
+impl PartialOrd<Term> for Term {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for Term {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.position.cmp(&other.position)
+            .then_with(|| self.state.cmp(&other.state))
+    }
+}
+
 impl Hash for Term {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.position.hash(state);
@@ -119,17 +137,6 @@ impl Term {
             }
         };
         clip_after_space(format!("{:?}", TERM_EXAMPLE))
-    }
-}
-impl PartialEq<Term> for &Term {
-    fn eq(&self, other: &Term) -> bool {
-        self.position == other.position && self.state == other.state
-    }
-}
-impl Eq for Term {}
-impl PartialEq<Term> for Term {
-    fn eq(&self, other: &Term) -> bool {
-        self.position == other.position && self.state == other.state
     }
 }
 
@@ -277,6 +284,16 @@ impl Product {
             let expr_position = ExprPosition { product_idx, term_idx: index as u64 };
             term.insert_expr_position(expr_position, false);
         }
+    }
+    pub fn reduce(&self) -> Product {
+        // reduce the product into the minimal number of terms by removing duplicates
+        let mut terms_set: IndexSet<Term> = IndexSet::new();
+        for term in self._terms.iter() {
+            terms_set.insert(term.copy());
+        }
+        let mut reduced_terms: Vec<Term> = terms_set.into_iter().collect();
+        reduced_terms.sort();
+        Product { _terms: reduced_terms, _optimized: self._optimized }
     }
 }
 
@@ -507,6 +524,7 @@ impl Expression {
         }
         Some(Expression::new(new_products))
     }
+
 }
 impl PartialEq<Expression> for &Expression {
     fn eq(&self, other: &Expression) -> bool {
