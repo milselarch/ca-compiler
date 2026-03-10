@@ -471,7 +471,7 @@ impl AbstractExpression for Product {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Expression {
     pub (crate) products: Vec<Product>,
     pub (crate) _optimized: bool

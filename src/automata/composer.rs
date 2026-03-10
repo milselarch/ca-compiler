@@ -700,7 +700,7 @@ impl MultiTape {
 
     pub fn to_state_equations(
         &self, input_to_output_state_map: IndexMap<DirectionStateOverlaps, TapeState>
-    ) -> Expression {
+    ) -> IndexMap<TapeCellState, Expression> {
         /*
         Collect all the tape states that exist across all tapes,
         so that we can reassign them to a global state space
@@ -740,19 +740,20 @@ impl MultiTape {
             }
 
             let global_output_state = global_tape_state_map.get(output_state).unwrap();
-            let mut expr_set = output_to_set_expr_map
+            let expr = output_to_set_expr_map
                 .entry(*global_output_state).or_default();
 
-            expr_set.insert(product_terms_set);
-
-            // TODO: construct product, then expression = sum of products
-            // let mut input_state_terms = vec![];
-            /*
-            for tape_state in combo_tape_states {
-                let global_input_state = global_tape_state_map.get(&tape_state).unwrap();
-            }
-            */
+            expr.push_product(product);
         }
-        todo!()
+
+        let all_output_states: IndexSet<TapeCellState> =
+            output_to_set_expr_map.keys().cloned().collect();
+        for output_state in all_output_states.iter() {
+            let expr = output_to_set_expr_map.get(output_state).unwrap();
+            let reduced_expr = expr.reduce();
+            output_to_set_expr_map.insert(*output_state, reduced_expr);
+        }
+
+        output_to_set_expr_map
     }
 }
