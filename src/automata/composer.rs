@@ -1,4 +1,4 @@
-use itertools::Itertools;
+use itertools::{Itertools};
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::ops::Index;
@@ -6,7 +6,7 @@ use cartesian::cartesian;
 use enum_iterator::Sequence;
 use indexmap::{IndexMap, IndexSet};
 use crate::automata::overlaps::{AutomataDirectionStateOverlaps, DirectionStateOverlaps};
-use crate::automata::terms::{Expression, Term};
+use crate::automata::terms::{Expression, Product, Term};
 
 pub(crate) type TapeKey = usize;
 type TapeCellState = u32;
@@ -723,23 +723,28 @@ impl MultiTape {
 
         // map new state to expression that would produce it
         // TODO: do expression reduction in terms.rs instead
-        let output_to_set_expr_map: IndexMap<
-            TapeCellState, IndexSet<IndexSet<Term>>
+        let mut output_to_set_expr_map: IndexMap<
+            TapeCellState, Expression
         > = IndexMap::new();
 
         for (input_combo, output_state) in input_to_output_state_map.iter() {
             let input_combo_pairs = input_combo.to_pairs();
-            let mut product_terms_set: IndexSet<Term> = IndexSet::new();
+            let mut product = Product::new(vec![]);
 
             for pair in input_combo_pairs.iter() {
                 let (direction, tape_state) = pair;
                 let offset = direction.to_offset();
                 let global_tape_state = *global_tape_state_map.get(tape_state).unwrap();
                 let term = Term::new(offset.into(), global_tape_state, false);
-                product_terms_set.insert(term);
+                product.push_term(term);
             }
 
             let global_output_state = global_tape_state_map.get(output_state).unwrap();
+            let mut expr_set = output_to_set_expr_map
+                .entry(*global_output_state).or_default();
+
+            expr_set.insert(product_terms_set);
+
             // TODO: construct product, then expression = sum of products
             // let mut input_state_terms = vec![];
             /*

@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use rayon::iter::ParallelIterator;
 use std::collections::{HashMap};
 use std::hash::{Hash, Hasher};
@@ -293,7 +294,10 @@ impl Product {
         }
         let mut reduced_terms: Vec<Term> = terms_set.into_iter().collect();
         reduced_terms.sort();
-        Product { _terms: reduced_terms, _optimized: self._optimized }
+        Product::new(reduced_terms)
+    }
+    pub fn push_term(&mut self, term: Term) {
+        self._terms.push(term);
     }
 }
 
@@ -389,6 +393,17 @@ impl BitOr<Expression> for Product {
         let mut new_products = vec![self];
         new_products.extend(rhs.products);
         Expression::new(new_products)
+    }
+}
+impl PartialOrd<Self> for Product {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for Product {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self._terms.len().cmp(&other._terms.len())
+            .then_with(|| self._terms.cmp(&other._terms))
     }
 }
 impl AbstractExpression for Product {
@@ -524,7 +539,18 @@ impl Expression {
         }
         Some(Expression::new(new_products))
     }
-
+    pub fn reduce(&self) -> Expression {
+        let mut products_set: IndexSet<Product> = IndexSet::new();
+        for product in self.products.iter() {
+            products_set.insert(product.reduce());
+        }
+        let mut reduced_products: Vec<Product> = products_set.into_iter().collect();
+        reduced_products.sort();
+        Expression::new(reduced_products)
+    }
+    pub fn push_product(&mut self, product: Product) {
+        self.products.push(product);
+    }
 }
 impl PartialEq<Expression> for &Expression {
     fn eq(&self, other: &Expression) -> bool {
