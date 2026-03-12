@@ -303,13 +303,37 @@ impl BidirectionalTape {
             rev_data: vec![],
         }
     }
+    pub fn read(&self, position: i64) -> TapeCellState {
+        if position >= 0 {
+            let index = position as usize;
+            self.data.get(index).copied().unwrap_or(0)
+        } else {
+            let index = (-position - 1) as usize;
+            self.rev_data.get(index).copied().unwrap_or(0)
+        }
+    }
+    pub fn write(&mut self, position: i64, value: TapeCellState) {
+        if position >= 0 {
+            let index = position as usize;
+            if index >= self.data.len() {
+                self.data.resize(index + 1, 0);
+            }
+            self.data[index] = value;
+        } else {
+            let index = (-position - 1) as usize;
+            if index >= self.rev_data.len() {
+                self.rev_data.resize(index + 1, 0);
+            }
+            self.rev_data[index] = value;
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct Tape {
     tape_index: usize,
     write_rules: Vec<WriteRule>,
-    allowed_states: HashSet<TapeCellState>,
+    allowed_states: IndexSet<TapeCellState>,
     data: BidirectionalTape
 }
 impl Tape {
@@ -387,7 +411,7 @@ pub struct BuildFrontierResult {
 pub struct MultiTape {
     tapes: Vec<Tape>,
     input_tape_key: TapeKey,
-    tape_names_map: HashMap<String, TapeKey>,
+    tape_names_map: IndexMap<String, TapeKey>,
     // rules that write to the cells of the current tape
     rules: Vec<WriteRule>,
 }

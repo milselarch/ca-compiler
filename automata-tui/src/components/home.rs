@@ -1,4 +1,5 @@
 use color_eyre::Result;
+use indexmap::IndexMap;
 use ratatui::{prelude::*, widgets::*};
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -9,6 +10,8 @@ use crate::{action::Action, config::Config};
 pub struct Home {
     command_tx: Option<UnboundedSender<Action>>,
     config: Config,
+    position: i64,
+    multi_tape_state: MultiTape,
 }
 
 impl Home {
@@ -42,7 +45,15 @@ impl Component for Home {
     }
 
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
+        let width = frame.area().width;
+
+
+
         frame.render_widget(Paragraph::new("hello world"), area);
+        for i in 0..10 {
+            let area = Rect::new(0, i, frame.area().width, 1);
+            frame.render_widget(Paragraph::new("Hello world!"), area);
+        }
         Ok(())
     }
 }
