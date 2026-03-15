@@ -287,7 +287,7 @@ impl WriteRule {
 }
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct BidirectionalTape {
     // cells extending rightwards
     data: Vec<TapeCellState>,
@@ -329,7 +329,7 @@ impl BidirectionalTape {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Tape {
     tape_index: usize,
     write_rules: Vec<WriteRule>,
@@ -407,7 +407,7 @@ pub struct BuildFrontierResult {
     pub frontier: IndexSet<TapeKey>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct MultiTape {
     tapes: Vec<Tape>,
     input_tape_key: TapeKey,
@@ -429,6 +429,16 @@ impl MultiTape {
     }
     pub fn get_tape_key(&self, name: &str) -> Option<&TapeKey> {
         self.tape_names_map.get(name)
+    }
+    pub fn get_tapes(&self) -> &Vec<Tape> {
+        &self.tapes
+    }
+    pub fn invert_tape_names_map(&self) -> IndexMap<TapeKey, String> {
+        let mut inverted_map = IndexMap::new();
+        for (name, key) in self.tape_names_map.iter() {
+            inverted_map.insert(*key, name.clone());
+        }
+        inverted_map
     }
     pub fn insert_named_tape(
         &mut self, name: String, tape: Tape

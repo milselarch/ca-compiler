@@ -1,3 +1,3 @@
-mod terms;
-mod composer;
-mod overlaps;
+pub mod terms;
+pub mod composer;
+pub mod overlaps;

@@ -3,13 +3,14 @@ name = "automata-tui"
 version = "0.1.0"
 edition = "2024"
 description = "Automata visualizer TUI"
-authors = ["milselarch <milselarch@gmail.com>"]
+authors = ["milselarch <milselarch@protonmail.com>"]
 build = "build.rs"
 
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+ca-compiler = { path= ".." }
 better-panic = "0.3.0"
 clap = { version = "4.5.20", features = [
     "derive",

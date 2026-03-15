@@ -5,6 +5,26 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use super::Component;
 use crate::{action::Action, config::Config};
+use py_ca_compiler::automata::composer::{MultiTape, Tape};
+
+const NAMED_COLORS: [Color; 16] = [
+    Color::Black,
+    Color::Red,
+    Color::Green,
+    Color::Yellow,
+    Color::Blue,
+    Color::Magenta,
+    Color::Cyan,
+    Color::Gray,
+    Color::DarkGray,
+    Color::LightRed,
+    Color::LightGreen,
+    Color::LightYellow,
+    Color::LightBlue,
+    Color::LightMagenta,
+    Color::LightCyan,
+    Color::White,
+];
 
 #[derive(Default)]
 pub struct Home {
@@ -16,8 +36,15 @@ pub struct Home {
 
 impl Home {
     pub fn new() -> Self {
-        Self::default()
+        let mut new_instance = Self::default();
+        let new_tape = Tape::default();
+        new_instance.multi_tape_state.insert_named_tape(
+            "tape0".to_string(),
+            new_tape
+        ).unwrap();
+        new_instance
     }
+
 }
 
 impl Component for Home {
@@ -46,7 +73,18 @@ impl Component for Home {
 
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
         let width = frame.area().width;
+        let tape_key_to_names_map = self.multi_tape_state.invert_tape_names_map();
+        let tapes = self.multi_tape_state.get_tapes();
 
+        for (index, tape) in tapes.iter().enumerate() {
+            let tape_key = tape.get_tape_key();
+            let tape_name = tape_key_to_names_map.get(&tape_key).unwrap();
+
+            let area = Rect::new(0, index as u16, width, 1);
+            let tape_contents = tape.get_contents();
+            let tape_str = format!("{}: {}", tape_name, tape_contents);
+            frame.render_widget(Paragraph::new(tape_str), area);
+        }
 
 
         frame.render_widget(Paragraph::new("hello world"), area);
