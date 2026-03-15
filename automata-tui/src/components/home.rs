@@ -7,7 +7,8 @@ use super::Component;
 use crate::{action::Action, config::Config};
 use py_ca_compiler::automata::composer::{MultiTape, Tape};
 
-const NAMED_COLORS: [Color; 16] = [
+const NUM_NAMED_COLORS: usize = 16;
+const NAMED_COLORS: [Color; NUM_NAMED_COLORS] = [
     Color::Black,
     Color::Red,
     Color::Green,
@@ -69,6 +70,19 @@ impl Component for Home {
             _ => {}
         }
         Ok(None)
+    }
+
+    fn render_for_tape(
+        &self, tape: &Tape, start_pos: i64,
+        width: i64
+    ) -> String {
+
+        for k in 0..width {
+            let pos = start_pos + k;
+            let cell_value = tape.read(pos);
+
+        }
+        todo!()
     }
 
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {

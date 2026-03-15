@@ -352,6 +352,12 @@ impl Tape {
     pub fn get_tape_key(&self) -> TapeKey {
         self.tape_index
     }
+    pub fn read(&self, position: i64) -> TapeCellState {
+        self.data.read(position)
+    }
+    pub fn write(&mut self, position: i64, value: TapeCellState) {
+        self.data.write(position, value);
+    }
 
     pub fn get_dependent_tape_keys(&self) -> IndexMap<TapeKey, IndexSet<WriteRule>> {
         /*
