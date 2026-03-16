@@ -398,7 +398,7 @@ impl Tape {
         );
         cell_expectation
     }
-    pub fn get_normal_states(&self) -> HashSet<TapeCellState> {
+    pub fn get_normal_states(&self) -> IndexSet<TapeCellState> {
         // get all states except for VOID_STATE and HALT_STATE
         self.allowed_states.clone().into_iter().filter(|x| {
             *x != VOID_STATE && *x != HALT_STATE

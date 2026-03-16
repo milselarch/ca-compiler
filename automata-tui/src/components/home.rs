@@ -73,14 +73,15 @@ impl Component for Home {
     }
 
     fn render_for_tape(
-        &self, tape: &Tape, start_pos: i64,
-        width: i64
+        &self, tape: &Tape, start_cell_pos: i64,
+        width: i64, cell_width: usize
     ) -> String {
+        let row_str = String::new();
+        let cell_pos = start_cell_pos;
 
-        for k in 0..width {
-            let pos = start_pos + k;
+        while row_str.len() < (width as usize) {
             let cell_value = tape.read(pos);
-
+            let cell_str = format!("{:0cell_width$}", cell_value);
         }
         todo!()
     }
@@ -99,7 +100,6 @@ impl Component for Home {
             let tape_str = format!("{}: {}", tape_name, tape_contents);
             frame.render_widget(Paragraph::new(tape_str), area);
         }
-
 
         frame.render_widget(Paragraph::new("hello world"), area);
         for i in 0..10 {
