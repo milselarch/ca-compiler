@@ -27,6 +27,13 @@ const NAMED_COLORS: [Color; NUM_NAMED_COLORS] = [
     Color::White,
 ];
 
+fn clip_string(s: &str, max_chars: usize) -> &str {
+    s.char_indices()
+        .nth(max_chars)
+        .map(|(idx, _)| &s[..idx])
+        .unwrap_or(s)
+}
+
 #[derive(Default)]
 pub struct Home {
     command_tx: Option<UnboundedSender<Action>>,
@@ -45,7 +52,27 @@ impl Home {
         ).unwrap();
         new_instance
     }
+    fn render_for_tape(
+        &self, tape: &Tape, start_cell_pos: i64,
+        width: i64, cell_width: usize
+    ) -> String {
+        let mut row_str = String::new();
+        let mut cell_pos = start_cell_pos;
 
+        loop {
+            let current_len = row_str.len();
+            let new_len = current_len + cell_width + 1; // +1 for the separator
+            if new_len > (width as usize) { break; }
+
+            let cell_value = tape.read(cell_pos);
+            let cell_str = format!("{:0cell_width$}", cell_value);
+
+            row_str.push_str(&cell_str);
+            row_str.push_str("|");
+            cell_pos += 1;
+        }
+        row_str
+    }
 }
 
 impl Component for Home {
@@ -70,20 +97,6 @@ impl Component for Home {
             _ => {}
         }
         Ok(None)
-    }
-
-    fn render_for_tape(
-        &self, tape: &Tape, start_cell_pos: i64,
-        width: i64, cell_width: usize
-    ) -> String {
-        let row_str = String::new();
-        let cell_pos = start_cell_pos;
-
-        while row_str.len() < (width as usize) {
-            let cell_value = tape.read(pos);
-            let cell_str = format!("{:0cell_width$}", cell_value);
-        }
-        todo!()
     }
 
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
