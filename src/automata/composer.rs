@@ -9,7 +9,7 @@ use crate::automata::overlaps::{AutomataDirectionStateOverlaps, DirectionStateOv
 use crate::automata::terms::{Expression, Product, Term};
 
 pub(crate) type TapeKey = usize;
-type TapeCellState = u32;
+pub type TapeCellState = u32;
 
 /*
 TODO:
@@ -334,6 +334,7 @@ pub struct Tape {
     tape_index: usize,
     write_rules: Vec<WriteRule>,
     allowed_states: IndexSet<TapeCellState>,
+    max_allowed_state: TapeCellState,
     data: BidirectionalTape
 }
 impl Tape {
@@ -346,8 +347,21 @@ impl Tape {
             write_rules,
             allowed_states: Default::default(),
             tape_index,
-            data: BidirectionalTape::new(data)
+            data: BidirectionalTape::new(data),
+            max_allowed_state: 0,
         }
+    }
+    pub fn add_write_rule(&mut self, write_rule: WriteRule) {
+        self.write_rules.push(write_rule);
+    }
+    pub fn add_allowed_state(&mut self, state: TapeCellState) {
+        self.allowed_states.insert(state);
+        if state > self.max_allowed_state {
+            self.max_allowed_state = state;
+        }
+    }
+    pub fn get_max_allowed_state(&self) -> TapeCellState {
+        self.max_allowed_state
     }
     pub fn get_tape_key(&self) -> TapeKey {
         self.tape_index

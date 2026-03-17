@@ -5,7 +5,7 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use super::Component;
 use crate::{action::Action, config::Config};
-use py_ca_compiler::automata::composer::{MultiTape, Tape};
+use py_ca_compiler::automata::composer::{MultiTape, Tape, TapeCellState};
 
 const NUM_NAMED_COLORS: usize = 16;
 const NAMED_COLORS: [Color; NUM_NAMED_COLORS] = [
@@ -65,7 +65,7 @@ impl Home {
             if new_len > (width as usize) { break; }
 
             let cell_value = tape.read(cell_pos);
-            let cell_str = format!("{:0cell_width$}", cell_value);
+            let cell_str = format!("{:0cell_width$x}", cell_value);
 
             row_str.push_str(&cell_str);
             row_str.push_str("|");
@@ -104,21 +104,34 @@ impl Component for Home {
         let tape_key_to_names_map = self.multi_tape_state.invert_tape_names_map();
         let tapes = self.multi_tape_state.get_tapes();
 
+        let mut global_max_allowed_state: TapeCellState = 0;
+        for tape in tapes.iter() {
+            let tape_max_allowed_state = tape.get_max_allowed_state();
+            global_max_allowed_state = TapeCellState::max(
+                global_max_allowed_state, tape_max_allowed_state
+            );
+        }
+
+        let cell_width = 1 + (
+            global_max_allowed_state as f64
+        ).log(16.0).ceil() as usize;
+
+        let area = Rect::new(0, 0, frame.area().width, 1);
+        frame.render_widget(Paragraph::new("hello world"), area);
+
         for (index, tape) in tapes.iter().enumerate() {
             let tape_key = tape.get_tape_key();
             let tape_name = tape_key_to_names_map.get(&tape_key).unwrap();
 
             let area = Rect::new(0, index as u16, width, 1);
-            let tape_contents = tape.get_contents();
-            let tape_str = format!("{}: {}", tape_name, tape_contents);
+            let tape_contents = self.render_for_tape(
+                tape, self.position, width as i64, cell_width
+            );
+            let tape_str = format!("{}", tape_contents);
+            let area = Rect::new(0, (index + 1) as u16, frame.area().width, 1);
             frame.render_widget(Paragraph::new(tape_str), area);
         }
 
-        frame.render_widget(Paragraph::new("hello world"), area);
-        for i in 0..10 {
-            let area = Rect::new(0, i, frame.area().width, 1);
-            frame.render_widget(Paragraph::new("Hello world!"), area);
-        }
         Ok(())
     }
 }
