@@ -1,22 +1,27 @@
+use std::cmp::Ordering;
 use rayon::iter::ParallelIterator;
-use std::collections::{HashMap};
+use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::ops::{BitOr, Mul};
+use indexmap::IndexSet;
 use rayon::iter::IntoParallelRefIterator;
 
+pub type CellState = u32;
 pub fn clip_after_space(s: String) -> String {
     s.split_whitespace().next().unwrap_or(&s).to_string()
 }
 
 pub trait AbstractExpression: Mul + BitOr + Eq + Sized {
     fn copy(&self) -> Self;
-    fn _sub(&self, substitutions: &HashMap<i64, u8>, default: u8) -> bool;
+    fn _sub(&self, substitutions: &HashMap<i64, CellState>, default: CellState) -> bool;
     fn offset(&self, offset: i64) -> Self;
     fn _expand(
-        &self, expansion_mapping: &HashMap<u8, Expression>
+        &self, expansion_mapping: &HashMap<CellState, Expression>,
+        include_debug_info: bool, fold: bool
     ) -> Expression;
     fn _expand_steps(
-        &self, expansion_mapping: &HashMap<u8, Expression>, steps: u64
+        &self, expansion_mapping: &HashMap<CellState, Expression>,
+        steps: u64, include_debug_info: bool, fold: bool
     ) -> Expression;
     fn to_expression(&self) -> Expression;
     fn _to_string(&self, name: &str) -> String;
@@ -24,13 +29,13 @@ pub trait AbstractExpression: Mul + BitOr + Eq + Sized {
     fn _assign_indexes_as_base(&mut self);
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExprPosition {
     pub (crate) product_idx: u64,
     pub (crate) term_idx: u64
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExprDebugInfo {
     pub (crate) expansion_index: u16,
     pub (crate) position_info: Option<ExprPosition>,
@@ -46,17 +51,34 @@ impl ExprDebugInfo {
     }
 }
 
-
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq)]
 pub struct Term {
     // position within the cellular automata tape
     pub (crate) position: i64,
-    pub state: u8,
+    pub state: CellState,
     // TODO: implement optimization
     pub (crate) _optimized: bool,
     // position of the term within an expression
     pub (crate) _debug_info: ExprDebugInfo,
 }
+
+impl PartialEq<Term> for Term {
+    fn eq(&self, other: &Self) -> bool {
+        self.position == other.position && self.state == other.state
+    }
+}
+impl PartialOrd<Term> for Term {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for Term {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.position.cmp(&other.position)
+            .then_with(|| self.state.cmp(&other.state))
+    }
+}
+
 impl Hash for Term {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.position.hash(state);
@@ -64,7 +86,7 @@ impl Hash for Term {
     }
 }
 impl Term {
-    pub fn new(position: i64, state: u8, optimized: bool) -> Term {
+    pub fn new(position: i64, state: CellState, optimized: bool) -> Term {
         Term {
             position, state, _optimized: optimized,
             _debug_info: ExprDebugInfo::spawn_empty(),
@@ -118,17 +140,6 @@ impl Term {
             }
         };
         clip_after_space(format!("{:?}", TERM_EXAMPLE))
-    }
-}
-impl PartialEq<Term> for &Term {
-    fn eq(&self, other: &Term) -> bool {
-        self.position == other.position && self.state == other.state
-    }
-}
-impl Eq for Term {}
-impl PartialEq<Term> for Term {
-    fn eq(&self, other: &Term) -> bool {
-        self.position == other.position && self.state == other.state
     }
 }
 
@@ -200,7 +211,9 @@ impl AbstractExpression for Term {
         self.clone()
     }
 
-    fn _sub(&self, substitutions: &HashMap<i64, u8>, default: u8) -> bool {
+    fn _sub(
+        &self, substitutions: &HashMap<i64, CellState>, default: CellState
+    ) -> bool {
         substitutions.get(&self.position).unwrap_or(&default) == &self.state
     }
 
@@ -208,19 +221,30 @@ impl AbstractExpression for Term {
         Term::new(self.position + offset, self.state, self._optimized)
     }
 
-    fn _expand(&self, expansion_mapping: &HashMap<u8, Expression>) -> Expression {
+    fn _expand(
+        &self, expansion_mapping: &HashMap<CellState, Expression>,
+        include_debug_info: bool, fold: bool
+    ) -> Expression {
         let mut expanded_expr = expansion_mapping[&self.state].offset(self.position);
-        expanded_expr._assign_parent_debug_info(&self._debug_info);
-        expanded_expr._assign_base_expansion_indexes();
+        if include_debug_info {
+            expanded_expr._assign_parent_debug_info(&self._debug_info);
+            expanded_expr._assign_base_expansion_indexes();
+        }
+        if fold {
+            expanded_expr = expanded_expr.to_normalized(true);
+        }
         expanded_expr
     }
 
     fn _expand_steps(
-        &self, expansion_mapping: &HashMap<u8, Expression>, steps: u64
+        &self, expansion_mapping: &HashMap<CellState, Expression>,
+        steps: u64, include_debug_info: bool, fold: bool
     ) -> Expression {
         let mut expr = self.to_expression();
         expr._assign_base_indexes();
-        expr._expand_steps(expansion_mapping, steps)
+        expr._expand_steps(
+            expansion_mapping, steps, include_debug_info, fold
+        )
     }
 
     fn to_expression(&self) -> Expression {
@@ -274,6 +298,43 @@ impl Product {
             let expr_position = ExprPosition { product_idx, term_idx: index as u64 };
             term.insert_expr_position(expr_position, false);
         }
+    }
+    pub fn reduce(&self) -> Product {
+        // reduce the product into the minimal number of terms by removing duplicates
+        let mut terms_set: IndexSet<Term> = IndexSet::new();
+        for term in self._terms.iter() {
+            terms_set.insert(term.copy());
+        }
+        let mut reduced_terms: Vec<Term> = terms_set.into_iter().collect();
+        reduced_terms.sort();
+        Product::new(reduced_terms)
+    }
+    pub fn push_term(&mut self, term: Term) {
+        self._terms.push(term);
+    }
+    pub fn to_hashset(&self) -> HashSet<&Term> {
+        HashSet::from_iter(self._terms.iter())
+    }
+    pub fn to_normalized_vec(&self, sort: bool) -> Vec<Term> {
+        /*
+        I use the term normalized here to mean that
+        the returned vector has no duplicate terms
+        */
+        let mut unique_terms_set: HashSet<&Term> = HashSet::new();
+        let mut unique_terms: Vec<Term> = Vec::new();
+
+        for term in self._terms.iter() {
+            if unique_terms_set.contains(term) { continue }
+            unique_terms_set.insert(term);
+            unique_terms.push(term.copy());
+        }
+        if sort { unique_terms.sort() }
+        unique_terms
+    }
+    pub fn to_normalized(&self) -> Self {
+        // TODO: should sort be passed in
+        let norm_terms = self.to_normalized_vec(true);
+        Product::new(norm_terms)
     }
 }
 
@@ -371,11 +432,22 @@ impl BitOr<Expression> for Product {
         Expression::new(new_products)
     }
 }
+impl PartialOrd<Self> for Product {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for Product {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self._terms.len().cmp(&other._terms.len())
+            .then_with(|| self._terms.cmp(&other._terms))
+    }
+}
 impl AbstractExpression for Product {
     fn copy(&self) -> Self {
         Product::new(self._terms.clone())
     }
-    fn _sub(&self, substitutions: &HashMap<i64, u8>, default: u8) -> bool {
+    fn _sub(&self, substitutions: &HashMap<i64, CellState>, default: CellState) -> bool {
         for term in self._terms.iter() {
             if !term._sub(substitutions, default) {
                 return false;
@@ -390,28 +462,42 @@ impl AbstractExpression for Product {
         }
         Product::new(new_terms)
     }
-    fn _expand(&self, expansion_mapping: &HashMap<u8, Expression>) -> Expression {
+    fn _expand(
+        &self, expansion_mapping: &HashMap<CellState, Expression>,
+        include_debug_info: bool, fold: bool
+    ) -> Expression {
         if self._terms.len() == 0 {
             return Expression::new(vec![]);
         }
 
         let first_term_opt = self._terms.get(0);
         let mut result = match first_term_opt {
-            Some(term) => term._expand(expansion_mapping),
+            Some(term) => term._expand(
+                expansion_mapping, include_debug_info, fold
+            ),
             None => return Expression::new(vec![])
         };
         for term in self._terms.iter().skip(1) {
-            result = result * term._expand(expansion_mapping);
+            result = result * term._expand(
+                expansion_mapping, include_debug_info, fold
+            );
         }
         result._assign_expr_positions();
         result
     }
-    fn _expand_steps(&self, expansion_mapping: &HashMap<u8, Expression>, steps: u64) -> Expression {
+    fn _expand_steps(
+        &self, expansion_mapping: &HashMap<CellState, Expression>,
+        steps: u64, include_debug_info: bool, fold: bool
+    ) -> Expression {
         let mut copy = self.copy();
         copy._assign_indexes_as_base();
-        let mut result = copy._expand(expansion_mapping);
+        let mut result = copy._expand(
+            expansion_mapping, include_debug_info, fold
+        );
         for _ in 1..steps {
-            result = result._expand(expansion_mapping);
+            result = result._expand(
+                expansion_mapping, include_debug_info, fold
+            );
         }
         result
     }
@@ -434,7 +520,7 @@ impl AbstractExpression for Product {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Expression {
     pub (crate) products: Vec<Product>,
     pub (crate) _optimized: bool
@@ -501,6 +587,39 @@ impl Expression {
             new_products.push(last_product.clone());
         }
         Some(Expression::new(new_products))
+    }
+    pub fn reduce(&self) -> Expression {
+        let mut products_set: IndexSet<Product> = IndexSet::new();
+        for product in self.products.iter() {
+            products_set.insert(product.reduce());
+        }
+        let mut reduced_products: Vec<Product> = products_set.into_iter().collect();
+        reduced_products.sort();
+        Expression::new(reduced_products)
+    }
+    pub fn push_product(&mut self, product: Product) {
+        self.products.push(product);
+    }
+    pub fn to_normalized_vec(&self, sort: bool) -> Vec<Product> {
+        /*
+        I use the term normalized here to mean that
+        the returned vector has no duplicate products
+        */
+        let mut unique_products_set: HashSet<Product> = HashSet::new();
+        let mut unique_products: Vec<Product> = Vec::new();
+
+        for un_normalized_product in self.products.iter() {
+            let product = un_normalized_product.to_normalized();
+            if unique_products_set.contains(&product) { continue }
+            unique_products_set.insert(product.copy());
+            unique_products.push(product.copy());
+        }
+        if sort { unique_products.sort() }
+        unique_products
+    }
+    pub fn to_normalized(&self, sort: bool) -> Self {
+        let norm_products = self.to_normalized_vec(sort);
+        Expression::new(norm_products)
     }
 }
 impl PartialEq<Expression> for &Expression {
@@ -607,7 +726,9 @@ impl AbstractExpression for Expression {
         }
         Expression { products, _optimized: self._optimized }
     }
-    fn _sub(&self, substitutions: &HashMap<i64, u8>, default: u8) -> bool {
+    fn _sub(
+        &self, substitutions: &HashMap<i64, CellState>, default: CellState
+    ) -> bool {
         for product in self.products.iter() {
             if product._sub(substitutions, default) {
                 return true;
@@ -622,7 +743,10 @@ impl AbstractExpression for Expression {
         }
         Expression::new(products)
     }
-    fn _expand(&self, expansion_mapping: &HashMap<u8, Expression>) -> Expression {
+    fn _expand(
+        &self, expansion_mapping: &HashMap<CellState, Expression>,
+        include_debug_info: bool, fold: bool
+    ) -> Expression {
         /*
         // non-parallelized implementation
         let mut expanded_expression = Expression::new(vec![]);
@@ -631,23 +755,28 @@ impl AbstractExpression for Expression {
             expanded_expression = expanded_expression | expanded_subexpression;
         }
         */
-        let mut expanded_expression = self.products.par_iter()
-            .map(|product| product._expand(expansion_mapping))
-            .reduce(
-                // sum up all the individual expanded products
-                || Expression::new(vec![]),
-                |a, b| { a | b }
-            );
-        expanded_expression._assign_expr_positions();
-        expanded_expression
+        let mut result = self.products.par_iter()
+            .map(|product|
+                product._expand(expansion_mapping, include_debug_info, fold)
+            ).reduce(
+            // sum up all the individual expanded products
+            || Expression::new(vec![]),
+            |a, b| { a | b }
+        );
+        if fold { result = result.to_normalized(true); }
+        if include_debug_info { result._assign_expr_positions(); }
+        result
     }
     fn _expand_steps(
-        &self, expansion_mapping: &HashMap<u8, Expression>, steps: u64
+        &self, expansion_mapping: &HashMap<CellState, Expression>,
+        steps: u64, include_debug_info: bool, fold: bool
     ) -> Expression {
         let mut result = self.copy();
         result._assign_base_indexes();
         for _ in 0..steps {
-            result = result._expand(expansion_mapping);
+            result = result._expand(
+                expansion_mapping, include_debug_info, fold
+            );
         }
         result
     }
@@ -724,15 +853,20 @@ mod tests {
         let pos_exp: Expression = spawn_test_pos_empty_expr();
         let neg_exp: Expression = spawn_test_neg_empty_expr();
 
-        let expr_mapping: HashMap<u8, Expression> = [
+        let expr_mapping: HashMap<CellState, Expression> = [
             (0, pos_exp.clone()),
             (1, neg_exp.clone())
         ].iter().cloned().collect();
 
         let pos_seed_exp = Term::new(0, 0, false);
         let neg_seed_exp = Term::new(0, 1, false);
-        let pos_expanded_expr = pos_seed_exp._expand_steps(&expr_mapping, 1);
-        let neg_expanded_expr = neg_seed_exp._expand_steps(&expr_mapping, 1);
+        let pos_expanded_expr = pos_seed_exp._expand_steps(
+            &expr_mapping, 1, false, false
+        );
+        let neg_expanded_expr =
+            neg_seed_exp._expand_steps(
+                &expr_mapping, 1, false, false
+            );
 
         println!("\nEXPANSION_CMP");
         println!("POS_EXPR {}", pos_expanded_expr._to_string("A"));
@@ -747,7 +881,7 @@ mod tests {
         let pos_exp: Expression = spawn_test_pos_empty_expr();
         let neg_exp: Expression = spawn_test_neg_empty_expr();
 
-        let expr_mapping: HashMap<u8, Expression> = [
+        let expr_mapping: HashMap<CellState, Expression> = [
             (0, pos_exp.clone()),
             (1, neg_exp.clone())
         ].iter().cloned().collect();
@@ -757,7 +891,10 @@ mod tests {
                 Term::new(1, 0, false)
             ;
         // let neg_seed_exp = Term::new(0, 1, false);
-        let pos_expanded_expr = pos_seed_exp._expand_steps(&expr_mapping, 1);
+        let pos_expanded_expr =
+            pos_seed_exp._expand_steps(
+                &expr_mapping, 1, false, false
+            );
         // let neg_expanded_expr = neg_seed_exp._expand_steps(&expr_mapping, 1);
 
         println!("\nEXPANSION_CMP_2");
@@ -770,7 +907,7 @@ mod tests {
         let pos_exp: Expression = spawn_test_pos_empty_expr();
         let neg_exp: Expression = spawn_test_neg_empty_expr();
 
-        let expr_mapping: HashMap<u8, Expression> = [
+        let expr_mapping: HashMap<CellState, Expression> = [
             (0, pos_exp.clone()),
             (1, neg_exp.clone())
         ].iter().cloned().collect();
@@ -782,7 +919,10 @@ mod tests {
 
         for steps in 1..3 {
             println!("\nEXPANSION_CMP_DEBUG_{}", steps);
-            let pos_expanded_expr = pos_seed_prod._expand_steps(&expr_mapping, steps);
+            let pos_expanded_expr =
+                pos_seed_prod._expand_steps(
+                    &expr_mapping, steps, true, false
+                );
             validate_debug_info_exists(&pos_expanded_expr);
         }
     }
@@ -792,7 +932,7 @@ mod tests {
         let pos_exp: Expression = spawn_test_pos_empty_expr();
         let neg_exp: Expression = spawn_test_neg_empty_expr();
 
-        let expr_mapping: HashMap<u8, Expression> = [
+        let expr_mapping: HashMap<CellState, Expression> = [
             (0, pos_exp.clone()),
             (1, neg_exp.clone())
         ].iter().cloned().collect();
@@ -802,7 +942,10 @@ mod tests {
 
         for steps in 1..3 {
             println!("\nEXPANSION_CMP_DEBUG_{}", steps);
-            let pos_expanded_expr = pos_seed_term._expand_steps(&expr_mapping, steps);
+            let pos_expanded_expr =
+                pos_seed_term._expand_steps(
+                    &expr_mapping, steps, true, false
+                );
             validate_debug_info_exists(&pos_expanded_expr);
         }
     }
@@ -812,7 +955,7 @@ mod tests {
         let pos_exp: Expression = spawn_test_pos_empty_expr();
         let neg_exp: Expression = spawn_test_neg_empty_expr();
 
-        let expr_mapping: HashMap<u8, Expression> = [
+        let expr_mapping: HashMap<CellState, Expression> = [
             (0, pos_exp.clone()),
             (1, neg_exp.clone())
         ].iter().cloned().collect();
@@ -822,7 +965,10 @@ mod tests {
 
         for steps in 1..3 {
             println!("\nEXPANSION_CMP_DEBUG_{}", steps);
-            let pos_expanded_expr = pos_seed_term._expand_steps(&expr_mapping, steps);
+            let pos_expanded_expr =
+                pos_seed_term._expand_steps(
+                    &expr_mapping, steps, true, false
+                );
 
             for (product_index, product) in
                 pos_expanded_expr.products.iter().enumerate()
