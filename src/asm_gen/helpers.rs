@@ -20,9 +20,7 @@ impl<K: std::hash::Hash + Eq + Clone, V: Clone> IntoIterator for AppendOnlyHashM
 }
 impl<K: std::hash::Hash + Eq + Clone, V: Clone> AppendOnlyHashMap<K,V> {
     pub fn new() -> Self {
-        AppendOnlyHashMap {
-        map: HashMap::new()
-    }
+        AppendOnlyHashMap { map: HashMap::new() }
     }
     pub fn insert(&mut self, key: K, value: V) -> Result<Option<V>, ()> {
         if self.map.contains_key(&key) {
