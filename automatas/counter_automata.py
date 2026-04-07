@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from enum import StrEnum, IntEnum
 
+from automatas.rule_generator import AutomataTransitionsGroup
+
 
 class Tape(object):
     def __init__(self):
@@ -25,17 +27,17 @@ class Tape(object):
         return self.read_at(position)
 
 
-class DataTypeState(IntEnum):
-    VOID = 0
-    DATA = 1
-
-
-class SignalsTapeState(IntEnum):
-    VOID = 0
-    EXP_REDUCE_START = 1
-    SWEEP_RIGHT = 2
-    SWEEP_LEFT = 3
-    LEFT_PRE_ADD = 4
+class FixedTapeStates(IntEnum):
+    VOID = 0b0000000
+    HALT = 0b0000001
+    # initial input on the data tape
+    DATA = 0b0000010
+    # counter accumulator start marker on far right
+    # should not overlap with any other states
+    START = 0b000100
+    # carry state on counter tape
+    # overlaps with signals and data states
+    CARRY = 0b001000
 
 
 class CounterAutomataBuilder(object):
@@ -43,5 +45,12 @@ class CounterAutomataBuilder(object):
         assert base >= 2, "Base must be at least 2"
         self.base = base
 
-    def build_automata(self):
-        raise NotImplementedError()
+    def build_transitions_group(self) -> AutomataTransitionsGroup:
+        # TODO: actually precompute the number of states beforehand
+        # noinspection PyTypeChecker
+        transitions_group = AutomataTransitionsGroup.spawn_new(float('inf'))
+
+        transitions_group.add_transition(
+            (A)
+        )
+        return transitions_group

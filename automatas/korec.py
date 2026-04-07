@@ -24,7 +24,7 @@ RULE_MATRIX: dict[int, dict[int, int]] = {
 class CollatzCA(object):
     @staticmethod
     def to_base(
-            val: int, base: int, left_lsb: bool = True
+        val: int, base: int, left_lsb: bool = True
     ) -> list[int]:
         digits = []
 
