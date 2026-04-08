@@ -1,9 +1,41 @@
+from __future__ import annotations
+
 import dataclasses
 import math
 import typing
 import numpy as np
 
-from py_ca_compiler import A, PyExpression, PyProduct
+from typing import Final, Literal, Type, TypeVar, Generic
+from py_ca_compiler import A, PyExpression, PyProduct, D
+
+T = TypeVar('T', bound=typing.Union[A, D])
+
+
+@dataclasses.dataclass
+class MultiTapeAutomataTransitionsGroup(object):
+    """
+    contains a set of transitions for a multi-tape cellular automaton
+    defined as a mapping from input states to output state
+    map D[] -> (output tape_no, output state)
+    """
+    transitions: list[
+        tuple[
+            tuple[D, ...],
+            tuple[int, int]
+        ]
+    ]
+
+    @classmethod
+    def spawn_new(cls) -> MultiTapeAutomataTransitionsGroup:
+        return cls(transitions=[])
+
+    def add_transition(
+        self, input_terms: tuple[D, ...],
+        output_tape_no: int, output_cell_state: int
+    ):
+        self.transitions.append((
+            input_terms, (output_tape_no, output_cell_state)
+        ))
 
 
 @dataclasses.dataclass
@@ -45,7 +77,7 @@ class TransitionMatrix(object):
         assert isinstance(data, np.ndarray)
         self._data = data
 
-    def __matmul__(self, other: 'TransitionMatrix') -> 'TransitionMatrix':
+    def __matmul__(self, other: TransitionMatrix) -> TransitionMatrix:
         assert isinstance(other, TransitionMatrix)
         assert self._data.shape == other._data.shape
         result_data = self._data @ other._data
@@ -72,7 +104,7 @@ class TransitionMatrix(object):
     @classmethod
     def from_hex_encode(
         cls, encoded_str: str, size: int
-    ) -> 'TransitionMatrix':
+    ) -> TransitionMatrix:
         assert encoded_str.startswith('0x')
         int_value = int(encoded_str, 16)
         binary_str = bin(int_value)[2:]  # Remove '0b' prefix
@@ -92,12 +124,12 @@ class TransitionMatrix(object):
         return TransitionMatrix(data)
 
     @classmethod
-    def build_identity(cls, size: int) -> 'TransitionMatrix':
+    def build_identity(cls, size: int) -> TransitionMatrix:
         identity_data = np.eye(size, dtype=np.bool)
         return TransitionMatrix(identity_data)
 
     @classmethod
-    def from_state(cls, state: int, num_states: int) -> 'TransitionMatrix':
+    def from_state(cls, state: int, num_states: int) -> TransitionMatrix:
         assert 0 <= state < num_states
         data = np.zeros((1, num_states), dtype=np.bool)
         data[0, state] = True
@@ -193,8 +225,8 @@ class AutomataRuleSet(object):
 
     def get_num_products(self, timesteps: int) -> int:
         return self.base_num_products ** (
-                (-1 + self.base_terms_per_product ** timesteps) //
-                (-1 + self.base_terms_per_product)
+            (-1 + self.base_terms_per_product ** timesteps) //
+            (-1 + self.base_terms_per_product)
         )
 
     def get_num_terms(self, timesteps: int) -> int:

@@ -2,6 +2,7 @@ use pyo3::prelude::*;
 
 use crate::potato_cpu::py_potato_cpu_tester::PyPotatoCPUTester;
 use crate::automata::py_terms::{A, PyProduct, PyExpression};
+use crate::automata::py_terms_multitape::{PyMultiTapeExpression, PyMultiTapeProduct, D};
 
 pub mod lexer;
 pub mod potato_cpu;
@@ -25,5 +26,9 @@ fn py_ca_compiler(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<A>()?;
     module.add_class::<PyProduct>()?;
     module.add_class::<PyExpression>()?;
+    
+    module.add_class::<D>()?;
+    module.add_class::<PyMultiTapeProduct>()?;
+    module.add_class::<PyMultiTapeExpression>()?;
     Ok(())
 }

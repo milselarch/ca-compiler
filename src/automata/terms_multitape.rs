@@ -232,7 +232,8 @@ impl AbstractMultiTapeExpression for MultiTapeTerm {
         ])
     }
     fn _to_string(&self, name: &str) -> String {
-        format!("{}({},{:?})", name, self.position, self.state)
+        let (tape_no, cell_state) = self.state;
+        format!("{}({},{},{})", name, self.position, tape_no, cell_state)
     }
     fn _get_num_terms(&self) -> usize {
         1

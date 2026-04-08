@@ -1,0 +1,396 @@
+from __future__ import annotations
+
+import math
+import copy
+
+
+class BinNumber(object):
+    def __init__(
+        self, num: list[int] | int, num_bits: int = 32,
+        hex_val: int | None = None, signed: bool = True,
+        editable: bool = False
+    ):
+        self.num_bits = num_bits
+        self.signed = signed
+        self.editable = editable
+
+        if isinstance(num, list):
+            self.bits = copy.deepcopy(num)
+            assert len(self.bits) == num_bits
+        else:
+            assert isinstance(num, int)
+
+            if num < 0:
+                assert signed
+                negative = True
+                num = num + 2 ** (num_bits - 1)
+            else:
+                negative = False
+
+            self.bits = self.fill_bits(
+                num, num_bits=num_bits, negative=negative
+            )
+
+        if hex_val is not None:
+            assert hex_val == self.to_decimal(
+                self.bits, False
+            )
+
+    def enable_edit(self):
+        self.editable = True
+        return self
+
+    def disable_edit(self):
+        self.editable = False
+        return self
+
+    def __int__(self):
+        return self.value
+
+    def __setitem__(self, index: int, bit_value: int):
+        assert self.editable
+        assert bit_value in (0, 1)
+        assert index >= 0
+
+        bit_index = self.invert_index(index)
+        self.bits[bit_index] = bit_value
+
+    @staticmethod
+    def _sra(x, n: int, m: int):
+        # shift x of n bits right by m
+        if x & 2 ** (n - 1) != 0:  # MSB is 1, i.e. x is negative
+            filler = int('1' * m + '0' * (n - m), 2)
+            x = (x >> m) | filler  # fill in 0's with 1's
+            return x
+        else:
+            return x >> m
+
+    @staticmethod
+    def _sla(x, n: int, m: int):
+        # shift x of n bits left by m
+        if x & 2 ** (n - 1) != 0:  # MSB is 1, i.e. x is negative
+            filler = int('1' * m + '0' * (n - m), 2)
+            x = (x << m) | filler  # fill in 0's with 1's
+            return x
+        else:
+            return x << m
+
+    def shift_right_arith(self, bits: BinNumber | int) -> BinNumber:
+        if isinstance(bits, BinNumber):
+            bits = bits.value
+
+        value = self._sra(self.value, self.num_bits, bits)
+        return self.__class__(
+            num=value, num_bits=self.num_bits,
+            signed=self.signed
+        )
+
+    def shift_left_arith(self, bits: BinNumber | int) -> BinNumber:
+        if isinstance(bits, BinNumber):
+            bits = bits.value
+
+        value = self._sla(self.value, self.num_bits, bits)
+        return self.__class__(
+            num=value, num_bits=self.num_bits,
+            signed=self.signed
+        )
+
+    def to_signed(self) -> BinNumber:
+        bits = copy.deepcopy(self.bits)
+        return self.__class__(
+            num=bits, num_bits=self.num_bits,
+            signed=True
+        )
+
+    def to_unsigned(self) -> BinNumber:
+        bits = copy.deepcopy(self.bits)
+        return self.__class__(
+            num=bits, num_bits=self.num_bits,
+            signed=False
+        )
+
+    def __lshift__(self, bits) -> BinNumber:
+        new_val = self.value << bits
+        return self.__class__(
+            num=new_val, num_bits=self.num_bits,
+            signed=self.signed
+        )
+
+    def __rshift__(self, bits) -> BinNumber:
+        new_val = self.value >> bits
+        return self.__class__(
+            num=new_val, num_bits=self.num_bits,
+            signed=self.signed
+        )
+
+    def invert_index(self, index: int):
+        return self.num_bits - index - 1
+
+    def __len__(self):
+        return len(self.bits)
+
+    def __getitem__(self, index: int | slice):
+        if isinstance(index, int):
+            assert index >= 0
+            return self.bits[self.invert_index(index)]
+        else:
+            start_index = index.stop
+            end_index = index.start + 1
+            bits = self.bits[::-1][start_index:end_index][::-1]
+            return self.__class__(
+                num=bits, num_bits=len(bits),
+                signed=self.signed
+            )
+
+    @property
+    def is_negative(self) -> bool:
+        return self.bits[0] == 1
+
+    @property
+    def is_positive(self) -> bool:
+        return not self.is_negative
+
+    def to_bin(self, header: str = '0b'):
+        return header + ''.join([str(bit) for bit in self.bits])
+
+    def to_decimal(
+        self, bits: list[int] | None = None, signed: bool | None = None
+    ) -> int:
+        if signed is None:
+            signed = self.signed
+
+        number = 0
+        if bits is None:
+            bits = self.bits
+
+        bits = copy.deepcopy(bits)[::-1]
+
+        for k, bit in enumerate(bits):
+            bit_val = bit * 2 ** k
+            if signed and (k == len(bits) - 1):
+                bit_val *= -1
+
+            number += bit_val
+
+        return number
+
+    @property
+    def value(self) -> int:
+        return self.to_decimal()
+
+    @property
+    def msb(self) -> int:
+        return self.bits[0]
+
+    def sign_extend(self, num_bits: int) -> BinNumber:
+        assert num_bits >= self.num_bits
+        padding = [self.msb] * (num_bits - self.num_bits)
+        new_bits = padding + self.bits
+
+        return self.__class__(
+            num=copy.copy(new_bits),
+            num_bits=num_bits, signed=self.signed
+        )
+
+    def editable_copy(self) -> BinNumber:
+        return self.copy(editable=True)
+
+    def copy(self, editable: bool = False) -> BinNumber:
+        for bit in self.bits:
+            assert bit in (0, 1)
+
+        return self.__class__(
+            num=copy.copy(self.bits),
+            num_bits=self.num_bits, signed=self.signed,
+            editable=editable
+        )
+
+    def __add__(self, other: BinNumber | int) -> BinNumber:
+        if isinstance(other, self.__class__):
+            other = other.value
+
+        new_val = self.value + other
+        # print('add val', self, self.value, other, new_val)
+        new_bin_no = self.__class__(
+            num=new_val, num_bits=self.num_bits,
+            signed=self.signed
+        )
+
+        try:
+            assert new_bin_no.value == new_val
+        except AssertionError as e:
+            print('VAL_MISMATCH', new_bin_no.value, new_val)
+            raise e
+
+        return new_bin_no
+
+    def __sub__(self, other: BinNumber | int) -> BinNumber:
+        if isinstance(other, self.__class__):
+            other = other.value
+
+        new_val = self.value - other
+        print('new val', new_val)
+        return self.__class__(
+            num=new_val, num_bits=self.num_bits,
+            signed=self.signed
+        )
+
+    def __mul__(self, other: BinNumber | int) -> BinNumber:
+        value = self.value * other.value
+        return self.__class__(
+            num=value, num_bits=self.num_bits,
+            signed=self.signed
+        )
+
+    def __truediv__(self, other: BinNumber | int) -> BinNumber:
+        return self // other
+
+    def __floordiv__(self, other: BinNumber | int) -> BinNumber:
+        value = self.value // other.value
+        return self.__class__(
+            num=value, num_bits=self.num_bits,
+            signed=self.signed
+        )
+
+    def __mod__(self, other: BinNumber | int) -> BinNumber:
+        value = self.value % other.value
+        return self.__class__(
+            num=value, num_bits=self.num_bits,
+            signed=self.signed
+        )
+
+    def __invert__(self) -> BinNumber:
+        bits = copy.deepcopy(self.bits)
+        print('old bits', bits)
+        for k in range(len(bits)):
+            bits[k] = 1 - bits[k]
+
+        # print('new bits', bits)
+        value = self.to_decimal(bits)
+        inv_bin_no = self.__class__(
+            num=value, num_bits=self.num_bits,
+            signed=self.signed
+        )
+
+        print(f'inv_value', value, inv_bin_no)
+        return inv_bin_no
+
+    def __and__(self, other: BinNumber) -> BinNumber:
+        assert self.num_bits == other.num_bits
+        l_bits = copy.deepcopy(self.bits)
+        r_bits = copy.deepcopy(other.bits)
+
+        for k in range(len(l_bits)):
+            l_bits[k] &= r_bits[k]
+
+        return self.__class__(
+            num=l_bits, num_bits=self.num_bits,
+            signed=self.signed
+        )
+
+    def __or__(self, other: BinNumber) -> BinNumber:
+        assert self.num_bits == other.num_bits
+        l_bits = copy.deepcopy(self.bits)
+        r_bits = copy.deepcopy(other.bits)
+
+        for k in range(len(l_bits)):
+            l_bits[k] |= r_bits[k]
+
+        return self.__class__(
+            num=l_bits, num_bits=self.num_bits,
+            signed=self.signed
+        )
+
+    def __xor__(self, other: BinNumber) -> BinNumber:
+        assert self.num_bits == other.num_bits
+        l_bits = copy.deepcopy(self.bits)
+        r_bits = copy.deepcopy(other.bits)
+
+        for k in range(len(l_bits)):
+            l_bits[k] ^= r_bits[k]
+
+        return self.__class__(
+            num=l_bits, num_bits=self.num_bits,
+            signed=self.signed
+        )
+
+    def __neg__(self) -> BinNumber:
+        return ~self + 1
+
+    @staticmethod
+    def fill_bits(num, num_bits: int = 32, negative: bool = False):
+        str_num = bin(num)
+        bits = [0] * num_bits
+
+        for k, digit in enumerate(str_num[::-1]):
+            if digit == 'b':
+                break
+
+            digit = 1 if digit == '1' else 0
+            try:
+                bits[-1-k] = digit
+            except IndexError as e:
+                break
+
+        if negative:
+            assert bits[0] == 0
+            bits[0] = 1
+
+        return bits
+
+    def __bool__(self):
+        return self.value != 0
+
+    def __eq__(self, other):
+        if isinstance(other, BinNumber):
+            return self.value == other.value
+
+        return self.value == other
+
+    def __lt__(self, other):
+        return self.value < other.value
+
+    def __gt__(self, other):
+        return self.value > other.value
+
+    def __le__(self, other):
+        return self.value <= other.value
+
+    def __ge__(self, other):
+        return self.value >= other.value
+
+    @property
+    def is_zero(self) -> bool:
+        return sum(self.bits) == 0
+
+    def to_hex(self, num: int | None = None) -> str:
+        if num is None:
+            num = self.to_decimal(signed=False)
+
+        str_num = hex(num)[2:]
+        length = math.ceil(self.num_bits / 4)
+        padded_hex = '0x' + str_num.zfill(length)
+        return padded_hex
+
+    def __repr__(self):
+        name = self.__class__.__name__
+        num = self.to_decimal()
+        return (
+            f'{name}({num}, '
+            f'num_bits={self.num_bits}, '
+            f'hex_val={self.to_hex()}'
+            ')'
+        )
+
+
+if __name__ == '__main__':
+    an = BinNumber(0)
+    bn = BinNumber(0x55555555)
+    cn = BinNumber(0x80000000)
+    print(an, bn, cn)
+    print(bn.to_bin())
+
+    print('inv', ~bn)
+    print('inv inv', ~~bn)
+    print('negative', -bn)
+    print('SUB', an-bn)
