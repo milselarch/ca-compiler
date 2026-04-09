@@ -38,18 +38,27 @@ ST_REDUCE_START: Final[int] = 0b11
 CT_DATA: Final[int] = 0b1
 
 
-def prefill_tape(
-    position: int, tape_no: int
-) -> Callable[[int], D]:
+def prefill_tape(position: int, tape_no: int) -> Callable[[int], D]:
     def set_cell_state(cell_state: int) -> D:
         return D(position, tape_no, cell_state)
 
     return set_cell_state
 
 
+def prefill_tape_no(tape_no: int) -> Callable[[int, int], D]:
+    def set_position_and_cell_state(position: int, cell_state: int) -> D:
+        return D(position, tape_no, cell_state)
+
+    return set_position_and_cell_state
+
+
 LEFT: Final[int] = -1
 MID: Final[int] = 0
 RIGHT: Final[int] = 1
+
+ST: Final[Callable[[int, int], D]] = prefill_tape_no(SIGNALS_TAPE)
+DT: Final[Callable[[int, int], D]] = prefill_tape_no(DATA_TAPE)
+CT: Final[Callable[[int, int], D]] = prefill_tape_no(CARRY_TAPE)
 
 ST_LEFT: Final[Callable[[int], D]] = prefill_tape(LEFT, SIGNALS_TAPE)
 ST_MID: Final[Callable[[int], D]] = prefill_tape(MID, SIGNALS_TAPE)
@@ -86,94 +95,108 @@ class Tape(object):
         return self.read_at(position)
 
 
+def build_st_counter_state(counter_digit: int, paused: bool) -> int:
+    """
+    For the signals tape (LSB first to MSB last):
+    - bits[0] - whether the rest of the state is a counter state
+        - bits[0] == 0: the state is a counter state
+            - bits[1] - whether the counter state is paused or not
+            - bits[2...] - 1 + the value of the counter state
+              (in base self.base)
+              we add one to the counter value to distinguish between the
+              void state (counter value 0) and the counter state with
+              value 0
+        - bits[0] == 1: state is a non-counter state
+            - bits[1] == 1: the state is a REDUCE_START state
+    """
+    assert counter_digit >= 0, "Counter digit must be non-negative"
+    # noinspection PyRedundantParentheses
+    return (
+        (0b00) |  # bit 0: counter state
+        (0b10 if paused else 0b00) |  # bit 1: paused or not
+        ((counter_digit+1) << 2)  # bits 2...: counter value
+    )
+
+
+def paused_counter(counter_digit: int) -> int:
+    """
+    Encodes the paused counter cell state in the signals tape
+    Generally, paused counter states occur in the outputs of
+    transition rules rather than the inputs
+
+    :param counter_digit:
+    digit value of the counter state
+    :return:
+    """
+    return build_st_counter_state(counter_digit, paused=True)
+
+
+def active_counter(counter_digit: int) -> int:
+    """
+    Encodes the active counter cell state in the signals tape
+    Generally, active counter states occur in the inputs of
+    transition rules rather than the outputs
+
+    :param counter_digit:
+    digit value of the counter state
+    :return:
+    """
+    return build_st_counter_state(counter_digit, paused=False)
+
+
+def from_counter_state(state: int) -> tuple[int, bool]:
+    """
+    :param state: counter state in the signals tape encoding
+    :return:
+    - paused: whether the counter state is paused or not
+    - counter_digit: the value of the counter state (in base self.base)
+    """
+    paused = (state & 0b10) != 0
+    counter_digit = (state >> 2) - 1
+    return counter_digit, paused
+
+
 class CounterAutomataBuilder(object):
     def __init__(self, base: int = 2):
         assert base >= 2, "Base must be at least 2"
         self.base = base
 
-    @classmethod
-    def build_st_counter_state(
-        cls, paused: bool, counter_digit: int
-    ) -> int:
-        """
-        For the signals tape (LSB first to MSB last):
-        - bits[0] - whether the rest of the state is a counter state
-            - bits[0] == 0: the state is a counter state
-                - bits[1] - whether the counter state is paused or not
-                - bits[2...] - 1 + the value of the counter state
-                  (in base self.base)
-                  we add one to the counter value to distinguish between the
-                  void state (counter value 0) and the counter state with
-                  value 0
-            - bits[0] == 1: state is a non-counter state
-                - bits[1] == 1: the state is a REDUCE_START state
-        """
-        assert counter_digit >= 0, "Counter digit must be non-negative"
-        # noinspection PyRedundantParentheses
-        return (
-            (0b00) |  # bit 0: counter state
-            (0b10 if paused else 0b00) |  # bit 1: paused or not
-            ((counter_digit+1) << 2)  # bits 2...: counter value
-        )
-
-    @classmethod
-    def from_counter_state(cls, state: int) -> tuple[bool, int]:
-        """
-        :param state: counter state in the signals tape encoding
-        :return:
-        - paused: whether the counter state is paused or not
-        - counter_digit: the value of the counter state (in base self.base)
-        """
-        paused = (state & 0b10) != 0
-        counter_digit = (state >> 2) - 1
-        return paused, counter_digit
-
     def build_transitions_group(self) -> MultiTapeAutomataTransitionsGroup:
-        # TODO: actually precompute the number of states beforehand
+        # TODO: actually precompute the number of states beforehand (?)
+        max_counter_digit = self.base-1
+
         # noinspection PyTypeChecker
         transitions_group = MultiTapeAutomataTransitionsGroup.spawn_new()
-        build_st = self.build_st_counter_state
 
         # mark exponential bit reduction start
         transitions_group.add_transition(
             input_terms=(ST_LEFT(VOID), DT_LEFT(DT_DATA), ST_MID(VOID)),
             output_tape_no=SIGNALS_TAPE, output_cell_state=ST_REDUCE_START
         )
-        # pause to unpause
-        for counter_digit in range(self.base):
-            transitions_group.add_transition(
-                input_terms=(ST(0, build_st(True, counter_digit)),),
-                output_tape_no=SIGNALS_TAPE,
-                output_cell_state=build_st(False, counter_digit)
-            )
-
         # begin the counter accumulator
         transitions_group.add_transition(
             input_terms=(ST(0, VOID), DT(0, DT_DATA), ST(1, VOID)),
             output_tape_no=SIGNALS_TAPE,
-            output_cell_state=build_st(True, counter_digit=1)
+            output_cell_state=paused_counter(1)
         )
-
         # shift leftmost counter value cell and increment
-        max_counter_digit = self.base-1
-
         for counter_digit in range(self.base-1):
             if counter_digit == max_counter_digit:
                 # overflow digit from max_counter_digit to 0 and add new
                 # max_counter_digit at the end
                 transitions_group.add_transition(
                     input_terms=(
-                        ST(0, VOID),
-                        ST(1, build_st(False, max_counter_digit))
+                        ST_MID(VOID),
+                        ST_RIGHT(active_counter(max_counter_digit))
                     ),
                     output_tape_no=SIGNALS_TAPE,
-                    output_cell_state=build_st(True, 0),
+                    output_cell_state=paused_counter(0),
                 )
                 # spawn a carry cell state to propagate to digits to the right
                 transitions_group.add_transition(
                     input_terms=(
-                        ST(0, VOID),
-                        ST(-1, build_st(False, max_counter_digit))
+                        ST_MID(VOID),
+                        ST_MID(active_counter(max_counter_digit))
                     ),
                     output_tape_no=CARRY_TAPE,
                     output_cell_state=DT_DATA,
@@ -182,11 +205,41 @@ class CounterAutomataBuilder(object):
                 assert counter_digit < max_counter_digit
                 transitions_group.add_transition(
                     input_terms=(
-                        ST(-1, VOID),
-                        ST(0, build_st(False, counter_digit)),
+                        ST_MID(VOID),
+                        ST_RIGHT(active_counter(counter_digit)),
                     ),
                     output_tape_no=CARRY_TAPE,
                     output_cell_state=CT_DATA,
                 )
+
+        # apply carry cells to counter cells
+        # carry cells stay stationary will counter cells move left
+        for counter_digit in range(self.base):
+            for right_counter_digit in range(self.base):
+                # there is no carry state to apply, shift left
+                transitions_group.add_transition(
+                    input_terms=(
+                        ST_MID(active_counter(counter_digit)),
+                        ST_RIGHT(active_counter(right_counter_digit)),
+                        CT_MID(VOID)
+                    ),
+                    output_tape_no=SIGNALS_TAPE,
+                    output_cell_state=paused_counter(right_counter_digit)
+                )
+                # if there is a carry but no overflow (counter digit < base)
+                transitions_group.add_transition(
+
+                )
+
+
+        # paused counter states will transition to unpause
+        # this should be the one place where paused counter states occur in
+        # the inputs of transition rules
+        for counter_digit in range(self.base):
+            transitions_group.add_transition(
+                input_terms=(ST_MID(paused_counter(counter_digit)),),
+                output_tape_no=SIGNALS_TAPE,
+                output_cell_state=active_counter(counter_digit)
+            )
 
         return transitions_group
