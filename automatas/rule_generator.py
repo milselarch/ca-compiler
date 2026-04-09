@@ -12,6 +12,12 @@ T = TypeVar('T', bound=typing.Union[A, D])
 
 
 @dataclasses.dataclass
+class MultiTapeOutput:
+    tape_no: int
+    tape_cell_state: int
+
+
+@dataclasses.dataclass
 class MultiTapeAutomataTransitionsGroup(object):
     """
     contains a set of transitions for a multi-tape cellular automaton
@@ -21,7 +27,7 @@ class MultiTapeAutomataTransitionsGroup(object):
     transitions: list[
         tuple[
             tuple[D, ...],
-            tuple[int, int]
+            MultiTapeOutput
         ]
     ]
 
@@ -34,7 +40,10 @@ class MultiTapeAutomataTransitionsGroup(object):
         output_tape_no: int, output_cell_state: int
     ):
         self.transitions.append((
-            input_terms, (output_tape_no, output_cell_state)
+            input_terms, MultiTapeOutput(
+                tape_no=output_tape_no,
+                tape_cell_state=output_cell_state
+            )
         ))
 
 
