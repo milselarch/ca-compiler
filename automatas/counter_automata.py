@@ -180,8 +180,8 @@ class CounterAutomataBuilder(object):
             output_cell_state=paused_counter(1)
         )
         # shift leftmost counter value cell and increment
-        for counter_digit in range(self.base-1):
-            if counter_digit == max_counter_digit:
+        for digit in range(self.base-1):
+            if digit == max_counter_digit:
                 # overflow digit from max_counter_digit to 0 and add new
                 # max_counter_digit at the end
                 transitions_group.add_transition(
@@ -202,11 +202,11 @@ class CounterAutomataBuilder(object):
                     output_cell_state=DT_DATA,
                 )
             else:
-                assert counter_digit < max_counter_digit
+                assert digit < max_counter_digit
                 transitions_group.add_transition(
                     input_terms=(
                         ST_MID(VOID),
-                        ST_RIGHT(active_counter(counter_digit)),
+                        ST_RIGHT(active_counter(digit)),
                     ),
                     output_tape_no=CARRY_TAPE,
                     output_cell_state=CT_DATA,
@@ -214,32 +214,87 @@ class CounterAutomataBuilder(object):
 
         # apply carry cells to counter cells
         # carry cells stay stationary will counter cells move left
-        for counter_digit in range(self.base):
-            for right_counter_digit in range(self.base):
-                # there is no carry state to apply, shift left
+        for mid_digit in range(self.base):
+            for right_digit in range(self.base):
+                # when there is no carry state to apply, shift left
                 transitions_group.add_transition(
                     input_terms=(
-                        ST_MID(active_counter(counter_digit)),
-                        ST_RIGHT(active_counter(right_counter_digit)),
+                        ST_MID(active_counter(mid_digit)),
+                        ST_RIGHT(active_counter(right_digit)),
                         CT_MID(VOID)
                     ),
                     output_tape_no=SIGNALS_TAPE,
-                    output_cell_state=paused_counter(right_counter_digit)
+                    output_cell_state=paused_counter(right_digit)
                 )
-                # if there is a carry but no overflow (counter digit < base)
-                transitions_group.add_transition(
+                if right_digit < max_counter_digit:
+                    # carry but no overflow (right counter digit < base)
+                    carry_no_overflow_combo = (
+                        ST_MID(active_counter(mid_digit)),
+                        ST_RIGHT(active_counter(right_digit)),
+                        CT_MID(CT_DATA)
+                    )
+                    # move right_digit left and increment
+                    transitions_group.add_transition(
+                        input_terms=carry_no_overflow_combo,
+                        output_tape_no=SIGNALS_TAPE,
+                        output_cell_state=paused_counter(right_digit+1)
+                    )
+                    # overflow right_digit to 0 and move left, cancel carry
+                    transitions_group.add_transition(
+                        input_terms=carry_no_overflow_combo,
+                        output_tape_no=CARRY_TAPE,
+                        output_cell_state=VOID
+                    )
+                else:
+                    # overflow to 0 and move left, carry stays for next digit
+                    assert mid_digit == max_counter_digit
+                    transitions_group.add_transition(
+                        input_terms=(
+                            ST_MID(active_counter(right_digit)),
+                            ST_RIGHT(active_counter(max_counter_digit)),
+                            CT_MID(CT_DATA)
+                        ),
+                        output_tape_no=SIGNALS_TAPE,
+                        output_cell_state=paused_counter(0)
+                    )
 
-                )
-
+        # if there is a carry, and we're at the end of the built number
+        # sequence and the rightmost digit is about to overflow
+        right_overflow_combo = (
+            ST_MID(active_counter(max_counter_digit)),
+            ST_RIGHT(VOID),
+            CT_MID(CT_DATA)
+        )
+        transitions_group.add_transition(
+            input_terms=right_overflow_combo,
+            output_tape_no=SIGNALS_TAPE,
+            output_cell_state=paused_counter(1)
+        )
+        transitions_group.add_transition(
+            input_terms=right_overflow_combo,
+            output_tape_no=CARRY_TAPE,
+            output_cell_state=VOID
+        )
+        # clear rightmost counter cell if no carry
+        for digit in range(self.base):
+            transitions_group.add_transition(
+                input_terms=(
+                    ST_MID(active_counter(digit)),
+                    ST_RIGHT(VOID),
+                    CT_MID(VOID)
+                ),
+                output_tape_no=SIGNALS_TAPE,
+                output_cell_state=VOID
+            )
 
         # paused counter states will transition to unpause
         # this should be the one place where paused counter states occur in
         # the inputs of transition rules
-        for counter_digit in range(self.base):
+        for digit in range(self.base):
             transitions_group.add_transition(
-                input_terms=(ST_MID(paused_counter(counter_digit)),),
+                input_terms=(ST_MID(paused_counter(digit)),),
                 output_tape_no=SIGNALS_TAPE,
-                output_cell_state=active_counter(counter_digit)
+                output_cell_state=active_counter(digit)
             )
 
         return transitions_group
