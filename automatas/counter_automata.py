@@ -1,13 +1,9 @@
 from __future__ import annotations
 
-import dataclasses
-from enum import StrEnum, IntEnum
 from typing import Final, Callable
-
 from py_ca_compiler import D
 
-from automatas.rule_generator import (
-    AutomataTransitionsGroup, MultiTapeOutput,
+from automatas.rule_generator_multitape import (
     MultiTapeAutomataTransitionsGroup
 )
 
@@ -285,6 +281,18 @@ class CounterAutomataBuilder(object):
                 ),
                 output_tape_no=SIGNALS_TAPE,
                 output_cell_state=VOID
+            )
+
+        # bleed counter leftwards past data tape to void
+        # unnecessary if we don't expect to leave data tape range
+        for digit in range(self.base):
+            transitions_group.add_transition(
+                input_terms=(
+                    DT_MID(VOID),
+                    ST_RIGHT(active_counter(digit))
+                ),
+                output_tape_no=SIGNALS_TAPE,
+                output_cell_state=paused_counter(digit)
             )
 
         # paused counter states will transition to unpause

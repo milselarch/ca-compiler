@@ -1,50 +1,10 @@
 from __future__ import annotations
 
 import dataclasses
-import math
 import typing
 import numpy as np
 
-from typing import Final, Literal, Type, TypeVar, Generic
-from py_ca_compiler import A, PyExpression, PyProduct, D
-
-T = TypeVar('T', bound=typing.Union[A, D])
-
-
-@dataclasses.dataclass
-class MultiTapeOutput:
-    tape_no: int
-    tape_cell_state: int
-
-
-@dataclasses.dataclass
-class MultiTapeAutomataTransitionsGroup(object):
-    """
-    contains a set of transitions for a multi-tape cellular automaton
-    defined as a mapping from input states to output state
-    map D[] -> (output tape_no, output state)
-    """
-    transitions: list[
-        tuple[
-            tuple[D, ...],
-            MultiTapeOutput
-        ]
-    ]
-
-    @classmethod
-    def spawn_new(cls) -> MultiTapeAutomataTransitionsGroup:
-        return cls(transitions=[])
-
-    def add_transition(
-        self, input_terms: tuple[D, ...],
-        output_tape_no: int, output_cell_state: int
-    ):
-        self.transitions.append((
-            input_terms, MultiTapeOutput(
-                tape_no=output_tape_no,
-                tape_cell_state=output_cell_state
-            )
-        ))
+from py_ca_compiler import A, PyExpression, PyProduct
 
 
 @dataclasses.dataclass
@@ -63,11 +23,11 @@ class AutomataTransitionsGroup(object):
     ]
 
     @classmethod
-    def spawn_new(cls, num_states: int) -> 'AutomataTransitionsGroup':
+    def spawn_new(cls, num_states: int) -> AutomataTransitionsGroup:
         return cls(num_states=num_states, transitions=[])
 
     def add_transition(
-        self, input_terms: tuple[A, ...], output_state: int
+            self, input_terms: tuple[A, ...], output_state: int
     ):
         assert 0 <= output_state < self.num_states
         for term in input_terms:
@@ -76,147 +36,6 @@ class AutomataTransitionsGroup(object):
             assert 0 <= state < self.num_states
 
         self.transitions.append((input_terms, output_state))
-
-
-class TransitionMatrix(object):
-    def __init__(self, data: np.ndarray):
-        assert data.ndim == 2
-        assert data.dtype == np.bool
-        assert data.shape[0] == data.shape[1]
-        assert isinstance(data, np.ndarray)
-        self._data = data
-
-    def __matmul__(self, other: TransitionMatrix) -> TransitionMatrix:
-        assert isinstance(other, TransitionMatrix)
-        assert self._data.shape == other._data.shape
-        result_data = self._data @ other._data
-        result_data = result_data.astype(np.bool)
-        return TransitionMatrix(result_data)
-
-    def binary_encode(self) -> str:
-        encoded_data = ''
-        for row in self._data:
-            encoded_data += ''.join(['1' if cell else '0' for cell in row])
-
-        return '0b' + encoded_data
-
-    def hex_encode(self) -> str:
-        binary_str = self.binary_encode()
-        binary_digits = binary_str[2:]  # Remove '0b' prefix
-        max_num_hex_digits = math.ceil(len(binary_digits) / 4)
-        hex_str = hex(int(binary_str, 2))
-        hex_digits = hex_str[2:]
-        pad_length = max_num_hex_digits - len(hex_digits)
-        padded_hex_str = '0x' + '0' * pad_length + hex_digits
-        return padded_hex_str
-
-    @classmethod
-    def from_hex_encode(
-        cls, encoded_str: str, size: int
-    ) -> TransitionMatrix:
-        assert encoded_str.startswith('0x')
-        int_value = int(encoded_str, 16)
-        binary_str = bin(int_value)[2:]  # Remove '0b' prefix
-        total_bits = size ** 2
-        pad_length = total_bits - len(binary_str)
-        padded_binary_str = '0' * pad_length + binary_str
-
-        data = np.zeros((size, size), dtype=np.bool)
-        index = 0
-
-        for i in range(size):
-            for j in range(size):
-                bit = padded_binary_str[index]
-                data[i, j] = bit == '1'
-                index += 1
-
-        return TransitionMatrix(data)
-
-    @classmethod
-    def build_identity(cls, size: int) -> TransitionMatrix:
-        identity_data = np.eye(size, dtype=np.bool)
-        return TransitionMatrix(identity_data)
-
-    @classmethod
-    def from_state(cls, state: int, num_states: int) -> TransitionMatrix:
-        assert 0 <= state < num_states
-        data = np.zeros((1, num_states), dtype=np.bool)
-        data[0, state] = True
-        return TransitionMatrix(data)
-
-    def is_idempotent_for_state(self, state: int) -> bool:
-        assert 0 <= state < self._data.shape[0]
-        value = self._data[state][state]
-        # print("VALUE_EXTRACTED", value, type(value))
-        assert isinstance(value, np.bool)
-        return bool(value)
-
-    def as_uint8_array(self) -> np.ndarray:
-        int_data = self._data.astype(np.uint8)
-        return int_data
-
-    def get_temporal_start_state(
-        self, temporal_end_state: int
-    ) -> int:
-        assert 0 <= temporal_end_state < self._data.shape[0]
-        col = self._data[:, temporal_end_state]
-        start_states = np.nonzero(col)[0]
-
-        if len(start_states) == 0:
-            raise ValueError(f'No end state for start state {start_states}')
-
-        if len(start_states) > 1:
-            raise ValueError(
-                f'Multiple end states for start state {start_states}: '
-                f'{start_states}'
-            )
-
-        return int(start_states[0])
-
-    def get_temporal_end_state(self, temporal_start_state: int) -> int:
-        assert 0 <= temporal_start_state < self._data.shape[0]
-        row = self._data[temporal_start_state, :]
-        end_states = np.nonzero(row)[0]
-
-        if len(end_states) == 0:
-            raise ValueError(
-                f'No end state for start state {temporal_start_state}'
-            )
-
-        if len(end_states) > 1:
-            raise ValueError(
-                f'Multiple end states for start state {temporal_start_state}: '
-                f'{end_states}'
-            )
-
-        return int(end_states[0])
-
-    def has_transition(
-        self, temporal_start_state: int, temporal_end_state: int
-    ) -> bool:
-        """
-        Check if there is a transition from the start state
-        (earlier in time) to the end state (later in time)
-        :param temporal_start_state:
-        :param temporal_end_state:
-        :return:
-        """
-        assert 0 <= temporal_start_state < self._data.shape[0]
-        assert 0 <= temporal_end_state < self._data.shape[0]
-        return bool(self._data[temporal_start_state, temporal_end_state])
-
-    def __hash__(self) -> int:
-        return hash(self.hex_encode())
-
-    def __eq__(self, other: 'TransitionMatrix') -> bool:
-        return self.hex_encode() == other.hex_encode()
-
-    def __repr__(self):
-        return (
-            f'{self.__class__.__name__}(\n'
-            f'{self.as_uint8_array()}'
-            f'\n)'
-        )
 
 
 @dataclasses.dataclass
@@ -241,29 +60,6 @@ class AutomataRuleSet(object):
     def get_num_terms(self, timesteps: int) -> int:
         return self.base_terms_per_product ** timesteps
 
-    def get_state_transition_matrix(
-        self, expansion_index: int
-    ) -> TransitionMatrix:
-        assert 0 <= expansion_index < self.num_flat_terms
-        raw_transition_matrix = np.zeros(
-            (self.num_states, self.num_states), dtype=np.bool
-        )
-
-        states = sorted(list(self.expansion_map.keys()))
-        for next_state in states:
-            expr = self.expansion_map[next_state]
-            flat_terms: list[A] = expr.get_flat_terms()
-            assert len(flat_terms) == self.num_flat_terms
-            term = flat_terms[expansion_index]
-            start_state = term.get_state()
-            raw_transition_matrix[start_state, next_state] = True
-
-        transition_matrix = TransitionMatrix(raw_transition_matrix)
-        return transition_matrix
-
-    def __call__(self, expansion_index: int) -> TransitionMatrix:
-        return self.get_state_transition_matrix(expansion_index)
-
     def get_position_matrices(self, expansion_index: int) -> np.ndarray:
         assert 0 <= expansion_index < self.num_flat_terms
         position_matrix = np.zeros(
@@ -281,32 +77,6 @@ class AutomataRuleSet(object):
             position_matrix[start_state, next_state] = start_position
 
         return position_matrix
-
-    def has_transition(
-        self, start_state: int, end_state: int, expansion_index: int
-    ) -> bool:
-        """
-        Check if the transition from start_state to end_state
-        exists in the transition matrix for the given expansion_index
-
-        Note that start_state is the state before the transition
-        (i.e. in the previous timestep), and end_state is the state
-        after the transition (i.e. in the current timestep).
-
-        :param start_state:
-        :param end_state:
-        :param expansion_index:
-        :return:
-        """
-        assert 0 <= expansion_index < self.num_flat_terms
-        assert 0 <= start_state < self.num_states
-        assert 0 <= end_state < self.num_states
-        expr = self.expansion_map[start_state]
-        flat_terms: list[A] = expr.get_flat_terms()
-        assert len(flat_terms) == self.num_flat_terms
-        term = flat_terms[expansion_index]
-        term_end_state = term.get_state()
-        return term_end_state == end_state
 
     def get_position_offset(self, expansion_index: int) -> int:
         return self.flat_term_offsets[expansion_index]
@@ -338,11 +108,6 @@ class AutomataRuleSet(object):
             position_hist.append(position)
 
         return position_hist
-
-    def build_state_matrix(self, state: int) -> TransitionMatrix:
-        raw_data = np.zeros((self.num_states, self.num_states), dtype=np.bool)
-        raw_data[state][state] = np.bool(True)
-        return TransitionMatrix(raw_data)
 
 
 class RuleGenerator(object):
@@ -522,13 +287,7 @@ if __name__ == "__main__":
         ],
         num_states=2
     )
-
     ruleset = RuleGenerator.to_ruleset(
         transitions, verbose=True
     )
-
     print('RULESET', ruleset)
-    print('T0:\n', ruleset(0))
-    print('T1:\n', ruleset(1))
-    print('T0 @ T1:\n', ruleset(0) @ ruleset(1))
-    print('T1 @ T0:\n', ruleset(1) @ ruleset(0))

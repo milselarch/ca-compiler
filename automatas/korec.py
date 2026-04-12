@@ -193,7 +193,7 @@ class CollatzCA(object):
 
         for next_state in next_states_map:
             assert len(next_states_map[next_state]) == (
-                    standard_products_length + len(end_halt_products)
+                standard_products_length + len(end_halt_products)
             )
 
             input_terms = next_states_map[next_state]
@@ -461,4 +461,4 @@ if __name__ == '__main__':
     collatz_ca.generate_equations(verbose=True)
     # collatz_ca.get_max_collatz_steps(start=200)
     collatz_ca.build_halt_transitions_group_v2()
-    print(collatz_ca.print_rule_matrix())
+    collatz_ca.print_rule_matrix()
