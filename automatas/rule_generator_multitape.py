@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import dataclasses
 
-from py_ca_compiler import A, PyExpression, PyProduct, D, PyMultiTapeProduct, PyMultiTapeExpression
+from py_ca_compiler import (
+    A, PyExpression, PyProduct,
+    D, PyMultiTapeProduct, PyMultiTapeExpression
+)
 
 
 @dataclasses.dataclass
@@ -91,3 +94,52 @@ class MultiTapeRuleGenerator(object):
             for next_state in state_eq_terms_map
         }
         return state_eq_map
+
+
+class BidirectionalTape(object):
+    def __init__(self):
+        self.data = []
+        self.rev_data = []
+
+    def read(self, position: int) -> int:
+        if position >= 0:
+            if position >= len(self.data):
+                return 0
+
+            return self.data[position]
+        else:
+            rev_position = -position - 1
+            if rev_position >= len(self.rev_data):
+                return 0
+
+            return self.rev_data[rev_position]
+
+    def write(self, position: int, value: int):
+        if position >= 0:
+            while position >= len(self.data):
+                self.data.append(0)
+
+            self.data[position] = value
+        else:
+            rev_position = -position - 1
+            while rev_position >= len(self.rev_data):
+                self.rev_data.append(0)
+
+            self.rev_data[rev_position] = value
+
+
+class MultiTape(object):
+    def __init__(
+        self, state_eq_map: dict[MultiTapeOutput, PyMultiTapeExpression]
+    ):
+        self.tapes: dict[int, BidirectionalTape] = {}
+        self.state_eq_map: dict[
+            MultiTapeOutput, PyMultiTapeExpression
+        ] = state_eq_map
+
+    @classmethod
+    def reverse_state_eq_map(
+        cls, state_eq_map: dict[MultiTapeOutput, PyMultiTapeExpression]
+    ):
+        product_to_state_no_map: dict[PyMultiTapeProduct, MultiTapeOutput] = {}
+        raise NotImplementedError
