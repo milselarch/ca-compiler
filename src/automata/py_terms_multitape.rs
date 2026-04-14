@@ -455,6 +455,12 @@ impl PyMultiTapeProduct {
     fn get_num_terms(&self) -> PyResult<usize> {
         Ok(self._get_num_terms())
     }
+    fn get_flat_terms(&self) -> PyResult<Vec<D>> {
+        let terms = self.product._terms.iter().map(
+            |term| term.to_py_term()
+        ).collect();
+        Ok(terms)
+    }
     pub fn validate_debug_info(&self) {
         for term in &self.product._terms {
             assert!(
@@ -613,6 +619,13 @@ impl PyMultiTapeExpression {
             }
         }
         Ok(terms)
+    }
+    fn get_flat_products(&self) -> PyResult<Vec<PyMultiTapeProduct>> {
+        let mut products = Vec::new();
+        for product in &self.expression.products {
+            products.push(product.to_py_product());
+        }
+        Ok(products)
     }
     fn pad_products(&self, length: usize) -> PyResult<PyMultiTapeExpression> {
         let new_expr = self.expression.pad_products(length);
