@@ -4,7 +4,7 @@ import copy
 import dataclasses
 
 from collections import defaultdict
-from typing import Final
+from typing import Final, Self
 
 from py_ca_compiler import (
     A, PyExpression, PyProduct,
@@ -152,11 +152,11 @@ class BidirectionalTape(object):
 
 
 class BiDirectionalMultiTape(object):
-    def __init__(self, tapes: dict[int, BidirectionalTape] | None = None):
-        if tapes is None:
-            tapes = {}
-
-        self.tapes: dict[TapeNo, BidirectionalTape] = tapes
+    def __init__(self, tapes: dict[TapeNo, BidirectionalTape] | None = None):
+        if tapes is not None:
+            self.tapes: dict[TapeNo, BidirectionalTape] = tapes
+        else:
+            self.tapes: dict[TapeNo, BidirectionalTape] = {}
 
     def get_or_make_tape(self, tape_no: TapeNo) -> BidirectionalTape:
         if tape_no not in self.tapes:
@@ -192,8 +192,8 @@ class MultiTapeAutomata(object):
     ) -> defaultdict[PyMultiTapeProduct, dict[TapeNo, TapeCellState]]:
         # map product -> tape_no -> output tape cell state
         prod_to_state_map: defaultdict[
-            PyMultiTapeProduct, defaultdict[TapeNo, TapeCellState]
-        ] = defaultdict(dict)
+            PyMultiTapeProduct, dict[TapeNo, TapeCellState]
+        ] = defaultdict(lambda: dict())
 
         for multi_tape_output, expr in state_eq_map.items():
             products = expr.get_flat_products()
@@ -239,7 +239,6 @@ class MultiTapeAutomata(object):
         return True
 
     def process_step(self) -> BiDirectionalMultiTape:
-        # TODO: option for ensuring rules have 0 ambiguity
         # i.e. no void states filled in by default
         existing_tape_nos = self.multi_tape.get_tape_nos()
         min_pos, max_pos = self.multi_tape.get_range()
@@ -271,3 +270,15 @@ class MultiTapeAutomata(object):
                 new_tape.write(position, previous_tape_val)
 
         return new_multi_tape
+
+    def step(self) -> BiDirectionalMultiTape:
+        """
+        Set the new state of the multi-tape after going forward
+        a single step.
+        :return:
+        The previous multi-tape state before the step
+        """
+        prev_multi_tape = self.multi_tape
+        new_multi_tape = self.process_step()
+        self.multi_tape = new_multi_tape
+        return prev_multi_tape
