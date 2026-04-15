@@ -4,6 +4,8 @@ import copy
 import dataclasses
 
 from collections import defaultdict
+from typing import Final
+
 from py_ca_compiler import (
     A, PyExpression, PyProduct,
     D, PyMultiTapeProduct, PyMultiTapeExpression
@@ -16,6 +18,9 @@ class TapeNo(int):
 
 class TapeCellState(int):
     pass
+
+
+VOID_STATE: Final[TapeCellState] = TapeCellState(0)
 
 
 @dataclasses.dataclass
@@ -108,40 +113,40 @@ class MultiTapeRuleGenerator(object):
 
 class BidirectionalTape(object):
     def __init__(self):
-        self.data = []
-        self.rev_data = []
+        self.data: list[TapeCellState] = []
+        self.rev_data: list[TapeCellState] = []
 
     def get_range(self) -> tuple[int, int]:
         min_pos = -len(self.rev_data)
         max_pos = len(self.data) - 1
         return min_pos, max_pos
 
-    def read(self, position: int) -> int:
+    def read(self, position: int) -> TapeCellState:
         if position >= 0:
             if position >= len(self.data):
-                return 0
+                return VOID_STATE
 
             return self.data[position]
         else:
             rev_position = -position - 1
             if rev_position >= len(self.rev_data):
-                return 0
+                return VOID_STATE
 
             return self.rev_data[rev_position]
 
-    def __getitem__(self, position: int) -> int:
+    def __getitem__(self, position: int) -> TapeCellState:
         return self.read(position)
 
-    def write(self, position: int, value: int):
+    def write(self, position: int, value: TapeCellState):
         if position >= 0:
             while position >= len(self.data):
-                self.data.append(0)
+                self.data.append(VOID_STATE)
 
             self.data[position] = value
         else:
             rev_position = -position - 1
             while rev_position >= len(self.rev_data):
-                self.rev_data.append(0)
+                self.rev_data.append(VOID_STATE)
 
             self.rev_data[rev_position] = value
 
@@ -151,13 +156,16 @@ class BiDirectionalMultiTape(object):
         if tapes is None:
             tapes = {}
 
-        self.tapes: dict[int, BidirectionalTape] = tapes
+        self.tapes: dict[TapeNo, BidirectionalTape] = tapes
 
-    def get_or_make_tape(self, tape_no: int) -> BidirectionalTape:
+    def get_or_make_tape(self, tape_no: TapeNo) -> BidirectionalTape:
         if tape_no not in self.tapes:
             self.tapes[tape_no] = BidirectionalTape()
 
         return self.tapes[tape_no]
+
+    def get_tape_nos(self) -> list[TapeNo]:
+        return list(self.tapes.keys())
 
     def get_range(self):
         min_pos, max_pos = 0, 0
@@ -221,20 +229,26 @@ class MultiTapeAutomata(object):
         """
         for term in product.get_flat_terms():
             tape_no, tape_cell_state = term.get_state()
+            tape_no = TapeNo(tape_no)
+            tape_cell_state = TapeCellState(tape_cell_state)
+
             tape = self.multi_tape.get_or_make_tape(tape_no)
             if tape.read(position) != tape_cell_state:
                 return False
 
         return True
 
-    def step(self):
+    def process_step(self) -> BiDirectionalMultiTape:
         # TODO: option for ensuring rules have 0 ambiguity
         # i.e. no void states filled in by default
+        existing_tape_nos = self.multi_tape.get_tape_nos()
         min_pos, max_pos = self.multi_tape.get_range()
         new_multi_tape = copy.deepcopy(self.multi_tape)
 
         for position in range(min_pos, max_pos + 1):
-            # TODO: copy over existing values
+            written_tape_nos = set()
+
+            # apply all matching rules at this position to get new tape states
             for matching_product in self.prod_to_state_map:
                 if not self.product_satisfies(matching_product, position):
                     continue
@@ -243,5 +257,17 @@ class MultiTapeAutomata(object):
                 for tape_no, tape_cell_state in writes_map.items():
                     output_tape = new_multi_tape.get_or_make_tape(tape_no)
                     output_tape.write(position, tape_cell_state)
+                    written_tape_nos.add(tape_no)
 
+            # copy over unchanged tape cells for tapes that
+            # were not written to at this position
+            for tape_no in existing_tape_nos:
+                if tape_no in written_tape_nos:
+                    continue
 
+                current_tape = self.multi_tape.get_or_make_tape(tape_no)
+                new_tape = new_multi_tape.get_or_make_tape(tape_no)
+                previous_tape_val: TapeCellState = current_tape.read(position)
+                new_tape.write(position, previous_tape_val)
+
+        return new_multi_tape
