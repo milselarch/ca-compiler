@@ -26,6 +26,9 @@ class RenderFrame(object):
     def from_line(cls, line: str) -> RenderFrame:
         return RenderFrame([line])
 
+    def render(self) -> str:
+        return '\n'.join(self.lines)
+
     def __str__(self) -> str:
         return '\n'.join(self.lines)
 

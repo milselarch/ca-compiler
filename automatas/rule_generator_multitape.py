@@ -94,7 +94,7 @@ class MultiTapeRuleGenerator(object):
     @classmethod
     def generate_equations(
         cls, transitions_group: MultiTapeAutomataTransitionsGroup,
-    ):
+    ) -> dict[MultiTapeOutput, PyMultiTapeExpression]:
         state_eq_terms_map: dict[
             MultiTapeOutput, list[PyMultiTapeProduct]
         ] = {}
