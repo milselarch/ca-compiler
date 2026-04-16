@@ -11,6 +11,8 @@ from py_ca_compiler import (
     D, PyMultiTapeProduct, PyMultiTapeExpression
 )
 
+from automatas.renderer import RenderFrame
+
 
 class TapeNo(int):
     pass
@@ -21,6 +23,7 @@ class TapeCellState(int):
 
 
 VOID_STATE: Final[TapeCellState] = TapeCellState(0)
+BLANK_INT: Final[int] = -1
 
 
 @dataclasses.dataclass
@@ -121,6 +124,35 @@ class BidirectionalTape(object):
         max_pos = len(self.data) - 1
         return min_pos, max_pos
 
+    def get_all_states(self) -> set[TapeCellState]:
+        # TODO: consider tracking unique states instead of recomputing
+        return set(self.data) | set(self.rev_data)
+
+    def render_line(
+        self, start_position: int, length: int,
+        cell_width: int = BLANK_INT
+    ) -> RenderFrame:
+        all_states = self.get_all_states()
+        max_state = max(all_states)
+
+        if cell_width == BLANK_INT:
+            cell_width = len(str(max_state))
+        elif cell_width < len(str(max_state)):
+            raise ValueError(
+                f"Cell width {cell_width} is too small to fit "
+                f"the largest state {max_state}"
+            )
+
+        cells_to_render = length // (cell_width + 1)
+        line = ""
+
+        for k in range(cells_to_render):
+            position = start_position + k
+            state = self.read(position)
+            line += str(state).rjust(cell_width) + "|"
+
+        return RenderFrame.from_line(line)
+
     def read(self, position: int) -> TapeCellState:
         if position >= 0:
             if position >= len(self.data):
@@ -163,6 +195,53 @@ class BiDirectionalMultiTape(object):
             self.tapes[tape_no] = BidirectionalTape()
 
         return self.tapes[tape_no]
+
+    def get_all_states(self) -> set[TapeCellState]:
+        all_states = set()
+        for tape in self.tapes.values():
+            all_states |= tape.get_all_states()
+
+        return all_states
+
+    def render_tapes(
+        self, start_position: int, length: int,
+        cell_width: int = BLANK_INT
+    ) -> RenderFrame:
+        all_states = self.get_all_states()
+        max_state = max(all_states)
+
+        if cell_width == BLANK_INT:
+            cell_width = len(str(max_state))
+        elif cell_width < len(str(max_state)):
+            raise ValueError(
+                f"Cell width {cell_width} is too small to fit "
+                f"the largest state {max_state}"
+            )
+
+        tape_nos = sorted(self.tapes.keys())
+        left_tabs = []
+
+        for tape_no in tape_nos:
+            left_tab = f"Tape {tape_no}: "
+            left_tabs.append(left_tab)
+
+        left_sidebar = RenderFrame(left_tabs)
+        max_left_tab_width = max([len(tab) for tab in left_tabs])
+        content_width = length - max_left_tab_width
+        tape_view_lines: list[RenderFrame] = []
+
+        for tape_no in tape_nos:
+            tape = self.tapes[tape_no]
+            tape_line = tape.render_line(
+                start_position=start_position,
+                length=content_width,
+                cell_width=cell_width
+            )
+            tape_view_lines.append(tape_line)
+
+        return RenderFrame.join_horizontally([
+            left_sidebar, RenderFrame.join_vertically(tape_view_lines)
+        ])
 
     def get_tape_nos(self) -> list[TapeNo]:
         return list(self.tapes.keys())
