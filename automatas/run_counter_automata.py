@@ -13,6 +13,7 @@ multi_tape_automata = MultiTapeAutomata(state_eq_map)
 multi_tape = multi_tape_automata.multi_tape
 terminal_size = os.get_terminal_size()
 terminal_width = terminal_size.columns
+print(f'{terminal_width=}')
 
 render_frame = multi_tape.render_tapes(
     start_position=0, length=terminal_width

@@ -208,7 +208,7 @@ class BiDirectionalMultiTape(object):
         cell_width: int = BLANK_INT
     ) -> RenderFrame:
         all_states = self.get_all_states()
-        max_state = max(all_states)
+        max_state = VOID_STATE if not all_states else max(all_states)
 
         if cell_width == BLANK_INT:
             cell_width = len(str(max_state))
@@ -225,8 +225,12 @@ class BiDirectionalMultiTape(object):
             left_tab = f"Tape {tape_no}: "
             left_tabs.append(left_tab)
 
+        if left_tabs:
+            max_left_tab_width = max([len(tab) for tab in left_tabs])
+        else:
+            max_left_tab_width = 0
+
         left_sidebar = RenderFrame(left_tabs)
-        max_left_tab_width = max([len(tab) for tab in left_tabs])
         content_width = length - max_left_tab_width
         tape_view_lines: list[RenderFrame] = []
 

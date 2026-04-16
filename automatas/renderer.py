@@ -7,7 +7,7 @@ from typing import Sequence
 class RenderFrame(object):
     def __init__(self, lines: Sequence[str] = ()):
         lengths = [len(line) for line in lines]
-        assert len(set(lengths)) == 1, "All lines must have the same length"
+        assert len(set(lengths)) <= 1, "All lines must have the same length"
         self.lines = list(lines)[:]
 
     def get_lines(self) -> list[str]:

@@ -30,6 +30,7 @@ For testing things related to the Potato CPU:
 3. Install python dependencies - `pip install -r requirements.txt`
 4. Generate pyO3 stubs - `cargo run --bin stub_gen`
 5. build and install the potato CPU - `maturin develop --release`
+6. install this project as an editable package - `pip install -e .`
 
 ## Examples
 

@@ -243,7 +243,7 @@ class CounterAutomataBuilder(object):
                     )
                 else:
                     # overflow to 0 and move left, carry stays for next digit
-                    assert mid_digit == max_counter_digit
+                    assert right_digit == max_counter_digit
                     transitions_group.add_transition(
                         input_terms=(
                             ST_MID(active_counter(right_digit)),
