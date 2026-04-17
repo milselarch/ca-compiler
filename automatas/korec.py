@@ -4,7 +4,7 @@ from collections import defaultdict
 from typing import DefaultDict, Final
 from py_ca_compiler import PyExpression, A
 
-from automatas.rule_generator import (
+from rule_generator import (
     AutomataTransitionsGroup, RuleGenerator, AutomataRuleSet
 )
 

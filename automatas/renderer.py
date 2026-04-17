@@ -22,6 +22,9 @@ class RenderFrame(object):
     def get_height(self) -> int:
         return len(self.lines)
 
+    def get_dimensions(self):
+        return self.get_height(), self.get_width()
+
     @classmethod
     def from_line(cls, line: str) -> RenderFrame:
         return RenderFrame([line])
@@ -29,8 +32,9 @@ class RenderFrame(object):
     def render(self) -> str:
         return '\n'.join(self.lines)
 
-    def __str__(self) -> str:
-        return '\n'.join(self.lines)
+    def __repr__(self):
+        name = self.__class__.__name__
+        return f'{name}(lines={self.lines})'
 
     def add_line(self, line: str) -> None:
         if len(line) != self.get_width():
@@ -40,29 +44,31 @@ class RenderFrame(object):
 
     def extend_down(self, other: RenderFrame) -> RenderFrame:
         if self.get_height() == 0:
-            return self.__class__(other.get_lines())
+            self.lines = other.get_lines()
+            return self
 
         if self.get_width() != other.get_width():
+            print(self.get_width(), other.get_width())
             raise ValueError("Frame widths must match to extend down")
 
-        return self.__class__(
-            self.get_lines() + other.get_lines()
-        )
+        self.lines.extend(other.lines)
+        return self
 
     def extend_up(self, other: RenderFrame) -> RenderFrame:
         if self.get_height() == 0:
-            return self.__class__(other.get_lines())
+            self.lines = other.get_lines()
+            return self
 
         if self.get_width() != other.get_width():
             raise ValueError("Frame widths must match to extend up")
 
-        return self.__class__(
-            other.get_lines() + self.get_lines()
-        )
+        self.lines = other.lines + self.lines
+        return self
 
     def extend_left(self, other: RenderFrame) -> RenderFrame:
         if self.get_height() == 0:
-            return self.__class__(other.get_lines())
+            self.lines = other.get_lines()
+            return self
 
         if self.get_height() != other.get_height():
             raise ValueError("Frame heights must match to extend left")
@@ -71,11 +77,13 @@ class RenderFrame(object):
         for line_self, line_other in zip(self.get_lines(), other.get_lines()):
             new_lines.append(line_other + line_self)
 
-        return self.__class__(new_lines)
+        self.lines = new_lines
+        return self
 
     def extend_right(self, other: RenderFrame) -> RenderFrame:
         if self.get_height() == 0:
-            return self.__class__(other.get_lines())
+            self.lines = other.get_lines()
+            return self
 
         if self.get_height() != other.get_height():
             raise ValueError("Frame heights must match to extend right")
@@ -84,7 +92,8 @@ class RenderFrame(object):
         for line_self, line_other in zip(self.get_lines(), other.get_lines()):
             new_lines.append(line_self + line_other)
 
-        return self.__class__(new_lines)
+        self.lines = new_lines
+        return self
 
     @classmethod
     def join_vertically(cls, frames: list[RenderFrame]) -> RenderFrame:
@@ -100,4 +109,5 @@ class RenderFrame(object):
         for frame in frames:
             combined_frame.extend_right(frame)
 
+        # print("Combined frame lines:", combined_frame.get_lines())
         return combined_frame

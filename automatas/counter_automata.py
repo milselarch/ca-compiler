@@ -3,13 +3,13 @@ from __future__ import annotations
 from typing import Final, Callable
 from py_ca_compiler import D
 
-from automatas.rule_generator_multitape import (
-    MultiTapeAutomataTransitionsGroup
+from rule_generator_multitape import (
+    MultiTapeAutomataTransitionsGroup, TapeNo, TapeCellState
 )
 
-DATA_TAPE: Final[int] = 0
-SIGNALS_TAPE: Final[int] = 1
-CARRY_TAPE: Final[int] = 2
+DATA_TAPE: Final[TapeNo] = TapeNo(0)
+SIGNALS_TAPE: Final[TapeNo] = TapeNo(1)
+CARRY_TAPE: Final[TapeNo] = TapeNo(2)
 
 """
 For the signals tape (LSB first to MSB last):
@@ -22,16 +22,16 @@ For the signals tape (LSB first to MSB last):
     - bits[0] == 1: state is a non-counter state 
         - bits[1] == 1: the state is a REDUCE_START state
 """
-VOID: Final[int] = 0b0
-HALT: Final[int] = 0b1
+VOID: Final[TapeCellState] = TapeCellState(0b0)
+HALT: Final[TapeCellState] = TapeCellState(0b1)
 
-DT_DATA: Final[int] = 0b1
+DT_DATA: Final[TapeCellState] = TapeCellState(0b1)
 """
 - bits[0] == 1: state is a non-counter state 
 - bits[1] == 1: the state is a REDUCE_START state
 """
-ST_REDUCE_START: Final[int] = 0b11
-CT_DATA: Final[int] = 0b1
+ST_REDUCE_START: Final[TapeCellState] = TapeCellState(0b11)
+CT_DATA: Final[TapeCellState] = TapeCellState(0b1)
 
 
 def prefill_tape(position: int, tape_no: int) -> Callable[[int], D]:

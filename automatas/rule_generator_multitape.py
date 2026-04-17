@@ -11,7 +11,7 @@ from py_ca_compiler import (
     D, PyMultiTapeProduct, PyMultiTapeExpression
 )
 
-from automatas.renderer import RenderFrame
+from renderer import RenderFrame
 
 
 class TapeNo(int):
@@ -114,6 +114,16 @@ class MultiTapeRuleGenerator(object):
         return state_eq_map
 
 
+class TapeRenderFrame(RenderFrame):
+    def __init__(self, line: str, num_cells: int, cell_width: int):
+        super().__init__([line])
+        self.num_cells = num_cells
+        self.cell_width = cell_width
+
+    def get_space_consumed(self) -> int:
+        return self.num_cells * (self.cell_width + 1)
+
+
 class BidirectionalTape(object):
     def __init__(self):
         self.data: list[TapeCellState] = []
@@ -131,7 +141,7 @@ class BidirectionalTape(object):
     def render_line(
         self, start_position: int, length: int,
         cell_width: int = BLANK_INT
-    ) -> RenderFrame:
+    ) -> TapeRenderFrame:
         all_states = self.get_all_states()
         max_state = max(all_states)
 
@@ -144,14 +154,18 @@ class BidirectionalTape(object):
             )
 
         cells_to_render = length // (cell_width + 1)
-        line = ""
+        line: str = ""
 
         for k in range(cells_to_render):
             position = start_position + k
             state = self.read(position)
             line += str(state).rjust(cell_width) + "|"
 
-        return RenderFrame.from_line(line)
+        line += " " * (length - len(line))
+        return TapeRenderFrame(
+            line=line, num_cells=cells_to_render,
+            cell_width=cell_width
+        )
 
     def read(self, position: int) -> TapeCellState:
         if position >= 0:
@@ -182,6 +196,15 @@ class BidirectionalTape(object):
 
             self.rev_data[rev_position] = value
 
+    def write_region(
+        self, position: int, end_position: int,
+        values: list[TapeCellState]
+    ):
+        for new_position in range(position, end_position+1):
+            offset = new_position - position
+            value = values[offset % len(values)]
+            self.write(new_position, value)
+
 
 class BiDirectionalMultiTape(object):
     def __init__(self, tapes: dict[TapeNo, BidirectionalTape] | None = None):
@@ -195,6 +218,19 @@ class BiDirectionalMultiTape(object):
             self.tapes[tape_no] = BidirectionalTape()
 
         return self.tapes[tape_no]
+
+    def write_region(
+        self, position: int, end_position: int,
+        data: list[MultiTapeOutput]
+    ):
+        for new_position in range(position, end_position+1):
+            offset = new_position - position
+            value = data[offset % len(data)]
+            self.write(new_position, value)
+
+    def write(self, position: int, value: MultiTapeOutput):
+        tape = self.get_or_make_tape(value.tape_no)
+        tape.write(position, value.tape_cell_state)
 
     def get_all_states(self) -> set[TapeCellState]:
         all_states = set()
@@ -218,7 +254,7 @@ class BiDirectionalMultiTape(object):
                 f"the largest state {max_state}"
             )
 
-        tape_nos = sorted(self.tapes.keys())
+        tape_nos = sorted(set(self.tapes.keys()) | {TapeNo(0)})
         left_tabs = []
 
         for tape_no in tape_nos:
@@ -232,7 +268,7 @@ class BiDirectionalMultiTape(object):
 
         left_sidebar = RenderFrame(left_tabs)
         content_width = length - max_left_tab_width
-        tape_view_lines: list[RenderFrame] = []
+        tape_view_lines: list[TapeRenderFrame] = []
 
         for tape_no in tape_nos:
             tape = self.tapes[tape_no]
@@ -241,10 +277,29 @@ class BiDirectionalMultiTape(object):
                 length=content_width,
                 cell_width=cell_width
             )
+            # print(tape_line, tape_line.render())
             tape_view_lines.append(tape_line)
 
-        return RenderFrame.join_horizontally([
-            left_sidebar, RenderFrame.join_vertically(tape_view_lines)
+        # TODO: align by actual space consumed by tape
+        num_cells = tape_view_lines[0].num_cells if tape_view_lines else 0
+        start_pos_str = str(start_position)
+        end_pos_str = str(start_position + num_cells - 1)
+        buffer_len = content_width - len(start_pos_str) - len(end_pos_str)
+        position_str = (
+            ' ' * left_sidebar.get_width() +
+            start_pos_str +
+            ' ' * buffer_len +
+            end_pos_str
+        )
+
+        print("POSITION STR", len(position_str), length)
+        tapes_frame = RenderFrame.join_vertically(tape_view_lines)
+        # print("LINES", tape_view_lines)
+        return RenderFrame.join_vertically([
+            RenderFrame.from_line(position_str),
+            RenderFrame.join_horizontally([
+                left_sidebar, tapes_frame
+            ])
         ])
 
     def get_tape_nos(self) -> list[TapeNo]:
