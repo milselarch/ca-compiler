@@ -166,12 +166,14 @@ class CounterAutomataBuilder(object):
 
         # mark exponential bit reduction start
         transitions_group.add_transition(
-            input_terms=(ST_LEFT(VOID), DT_LEFT(DT_DATA), ST_MID(VOID)),
+            input_terms=(
+                ST_LEFT(VOID), DT_LEFT(DT_DATA), DT_MID(VOID), ST_MID(VOID)
+            ),
             output_tape_no=SIGNALS_TAPE, output_cell_state=ST_REDUCE_START
         )
-        # begin the counter accumulator
+        # begin the counter accumulator on the right side
         transitions_group.add_transition(
-            input_terms=(ST(0, VOID), DT(0, DT_DATA), ST(1, VOID)),
+            input_terms=(ST_MID(VOID), DT_MID(DT_DATA), DT_RIGHT(VOID)),
             output_tape_no=SIGNALS_TAPE,
             output_cell_state=paused_counter(1)
         )

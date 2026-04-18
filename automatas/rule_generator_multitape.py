@@ -143,7 +143,7 @@ class BidirectionalTape(object):
         cell_width: int = BLANK_INT
     ) -> TapeRenderFrame:
         all_states = self.get_all_states()
-        max_state = max(all_states)
+        max_state = VOID_STATE if not all_states else max(all_states)
 
         if cell_width == BLANK_INT:
             cell_width = len(str(max_state))
@@ -159,7 +159,7 @@ class BidirectionalTape(object):
         for k in range(cells_to_render):
             position = start_position + k
             state = self.read(position)
-            line += str(state).rjust(cell_width) + "|"
+            line += str(state).rjust(cell_width, '0') + "|"
 
         line += " " * (length - len(line))
         return TapeRenderFrame(
@@ -219,6 +219,10 @@ class BiDirectionalMultiTape(object):
 
         return self.tapes[tape_no]
 
+    def init_tapes(self, tape_nos: list[TapeNo]):
+        for tape_no in tape_nos:
+            self.get_or_make_tape(tape_no)
+
     def write_region(
         self, position: int, end_position: int,
         data: list[MultiTapeOutput]
@@ -277,24 +281,25 @@ class BiDirectionalMultiTape(object):
                 length=content_width,
                 cell_width=cell_width
             )
-            # print(tape_line, tape_line.render())
             tape_view_lines.append(tape_line)
 
         # TODO: align by actual space consumed by tape
         num_cells = tape_view_lines[0].num_cells if tape_view_lines else 0
-        start_pos_str = str(start_position)
-        end_pos_str = str(start_position + num_cells - 1)
-        buffer_len = content_width - len(start_pos_str) - len(end_pos_str)
+        # width of text actually consumed by tape cells, excluding padding
+        tape_content_width = tape_view_lines[0].get_space_consumed()
+        start_pos_str = str(start_position) + '<'
+        end_pos_str = '>' + str(start_position + num_cells - 1)
+
+        buffer_len = tape_content_width - len(start_pos_str) - len(end_pos_str)
         position_str = (
             ' ' * left_sidebar.get_width() +
             start_pos_str +
             ' ' * buffer_len +
-            end_pos_str
+            end_pos_str +
+            ' ' * (content_width - tape_content_width)
         )
 
-        print("POSITION STR", len(position_str), length)
         tapes_frame = RenderFrame.join_vertically(tape_view_lines)
-        # print("LINES", tape_view_lines)
         return RenderFrame.join_vertically([
             RenderFrame.from_line(position_str),
             RenderFrame.join_horizontally([
@@ -320,9 +325,43 @@ class MultiTapeAutomata(object):
     def __init__(
         self, state_eq_map: dict[MultiTapeOutput, PyMultiTapeExpression]
     ):
-        self.multi_tape = BiDirectionalMultiTape()
-        self.prod_to_state_map = self.reverse_state_eq_map(state_eq_map)
-        self.state_eq_map = state_eq_map
+        self._multi_tape = BiDirectionalMultiTape()
+        self._prod_to_state_map = self.reverse_state_eq_map(state_eq_map)
+        self._max_radius = self.get_max_radius()
+        self._state_eq_map = state_eq_map
+
+    def get_max_radius(self) -> int:
+        max_radius: int = 0
+
+        for product in self._prod_to_state_map:
+            terms = product.get_flat_terms()
+
+            for term in terms:
+                offset = abs(term.get_position())
+                max_radius = max(max_radius, offset)
+
+        return max_radius
+
+    def init_tapes(self, tape_nos: list[TapeNo]):
+        self._multi_tape.init_tapes(tape_nos)
+
+    def write_region(
+        self, position: int, end_position: int,
+        data: list[MultiTapeOutput]
+    ):
+        self._multi_tape.write_region(
+            position=position, end_position=end_position,
+            data=data
+        )
+
+    def render_tapes(
+        self, start_position: int, length: int,
+        cell_width: int = BLANK_INT
+    ) -> RenderFrame:
+        return self._multi_tape.render_tapes(
+            start_position=start_position, length=length,
+            cell_width=cell_width
+        )
 
     @classmethod
     def reverse_state_eq_map(
@@ -366,34 +405,54 @@ class MultiTapeAutomata(object):
         :return:
         """
         for term in product.get_flat_terms():
+            term_offset = term.get_position()
             tape_no, tape_cell_state = term.get_state()
             tape_no = TapeNo(tape_no)
             tape_cell_state = TapeCellState(tape_cell_state)
 
-            tape = self.multi_tape.get_or_make_tape(tape_no)
-            if tape.read(position) != tape_cell_state:
+            tape = self._multi_tape.get_or_make_tape(tape_no)
+            term_position = position + term_offset
+            if tape.read(term_position) != tape_cell_state:
                 return False
 
         return True
 
     def process_step(self) -> BiDirectionalMultiTape:
         # i.e. no void states filled in by default
-        existing_tape_nos = self.multi_tape.get_tape_nos()
-        min_pos, max_pos = self.multi_tape.get_range()
-        new_multi_tape = copy.deepcopy(self.multi_tape)
+        existing_tape_nos = self._multi_tape.get_tape_nos()
+        min_pos, max_pos = self._multi_tape.get_range()
+        new_multi_tape = copy.deepcopy(self._multi_tape)
+        scan_start = min_pos - self._max_radius
+        scan_end = max_pos + self._max_radius + 1
+        # record all (tape_no, position) -> tape_cell_state writes
+        writes_map: dict[tuple[TapeNo, int], TapeCellState] = {}
 
-        for position in range(min_pos, max_pos + 1):
+        for position in range(scan_start, scan_end):
             written_tape_nos = set()
 
             # apply all matching rules at this position to get new tape states
-            for matching_product in self.prod_to_state_map:
+            for matching_product in self._prod_to_state_map:
                 if not self.product_satisfies(matching_product, position):
                     continue
 
-                writes_map = self.prod_to_state_map[matching_product]
-                for tape_no, tape_cell_state in writes_map.items():
+                product_writes_map = self._prod_to_state_map[matching_product]
+                for tape_no in product_writes_map:
+                    tape_cell_state = product_writes_map[tape_no]
+                    write_record: tuple[TapeNo, int] = (tape_no, position)
+                    prev_write_state = writes_map.get(
+                        write_record, tape_cell_state
+                    )
+                    if prev_write_state != tape_cell_state:
+                        raise ValueError(
+                            f"Conflicting writes to tape {tape_no} at "
+                            f"position {position}: {prev_write_state} vs "
+                            f"{tape_cell_state}"
+                        )
+
+                    writes_map[write_record] = tape_cell_state
                     output_tape = new_multi_tape.get_or_make_tape(tape_no)
                     output_tape.write(position, tape_cell_state)
+                    assert output_tape.read(position) == tape_cell_state
                     written_tape_nos.add(tape_no)
 
             # copy over unchanged tape cells for tapes that
@@ -402,7 +461,7 @@ class MultiTapeAutomata(object):
                 if tape_no in written_tape_nos:
                     continue
 
-                current_tape = self.multi_tape.get_or_make_tape(tape_no)
+                current_tape = self._multi_tape.get_or_make_tape(tape_no)
                 new_tape = new_multi_tape.get_or_make_tape(tape_no)
                 previous_tape_val: TapeCellState = current_tape.read(position)
                 new_tape.write(position, previous_tape_val)
@@ -416,7 +475,7 @@ class MultiTapeAutomata(object):
         :return:
         The previous multi-tape state before the step
         """
-        prev_multi_tape = self.multi_tape
+        prev_multi_tape = self._multi_tape
         new_multi_tape = self.process_step()
-        self.multi_tape = new_multi_tape
+        self._multi_tape = new_multi_tape
         return prev_multi_tape
