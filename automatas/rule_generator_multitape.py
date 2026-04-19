@@ -321,11 +321,31 @@ class BiDirectionalMultiTape(object):
         return min_pos, max_pos
 
 
+@dataclasses.dataclass
+class WriteRecord(object):
+    origin_product: PyMultiTapeProduct
+    write_target: tuple[TapeNo, int]  # (tape_no, position)
+    tape_cell_state: TapeCellState
+
+    def log(self):
+        print(
+            f'{self.origin_product} | {self.write_target} '
+            f'-> {self.tape_cell_state}'
+        )
+
+
+@dataclasses.dataclass
+class ProcessStepResult(object):
+    prev_multi_tape: BiDirectionalMultiTape
+    new_multi_tape: BiDirectionalMultiTape
+    active_writes: list[WriteRecord]
+
+
 class MultiTapeAutomata(object):
     def __init__(
         self, state_eq_map: dict[MultiTapeOutput, PyMultiTapeExpression]
     ):
-        self._multi_tape = BiDirectionalMultiTape()
+        self._multi_tape: BiDirectionalMultiTape = BiDirectionalMultiTape()
         self._prod_to_state_map = self.reverse_state_eq_map(state_eq_map)
         self._max_radius = self.get_max_radius()
         self._state_eq_map = state_eq_map
@@ -417,7 +437,9 @@ class MultiTapeAutomata(object):
 
         return True
 
-    def process_step(self) -> BiDirectionalMultiTape:
+    def process_step(
+        self, log_active_writes: bool = True
+    ) -> ProcessStepResult:
         # i.e. no void states filled in by default
         existing_tape_nos = self._multi_tape.get_tape_nos()
         min_pos, max_pos = self._multi_tape.get_range()
@@ -426,6 +448,7 @@ class MultiTapeAutomata(object):
         scan_end = max_pos + self._max_radius + 1
         # record all (tape_no, position) -> tape_cell_state writes
         writes_map: dict[tuple[TapeNo, int], TapeCellState] = {}
+        active_writes: list[WriteRecord] = []
 
         for position in range(scan_start, scan_end):
             written_tape_nos = set()
@@ -436,11 +459,12 @@ class MultiTapeAutomata(object):
                     continue
 
                 product_writes_map = self._prod_to_state_map[matching_product]
+
                 for tape_no in product_writes_map:
                     tape_cell_state = product_writes_map[tape_no]
-                    write_record: tuple[TapeNo, int] = (tape_no, position)
+                    write_target: tuple[TapeNo, int] = (tape_no, position)
                     prev_write_state = writes_map.get(
-                        write_record, tape_cell_state
+                        write_target, tape_cell_state
                     )
                     if prev_write_state != tape_cell_state:
                         raise ValueError(
@@ -449,7 +473,16 @@ class MultiTapeAutomata(object):
                             f"{tape_cell_state}"
                         )
 
-                    writes_map[write_record] = tape_cell_state
+                    write_record = WriteRecord(
+                        origin_product=matching_product,
+                        write_target=(tape_no, position),
+                        tape_cell_state=tape_cell_state
+                    )
+                    active_writes.append(write_record)
+                    if log_active_writes:
+                        write_record.log()
+
+                    writes_map[write_target] = tape_cell_state
                     output_tape = new_multi_tape.get_or_make_tape(tape_no)
                     output_tape.write(position, tape_cell_state)
                     assert output_tape.read(position) == tape_cell_state
@@ -466,16 +499,19 @@ class MultiTapeAutomata(object):
                 previous_tape_val: TapeCellState = current_tape.read(position)
                 new_tape.write(position, previous_tape_val)
 
-        return new_multi_tape
+        return ProcessStepResult(
+            prev_multi_tape=self._multi_tape,
+            new_multi_tape=new_multi_tape,
+            active_writes=active_writes
+        )
 
-    def step(self) -> BiDirectionalMultiTape:
+    def step(self) -> ProcessStepResult:
         """
         Set the new state of the multi-tape after going forward
         a single step.
         :return:
         The previous multi-tape state before the step
         """
-        prev_multi_tape = self._multi_tape
-        new_multi_tape = self.process_step()
-        self._multi_tape = new_multi_tape
-        return prev_multi_tape
+        process_result = self.process_step()
+        self._multi_tape = process_result.new_multi_tape
+        return process_result
