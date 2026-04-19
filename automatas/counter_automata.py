@@ -263,23 +263,25 @@ class CounterAutomataBuilder(object):
                         output_cell_state=paused_counter(0)
                     )
 
-        # if there is a carry, and we're at the end of the built number
-        # sequence and the rightmost digit is about to overflow
-        right_overflow_combo = (
-            ST_MID(active_counter(max_counter_digit)),
-            ST_RIGHT(VOID),
-            CT_MID(CT_DATA)
-        )
-        transitions_group.add_transition(
-            input_terms=right_overflow_combo,
-            output_tape_no=SIGNALS_TAPE,
-            output_cell_state=paused_counter(1)
-        )
-        transitions_group.add_transition(
-            input_terms=right_overflow_combo,
-            output_tape_no=CARRY_TAPE,
-            output_cell_state=VOID
-        )
+        for digit in range(self.base):
+            # if there is a carry, and we're at the end of the built number
+            # sequence and the rightmost digit is about to overflow
+            right_overflow_combo = (
+                ST_MID(active_counter(digit)),
+                ST_RIGHT(VOID),
+                CT_MID(CT_DATA)
+            )
+            transitions_group.add_transition(
+                input_terms=right_overflow_combo,
+                output_tape_no=SIGNALS_TAPE,
+                output_cell_state=paused_counter(1)
+            )
+            transitions_group.add_transition(
+                input_terms=right_overflow_combo,
+                output_tape_no=CARRY_TAPE,
+                output_cell_state=VOID
+            )
+
         # clear rightmost counter cell if no carry
         for digit in range(self.base):
             # if right signals tape cell is any void cell
@@ -309,7 +311,8 @@ class CounterAutomataBuilder(object):
             transitions_group.add_transition(
                 input_terms=(
                     DT_MID(VOID),
-                    ST_RIGHT(active_counter(digit))
+                    ST_RIGHT(active_counter(digit)),
+                    CT_MID(VOID)
                 ),
                 output_tape_no=SIGNALS_TAPE,
                 output_cell_state=paused_counter(digit)

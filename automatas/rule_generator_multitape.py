@@ -468,7 +468,8 @@ class MultiTapeAutomata(object):
                     )
                     if prev_write_state != tape_cell_state:
                         raise ValueError(
-                            f"Conflicting writes to tape {tape_no} at "
+                            f"Conflicting writes to tape {tape_no} "
+                            f"from {matching_product} at "
                             f"position {position}: {prev_write_state} vs "
                             f"{tape_cell_state}"
                         )

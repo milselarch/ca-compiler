@@ -40,13 +40,13 @@ for digit in range(BASE):
 
 print('')
 
-for timestep in range(14):
+for timestep in range(30):
     # print(f'{terminal_width=}')
     if timestep > 0:
         multi_tape_automata.step()
 
     render_frame = multi_tape_automata.render_tapes(
-        start_position=-20, length=terminal_width-1, cell_width=2
+        start_position=-5, length=terminal_width-1, cell_width=2
     )
     # print(render_frame.get_dimensions())
     print(f'TIMESTEP {timestep}')
