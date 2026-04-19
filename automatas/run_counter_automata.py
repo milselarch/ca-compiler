@@ -1,6 +1,9 @@
 import os
 
-from automatas.counter_automata import CARRY_TAPE
+from typing import Final
+from automatas.counter_automata import (
+    CARRY_TAPE, paused_counter, active_counter
+)
 from counter_automata import (
     CounterAutomataBuilder, DT_DATA, DATA_TAPE, SIGNALS_TAPE
 )
@@ -9,7 +12,8 @@ from rule_generator_multitape import (
     BiDirectionalMultiTape, MultiTapeOutput
 )
 
-counter_automata_builder = CounterAutomataBuilder(base=6)
+BASE: Final[int] = 6
+counter_automata_builder = CounterAutomataBuilder(base=BASE)
 transitions_group = counter_automata_builder.build_transitions_group()
 state_eq_map = MultiTapeRuleGenerator.generate_equations(transitions_group)
 
@@ -27,9 +31,20 @@ try:
 except OSError:
     terminal_width = 100
 
+for digit in range(BASE):
+    print(
+        f'{digit=}: '
+        f'pasued={paused_counter(digit)} '
+        f'active={active_counter(digit)}'
+    )
 
-for timestep in range(10):
+print('')
+
+for timestep in range(14):
     # print(f'{terminal_width=}')
+    if timestep > 0:
+        multi_tape_automata.step()
+
     render_frame = multi_tape_automata.render_tapes(
         start_position=-20, length=terminal_width-1, cell_width=2
     )
@@ -37,4 +52,3 @@ for timestep in range(10):
     print(f'TIMESTEP {timestep}')
     print(render_frame.render())
     print('')
-    multi_tape_automata.step()

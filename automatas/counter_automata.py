@@ -173,17 +173,21 @@ class CounterAutomataBuilder(object):
         )
         # begin the counter accumulator on the right side
         transitions_group.add_transition(
-            input_terms=(ST_MID(VOID), DT_MID(DT_DATA), DT_RIGHT(VOID)),
+            input_terms=(
+                ST_MID(VOID), ST_RIGHT(VOID),
+                DT_MID(DT_DATA), DT_RIGHT(VOID)
+            ),
             output_tape_no=SIGNALS_TAPE,
             output_cell_state=paused_counter(1)
         )
         # shift leftmost counter value cell and increment
-        for digit in range(self.base-1):
+        for digit in range(self.base):
             if digit == max_counter_digit:
                 # overflow digit from max_counter_digit to 0 and add new
                 # max_counter_digit at the end
                 transitions_group.add_transition(
                     input_terms=(
+                        DT_MID(DT_DATA),
                         ST_MID(VOID),
                         ST_RIGHT(active_counter(max_counter_digit))
                     ),
@@ -193,21 +197,24 @@ class CounterAutomataBuilder(object):
                 # spawn a carry cell state to propagate to digits to the right
                 transitions_group.add_transition(
                     input_terms=(
+                        DT_RIGHT(DT_DATA),
                         ST_MID(VOID),
-                        ST_MID(active_counter(max_counter_digit))
-                    ),
-                    output_tape_no=CARRY_TAPE,
-                    output_cell_state=DT_DATA,
-                )
-            else:
-                assert digit < max_counter_digit
-                transitions_group.add_transition(
-                    input_terms=(
-                        ST_MID(VOID),
-                        ST_RIGHT(active_counter(digit)),
+                        ST_RIGHT(active_counter(max_counter_digit))
                     ),
                     output_tape_no=CARRY_TAPE,
                     output_cell_state=CT_DATA,
+                )
+            else:
+                # move digit leftwards and increment by 1
+                assert digit < max_counter_digit
+                transitions_group.add_transition(
+                    input_terms=(
+                        DT_MID(DT_DATA),
+                        ST_MID(VOID),
+                        ST_RIGHT(active_counter(digit)),
+                    ),
+                    output_tape_no=SIGNALS_TAPE,
+                    output_cell_state=paused_counter(digit+1),
                 )
 
         # apply carry cells to counter cells
@@ -275,10 +282,21 @@ class CounterAutomataBuilder(object):
         )
         # clear rightmost counter cell if no carry
         for digit in range(self.base):
+            # if right signals tape cell is any void cell
             transitions_group.add_transition(
                 input_terms=(
                     ST_MID(active_counter(digit)),
                     ST_RIGHT(VOID),
+                    CT_MID(VOID)
+                ),
+                output_tape_no=SIGNALS_TAPE,
+                output_cell_state=VOID
+            )
+            # if right signals tape cell is reduction start marker
+            transitions_group.add_transition(
+                input_terms=(
+                    ST_MID(active_counter(digit)),
+                    ST_RIGHT(ST_REDUCE_START),
                     CT_MID(VOID)
                 ),
                 output_tape_no=SIGNALS_TAPE,
