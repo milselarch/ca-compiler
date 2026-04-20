@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import os
+
 from typing import Final, Callable
 from py_ca_compiler import D
 
 from rule_generator_multitape import (
-    MultiTapeAutomataTransitionsGroup, TapeNo, TapeCellState
+    MultiTapeAutomataTransitionsGroup, TapeNo, TapeCellState, MultiTapeRuleGenerator, MultiTapeAutomata,
+    MultiTapeOutput, BLANK_INT
 )
 
 DATA_TAPE: Final[TapeNo] = TapeNo(0)
@@ -67,28 +70,6 @@ DT_RIGHT: Final[Callable[[int], D]] = prefill_tape(RIGHT, DATA_TAPE)
 CT_LEFT: Final[Callable[[int], D]] = prefill_tape(LEFT, CARRY_TAPE)
 CT_MID: Final[Callable[[int], D]] = prefill_tape(MID, CARRY_TAPE)
 CT_RIGHT: Final[Callable[[int], D]] = prefill_tape(RIGHT, CARRY_TAPE)
-
-
-class Tape(object):
-    def __init__(self):
-        self.forward = [0]
-        self.backward = []
-
-    def read_at(self, position: int) -> int:
-        if position >= 0:
-            if position >= len(self.forward):
-                return 0
-
-            return self.forward[position]
-        else:
-            idx = -position - 1
-            if idx >= len(self.backward):
-                return 0
-
-            return self.backward[idx]
-
-    def __getitem__(self, position: int) -> int:
-        return self.read_at(position)
 
 
 def build_st_counter_state(counter_digit: int, paused: bool) -> int:
@@ -197,7 +178,7 @@ class CounterAutomataBuilder(object):
                 # spawn a carry cell state to propagate to digits to the right
                 transitions_group.add_transition(
                     input_terms=(
-                        DT_RIGHT(DT_DATA),
+                        DT_MID(DT_DATA),
                         ST_MID(VOID),
                         ST_RIGHT(active_counter(max_counter_digit))
                     ),
@@ -329,3 +310,62 @@ class CounterAutomataBuilder(object):
             )
 
         return transitions_group
+
+
+class CounterAutomataRunner(object):
+    def __init__(
+        self, base: int = 6, initial_write_start: int = 0,
+        initial_write_end: int = 20
+    ):
+        self.base = base
+        self.builder = CounterAutomataBuilder(base=base)
+        self.transitions_group = self.builder.build_transitions_group()
+        self.state_eq_map = MultiTapeRuleGenerator.generate_equations(
+            self.transitions_group
+        )
+
+        self.initial_write_start = initial_write_start
+        self.initial_write_end = initial_write_end
+        self.multi_tape_automata = MultiTapeAutomata(self.state_eq_map)
+        self.multi_tape_automata.init_tapes([DATA_TAPE, SIGNALS_TAPE, CARRY_TAPE])
+        self.multi_tape_automata.write_region(
+            position=0, end_position=20,
+            data=[MultiTapeOutput(DATA_TAPE, DT_DATA)]
+        )
+
+    def run_simulation(
+        self, num_timesteps: int = 30, terminal_width: int = BLANK_INT,
+        render_start: int = -5
+    ):
+        # print(multi_tape.tapes)
+        try:
+            terminal_size = os.get_terminal_size()
+            default_terminal_width = terminal_size.columns - 1
+        except OSError:
+            default_terminal_width = 100
+
+        if terminal_width == BLANK_INT:
+            terminal_width = default_terminal_width
+
+        for digit in range(self.base):
+            print(
+                f'{digit=}: '
+                f'paused={paused_counter(digit)} '
+                f'active={active_counter(digit)}'
+            )
+
+        print('')
+
+        for timestep in range(num_timesteps):
+            # print(f'{terminal_width=}')
+            if timestep > 0:
+                self.multi_tape_automata.step()
+
+            render_frame = self.multi_tape_automata.render_tapes(
+                start_position=render_start, length=terminal_width,
+                cell_width=2
+            )
+            # print(render_frame.get_dimensions())
+            print(f'TIMESTEP {timestep}')
+            print(render_frame.render())
+            print('')

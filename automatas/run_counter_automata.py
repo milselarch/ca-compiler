@@ -1,54 +1,63 @@
-import os
+import sys
+import argparse
 
-from typing import Final
-from automatas.counter_automata import (
-    CARRY_TAPE, paused_counter, active_counter
-)
-from counter_automata import (
-    CounterAutomataBuilder, DT_DATA, DATA_TAPE, SIGNALS_TAPE
-)
-from rule_generator_multitape import (
-    MultiTapeRuleGenerator, MultiTapeAutomata,
-    BiDirectionalMultiTape, MultiTapeOutput
-)
+from pathlib import Path
 
-BASE: Final[int] = 6
-counter_automata_builder = CounterAutomataBuilder(base=BASE)
-transitions_group = counter_automata_builder.build_transitions_group()
-state_eq_map = MultiTapeRuleGenerator.generate_equations(transitions_group)
+_project_root_dir = Path(__file__).resolve().parents[1]
+sys.path.append(str(_project_root_dir))
 
-multi_tape_automata = MultiTapeAutomata(state_eq_map)
-multi_tape_automata.init_tapes([DATA_TAPE, SIGNALS_TAPE, CARRY_TAPE])
-multi_tape_automata.write_region(
-    position=0, end_position=10,
-    data=[MultiTapeOutput(DATA_TAPE, DT_DATA)]
-)
+from automatas.counter_automata import CounterAutomataRunner
+from automatas.rule_generator_multitape import BLANK_INT
 
-# print(multi_tape.tapes)
-try:
-    terminal_size = os.get_terminal_size()
-    terminal_width = terminal_size.columns
-except OSError:
-    terminal_width = 100
 
-for digit in range(BASE):
-    print(
-        f'{digit=}: '
-        f'pasued={paused_counter(digit)} '
-        f'active={active_counter(digit)}'
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(
+        description='Run the counter automata simulation.'
+    )
+    parser.add_argument(
+        '--base', '-b',
+        type=int,
+        default=6,
+        help='Numerical base for the counter automata (default: 6)'
+    )
+    parser.add_argument(
+        '--write-start', '-s',
+        type=int,
+        default=0,
+        help='Starting position to write the initial data (default: 0)'
+    )
+    parser.add_argument(
+        '--write-end', '-e',
+        type=int,
+        default=20,
+        help='Ending position to write the initial data (default: 20)'
+    )
+    parser.add_argument(
+        '--timesteps', '-t',
+        type=int,
+        default=30,
+        help='Number of timesteps to simulate (default: 30)'
+    )
+    parser.add_argument(
+        '--terminal-width', '-w',
+        type=int,
+        default=BLANK_INT,
+        help=f'Terminal width for rendering'
+    )
+    parser.add_argument(
+        '--render-start', '-r',
+        type=int,
+        default=-5,
+        help='Starting position for rendering the tapes (default: -5)'
     )
 
-print('')
-
-for timestep in range(30):
-    # print(f'{terminal_width=}')
-    if timestep > 0:
-        multi_tape_automata.step()
-
-    render_frame = multi_tape_automata.render_tapes(
-        start_position=-5, length=terminal_width-1, cell_width=2
+    args = parser.parse_args()
+    runner = CounterAutomataRunner(
+        base=args.base,
+        initial_write_start=args.write_start,
+        initial_write_end=args.write_end,
     )
-    # print(render_frame.get_dimensions())
-    print(f'TIMESTEP {timestep}')
-    print(render_frame.render())
-    print('')
+    runner.run_simulation(
+        num_timesteps=args.timesteps,
+        terminal_width=args.terminal_width
+    )

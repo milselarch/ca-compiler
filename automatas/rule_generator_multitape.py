@@ -4,10 +4,9 @@ import copy
 import dataclasses
 
 from collections import defaultdict
-from typing import Final, Self
+from typing import Final
 
 from py_ca_compiler import (
-    A, PyExpression, PyProduct,
     D, PyMultiTapeProduct, PyMultiTapeExpression
 )
 
@@ -138,6 +137,27 @@ class BidirectionalTape(object):
         # TODO: consider tracking unique states instead of recomputing
         return set(self.data) | set(self.rev_data)
 
+    def prune(self) -> tuple[int, int]:
+        forward_popped, reverse_popped = 0, 0
+        # prune leading zeros in both directions
+        while self.data and self.data[-1] == 0:
+            forward_popped += 1
+            self.data.pop()
+        while self.rev_data and self.rev_data[-1] == 0:
+            reverse_popped += 1
+            self.rev_data.pop()
+
+        return forward_popped, reverse_popped
+
+    def get_minimal_data_region(self) -> list[TapeCellState]:
+        """
+        Get the minimal contiguous region of tape data
+        that contains all non-void states.
+        :return:
+        """
+        self.prune()
+        return self.data + self.rev_data
+
     def render_line(
         self, start_position: int, length: int,
         cell_width: int = BLANK_INT
@@ -242,6 +262,13 @@ class BiDirectionalMultiTape(object):
             all_states |= tape.get_all_states()
 
         return all_states
+
+    def prune(self):
+        tape_nos = sorted(set(self.tapes.keys()))
+
+        for tape_no in tape_nos:
+            tape = self.tapes[tape_no]
+            tape.prune()
 
     def render_tapes(
         self, start_position: int, length: int,
@@ -516,3 +543,12 @@ class MultiTapeAutomata(object):
         process_result = self.process_step()
         self._multi_tape = process_result.new_multi_tape
         return process_result
+
+
+class MultiTapeBuilder(object):
+    def __init__(self, multi_tape_automata: MultiTapeAutomata):
+        self._automata = multi_tape_automata
+        # (tape_no, state) -> position
+        # -> all other possible (tape_no, state) overlaps
+        self._initial_overlaps = {}
+        # TODO: fill in initial overlaps
