@@ -10,6 +10,7 @@ from py_ca_compiler import (
     D, PyMultiTapeProduct, PyMultiTapeExpression
 )
 
+from automatas.counter_automata import VOID_STATE
 from renderer import RenderFrame
 
 
@@ -21,7 +22,7 @@ class TapeCellState(int):
     pass
 
 
-VOID_STATE: Final[TapeCellState] = TapeCellState(0)
+VOID_STATE: Final[TapeCellState] = 0
 BLANK_INT: Final[int] = -1
 
 
@@ -140,10 +141,10 @@ class BidirectionalTape(object):
     def prune(self) -> tuple[int, int]:
         forward_popped, reverse_popped = 0, 0
         # prune leading zeros in both directions
-        while self.data and self.data[-1] == 0:
+        while self.data and self.data[-1] == VOID_STATE:
             forward_popped += 1
             self.data.pop()
-        while self.rev_data and self.rev_data[-1] == 0:
+        while self.rev_data and self.rev_data[-1] == VOID_STATE:
             reverse_popped += 1
             self.rev_data.pop()
 
@@ -548,7 +549,31 @@ class MultiTapeAutomata(object):
 class MultiTapeBuilder(object):
     def __init__(self, multi_tape_automata: MultiTapeAutomata):
         self._automata = multi_tape_automata
-        # (tape_no, state) -> position
-        # -> all other possible (tape_no, state) overlaps
-        self._initial_overlaps = {}
-        # TODO: fill in initial overlaps
+        # tape state -> (relative) position -> overlapping tape state
+        # (tape_no, state) -> int -> (tape_no, state)
+        # and by overlaps I mean (tape_no, state)
+        self._initial_overlaps: defaultdict[
+            MultiTapeOutput, defaultdict[int, set[MultiTapeOutput]]
+        ] = defaultdict(lambda: defaultdict(set))
+
+    def get_max_radius(self) -> int:
+        return self._automata.get_max_radius()
+
+    def declare_group_overlaps(
+        self, overlap_states: set[MultiTapeOutput]
+    ):
+        """
+        Declare that every state in the set of states passed in
+        can overlap with any other state at any relative offset
+        in the initial automata tape
+        :param overlap_states:
+        :return:
+        """
+        radius = self.get_max_radius()
+        for state, other_state in zip(overlap_states, overlap_states):
+            for offset in range(radius+1):
+                self._initial_overlaps[state][offset].add(other_state)
+
+    def compose(self):
+        # TODO: infer existing overlaps from the automata as well
+        pass

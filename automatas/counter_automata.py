@@ -6,7 +6,8 @@ from typing import Final, Callable
 from py_ca_compiler import D
 
 from rule_generator_multitape import (
-    MultiTapeAutomataTransitionsGroup, TapeNo, TapeCellState, MultiTapeRuleGenerator, MultiTapeAutomata,
+    MultiTapeAutomataTransitionsGroup, TapeNo, TapeCellState,
+    MultiTapeRuleGenerator, MultiTapeAutomata,
     MultiTapeOutput, BLANK_INT
 )
 
@@ -25,8 +26,8 @@ For the signals tape (LSB first to MSB last):
     - bits[0] == 1: state is a non-counter state 
         - bits[1] == 1: the state is a REDUCE_START state
 """
-VOID: Final[TapeCellState] = TapeCellState(0b0)
-HALT: Final[TapeCellState] = TapeCellState(0b1)
+VOID_STATE: Final[TapeCellState] = TapeCellState(0b0)
+HALT_STATE: Final[TapeCellState] = TapeCellState(0b1)
 
 DT_DATA: Final[TapeCellState] = TapeCellState(0b1)
 """
@@ -148,15 +149,16 @@ class CounterAutomataBuilder(object):
         # mark exponential bit reduction start
         transitions_group.add_transition(
             input_terms=(
-                ST_LEFT(VOID), DT_LEFT(DT_DATA), DT_MID(VOID), ST_MID(VOID)
+                ST_LEFT(VOID_STATE), DT_LEFT(DT_DATA),
+                DT_MID(VOID_STATE), ST_MID(VOID_STATE)
             ),
             output_tape_no=SIGNALS_TAPE, output_cell_state=ST_REDUCE_START
         )
         # begin the counter accumulator on the right side
         transitions_group.add_transition(
             input_terms=(
-                ST_MID(VOID), ST_RIGHT(VOID),
-                DT_MID(DT_DATA), DT_RIGHT(VOID)
+                ST_MID(VOID_STATE), ST_RIGHT(VOID_STATE),
+                DT_MID(DT_DATA), DT_RIGHT(VOID_STATE)
             ),
             output_tape_no=SIGNALS_TAPE,
             output_cell_state=paused_counter(1)
@@ -169,7 +171,7 @@ class CounterAutomataBuilder(object):
                 transitions_group.add_transition(
                     input_terms=(
                         DT_MID(DT_DATA),
-                        ST_MID(VOID),
+                        ST_MID(VOID_STATE),
                         ST_RIGHT(active_counter(max_counter_digit))
                     ),
                     output_tape_no=SIGNALS_TAPE,
@@ -179,7 +181,7 @@ class CounterAutomataBuilder(object):
                 transitions_group.add_transition(
                     input_terms=(
                         DT_MID(DT_DATA),
-                        ST_MID(VOID),
+                        ST_MID(VOID_STATE),
                         ST_RIGHT(active_counter(max_counter_digit))
                     ),
                     output_tape_no=CARRY_TAPE,
@@ -191,7 +193,7 @@ class CounterAutomataBuilder(object):
                 transitions_group.add_transition(
                     input_terms=(
                         DT_MID(DT_DATA),
-                        ST_MID(VOID),
+                        ST_MID(VOID_STATE),
                         ST_RIGHT(active_counter(digit)),
                     ),
                     output_tape_no=SIGNALS_TAPE,
@@ -207,7 +209,7 @@ class CounterAutomataBuilder(object):
                     input_terms=(
                         ST_MID(active_counter(mid_digit)),
                         ST_RIGHT(active_counter(right_digit)),
-                        CT_MID(VOID)
+                        CT_MID(VOID_STATE)
                     ),
                     output_tape_no=SIGNALS_TAPE,
                     output_cell_state=paused_counter(right_digit)
@@ -229,7 +231,7 @@ class CounterAutomataBuilder(object):
                     transitions_group.add_transition(
                         input_terms=carry_no_overflow_combo,
                         output_tape_no=CARRY_TAPE,
-                        output_cell_state=VOID
+                        output_cell_state=VOID_STATE
                     )
                 else:
                     # overflow to 0 and move left, carry stays for next digit
@@ -249,7 +251,7 @@ class CounterAutomataBuilder(object):
             # sequence and the rightmost digit is about to overflow
             right_overflow_combo = (
                 ST_MID(active_counter(digit)),
-                ST_RIGHT(VOID),
+                ST_RIGHT(VOID_STATE),
                 CT_MID(CT_DATA)
             )
             transitions_group.add_transition(
@@ -260,7 +262,7 @@ class CounterAutomataBuilder(object):
             transitions_group.add_transition(
                 input_terms=right_overflow_combo,
                 output_tape_no=CARRY_TAPE,
-                output_cell_state=VOID
+                output_cell_state=VOID_STATE
             )
 
         # clear rightmost counter cell if no carry
@@ -269,21 +271,21 @@ class CounterAutomataBuilder(object):
             transitions_group.add_transition(
                 input_terms=(
                     ST_MID(active_counter(digit)),
-                    ST_RIGHT(VOID),
-                    CT_MID(VOID)
+                    ST_RIGHT(VOID_STATE),
+                    CT_MID(VOID_STATE)
                 ),
                 output_tape_no=SIGNALS_TAPE,
-                output_cell_state=VOID
+                output_cell_state=VOID_STATE
             )
             # if right signals tape cell is reduction start marker
             transitions_group.add_transition(
                 input_terms=(
                     ST_MID(active_counter(digit)),
                     ST_RIGHT(ST_REDUCE_START),
-                    CT_MID(VOID)
+                    CT_MID(VOID_STATE)
                 ),
                 output_tape_no=SIGNALS_TAPE,
-                output_cell_state=VOID
+                output_cell_state=VOID_STATE
             )
 
         # bleed counter leftwards past data tape to void
@@ -291,9 +293,9 @@ class CounterAutomataBuilder(object):
         for digit in range(self.base):
             transitions_group.add_transition(
                 input_terms=(
-                    DT_MID(VOID),
+                    DT_MID(VOID_STATE),
                     ST_RIGHT(active_counter(digit)),
-                    CT_MID(VOID)
+                    CT_MID(VOID_STATE)
                 ),
                 output_tape_no=SIGNALS_TAPE,
                 output_cell_state=paused_counter(digit)
