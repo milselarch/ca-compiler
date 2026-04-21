@@ -22,7 +22,6 @@ class TapeCellState(int):
     pass
 
 
-VOID_STATE: Final[TapeCellState] = 0
 BLANK_INT: Final[int] = -1
 
 
@@ -229,20 +228,33 @@ class BidirectionalTape(object):
 
 class BiDirectionalMultiTape(object):
     def __init__(self, tapes: dict[TapeNo, BidirectionalTape] | None = None):
+        self._freeze_tapes: bool = False
+
         if tapes is not None:
-            self.tapes: dict[TapeNo, BidirectionalTape] = tapes
+            self._tapes: dict[TapeNo, BidirectionalTape] = tapes
         else:
-            self.tapes: dict[TapeNo, BidirectionalTape] = {}
+            self._tapes: dict[TapeNo, BidirectionalTape] = {}
 
     def get_or_make_tape(self, tape_no: TapeNo) -> BidirectionalTape:
-        if tape_no not in self.tapes:
-            self.tapes[tape_no] = BidirectionalTape()
+        if tape_no not in self._tapes:
+            if self._freeze_tapes:
+                raise ValueError(
+                    "Cannot write to new tape when tapes are frozen"
+                )
 
-        return self.tapes[tape_no]
+            self._tapes[tape_no] = BidirectionalTape()
 
-    def init_tapes(self, tape_nos: list[TapeNo]):
+        return self._tapes[tape_no]
+
+    def init_tapes(self, tape_nos: list[TapeNo], freeze: bool = True):
         for tape_no in tape_nos:
             self.get_or_make_tape(tape_no)
+
+        if freeze:
+            self._freeze_tapes = True
+
+    def get_tape_nos(self) -> list[TapeNo]:
+        return sorted(list(self._tapes.keys()))
 
     def write_region(
         self, position: int, end_position: int,
@@ -259,16 +271,16 @@ class BiDirectionalMultiTape(object):
 
     def get_all_states(self) -> set[TapeCellState]:
         all_states = set()
-        for tape in self.tapes.values():
+        for tape in self._tapes.values():
             all_states |= tape.get_all_states()
 
         return all_states
 
     def prune(self):
-        tape_nos = sorted(set(self.tapes.keys()))
+        tape_nos = sorted(set(self._tapes.keys()))
 
         for tape_no in tape_nos:
-            tape = self.tapes[tape_no]
+            tape = self._tapes[tape_no]
             tape.prune()
 
     def render_tapes(
@@ -286,7 +298,7 @@ class BiDirectionalMultiTape(object):
                 f"the largest state {max_state}"
             )
 
-        tape_nos = sorted(set(self.tapes.keys()) | {TapeNo(0)})
+        tape_nos = sorted(set(self._tapes.keys()) | {TapeNo(0)})
         left_tabs = []
 
         for tape_no in tape_nos:
@@ -303,7 +315,7 @@ class BiDirectionalMultiTape(object):
         tape_view_lines: list[TapeRenderFrame] = []
 
         for tape_no in tape_nos:
-            tape = self.tapes[tape_no]
+            tape = self._tapes[tape_no]
             tape_line = tape.render_line(
                 start_position=start_position,
                 length=content_width,
@@ -335,13 +347,15 @@ class BiDirectionalMultiTape(object):
             ])
         ])
 
-    def get_tape_nos(self) -> list[TapeNo]:
-        return list(self.tapes.keys())
-
     def get_range(self):
+        """
+        Get the range for which tape cell data is currently encoded
+        in the tape
+        :return:
+        """
         min_pos, max_pos = 0, 0
 
-        for tape in self.tapes.values():
+        for tape in self._tapes.values():
             tape_min, tape_max = tape.get_range()
             min_pos = min(min_pos, tape_min)
             max_pos = max(max_pos, tape_max)
@@ -375,20 +389,47 @@ class MultiTapeAutomata(object):
     ):
         self._multi_tape: BiDirectionalMultiTape = BiDirectionalMultiTape()
         self._prod_to_state_map = self.reverse_state_eq_map(state_eq_map)
-        self._max_radius = self.get_max_radius()
+
+        leftmost_extent, rightmost_extent = self.get_rule_range()
+        self._leftmost_extent: int = leftmost_extent
+        self._rightmost_extent: int = rightmost_extent
         self._state_eq_map = state_eq_map
 
-    def get_max_radius(self) -> int:
-        max_radius: int = 0
+    def get_tape_nos(self) -> list[TapeNo]:
+        return self._multi_tape.get_tape_nos()
+
+    def get_prod_to_state_map(self) -> defaultdict[
+        PyMultiTapeProduct, dict[TapeNo, TapeCellState]
+    ]:
+        return copy.deepcopy(self._prod_to_state_map)
+
+    def get_state_eq_map(self) -> dict[
+        MultiTapeOutput, PyMultiTapeExpression
+    ]:
+        return copy.deepcopy(self._state_eq_map)
+
+    @property
+    def leftmost_extent(self) -> int:
+        return self._leftmost_extent
+
+    @property
+    def rightmost_extent(self) -> int:
+        return self._rightmost_extent
+
+    def get_rule_range(self) -> tuple[int, int]:
+        leftmost_extent, rightmost_extent = 0, 0
 
         for product in self._prod_to_state_map:
             terms = product.get_flat_terms()
 
             for term in terms:
-                offset = abs(term.get_position())
-                max_radius = max(max_radius, offset)
+                offset = term.get_position()
+                leftmost_extent = min(leftmost_extent, offset)
+                rightmost_extent = max(rightmost_extent, offset)
 
-        return max_radius
+        assert leftmost_extent <= 0
+        assert rightmost_extent >= 0
+        return leftmost_extent, rightmost_extent
 
     def init_tapes(self, tape_nos: list[TapeNo]):
         self._multi_tape.init_tapes(tape_nos)
@@ -415,7 +456,16 @@ class MultiTapeAutomata(object):
     def reverse_state_eq_map(
         cls, state_eq_map: dict[MultiTapeOutput, PyMultiTapeExpression]
     ) -> defaultdict[PyMultiTapeProduct, dict[TapeNo, TapeCellState]]:
-        # map product -> tape_no -> output tape cell state
+        """
+        given a mapping from output tape states to expressions
+        over input tape states,
+        create a mapping of tape state products to the
+        tape_no and tape cell state they write to
+
+        map product -> tape_no -> output tape cell state
+        :param state_eq_map:
+        :return:
+        """
         prod_to_state_map: defaultdict[
             PyMultiTapeProduct, dict[TapeNo, TapeCellState]
         ] = defaultdict(lambda: dict())
@@ -426,6 +476,28 @@ class MultiTapeAutomata(object):
             write_tape_cell_state = multi_tape_output.tape_cell_state
 
             for product in products:
+                product_terms = product.get_flat_terms()
+                """
+                Whether a product transitions a contiguous region
+                of void states into a non-void state
+                This can't be allowed because it would make the 
+                simulation range infinite.
+                """
+                product_is_void: bool = True
+
+                for term in product_terms:
+                    if term.get_state() != VOID_STATE:
+                        product_is_void = False
+                        break
+
+                if product_is_void:
+                    raise ValueError(
+                        f"Product {product} transitions void states to "
+                        f"non-void state {multi_tape_output}, which is not "
+                        f"allowed since it would make the simulation range "
+                        f"infinite"
+                    )
+
                 writes_map = prod_to_state_map[product]
                 existing_tape_write_state = writes_map.get(
                     write_tape_no, write_tape_cell_state
@@ -472,8 +544,8 @@ class MultiTapeAutomata(object):
         existing_tape_nos = self._multi_tape.get_tape_nos()
         min_pos, max_pos = self._multi_tape.get_range()
         new_multi_tape = copy.deepcopy(self._multi_tape)
-        scan_start = min_pos - self._max_radius
-        scan_end = max_pos + self._max_radius + 1
+        scan_start = min_pos + self._leftmost_extent
+        scan_end = max_pos + self._rightmost_extent + 1
         # record all (tape_no, position) -> tape_cell_state writes
         writes_map: dict[tuple[TapeNo, int], TapeCellState] = {}
         active_writes: list[WriteRecord] = []
@@ -556,24 +628,100 @@ class MultiTapeBuilder(object):
             MultiTapeOutput, defaultdict[int, set[MultiTapeOutput]]
         ] = defaultdict(lambda: defaultdict(set))
 
-    def get_max_radius(self) -> int:
-        return self._automata.get_max_radius()
+        tape_nos = self.get_tape_nos()
+        void_overlap_states = set([
+            MultiTapeOutput(tape_no=tape_no, tape_cell_state=VOID_STATE)
+            for tape_no in tape_nos
+        ])
+        # declare that void states can overlap with one another
+        self.declare_group_overlaps(void_overlap_states)
+
+    @property
+    def leftmost_extent(self) -> int:
+        return self._automata.leftmost_extent
+
+    @property
+    def rightmost_extent(self) -> int:
+        return self._automata.rightmost_extent
+
+    def get_tape_nos(self) -> list[TapeNo]:
+        return self._automata.get_tape_nos()
+
+    def get_prod_to_state_map(self) -> defaultdict[
+        PyMultiTapeProduct, dict[TapeNo, TapeCellState]
+    ]:
+        return self._automata.get_prod_to_state_map()
 
     def declare_group_overlaps(
         self, overlap_states: set[MultiTapeOutput]
     ):
         """
-        Declare that every state in the set of states passed in
+        Declare that every state in overlap_states
         can overlap with any other state at any relative offset
         in the initial automata tape
+
+        To clarify,
+        when I say that a tape state A can overlap with tape state B
+        at offset k, I mean that:
+
+        if A is present at some position p on the tape,
+        then B can also plausibly be present at position p + k
+        at some point in the history of the tape
         :param overlap_states:
         :return:
         """
-        radius = self.get_max_radius()
-        for state, other_state in zip(overlap_states, overlap_states):
-            for offset in range(radius+1):
-                self._initial_overlaps[state][offset].add(other_state)
+        tape_nos = self.get_tape_nos()
+
+        for offset in range(self.leftmost_extent, self.rightmost_extent+1):
+            for state in overlap_states:
+                for other_state in overlap_states:
+                    # every tape state could overlap with any other tape state
+                    # at any offset within the range of possible offsets
+                    # covered across all the automata's rules
+                    self._initial_overlaps[state][offset].add(other_state)
+
+                for tape_no in tape_nos:
+                    # every tape state can overlap with void at any offset
+                    tape_void = MultiTapeOutput(tape_no, VOID_STATE)
+                    self._initial_overlaps[state][offset].add(tape_void)
+                    self._initial_overlaps[tape_void][offset].add(state)
+
+    def is_prodict_satisfiable(self, product: PyMultiTapeProduct) -> bool:
+        """
+        Check if the given product is satisfiable based on the initial
+        overlaps declared for the automata
+        :param product:
+        :return:
+        """
+        terms = product.get_flat_terms()
+
+        for term, other_term in zip(terms, terms):
+
+
+        for i in range(len(terms)):
+            term_i = terms[i]
+            state_i = MultiTapeOutput(
+                tape_no=TapeNo(term_i.get_state()[0]),
+                tape_cell_state=TapeCellState(term_i.get_state()[1])
+            )
+            offset_i = term_i.get_position()
+
+            for j in range(i+1, len(terms)):
+                term_j = terms[j]
+                state_j = MultiTapeOutput(
+                    tape_no=TapeNo(term_j.get_state()[0]),
+                    tape_cell_state=TapeCellState(term_j.get_state()[1])
+                )
+                offset_j = term_j.get_position()
+                relative_offset = offset_j - offset_i
+
+                if state_j not in self._initial_overlaps[state_i][relative_offset]:
+                    return False
+
+        return True
 
     def compose(self):
         # TODO: infer existing overlaps from the automata as well
-        pass
+        global_overlaps = copy.deepcopy(self._initial_overlaps)
+        prod_to_state_map = self.get_prod_to_state_map()
+
