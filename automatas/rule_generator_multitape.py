@@ -4,7 +4,7 @@ import copy
 import dataclasses
 
 from collections import defaultdict
-from typing import Final
+from typing import Final, List, TypeVar, Iterator, Tuple
 
 from py_ca_compiler import (
     D, PyMultiTapeProduct, PyMultiTapeExpression
@@ -23,6 +23,14 @@ class TapeCellState(int):
 
 
 BLANK_INT: Final[int] = -1
+
+
+T = TypeVar('T')
+U = TypeVar('U')
+
+
+def zip_preserve_types(a: List[T], b: List[U]) -> Iterator[Tuple[T, U]]:
+    return zip(a, b)
 
 
 @dataclasses.dataclass
@@ -686,37 +694,44 @@ class MultiTapeBuilder(object):
                     self._initial_overlaps[state][offset].add(tape_void)
                     self._initial_overlaps[tape_void][offset].add(state)
 
-    def is_prodict_satisfiable(self, product: PyMultiTapeProduct) -> bool:
+    @staticmethod
+    def is_prodict_satisfiable(
+        product: PyMultiTapeProduct, overlaps: defaultdict[
+            MultiTapeOutput, defaultdict[int, set[MultiTapeOutput]]
+        ]
+    ) -> bool:
         """
-        Check if the given product is satisfiable based on the initial
-        overlaps declared for the automata
+        Check if the given product is satisfiable based on the
+        overlaps that exist in the automata
+        :param overlaps:
         :param product:
         :return:
         """
         terms = product.get_flat_terms()
 
-        for term, other_term in zip(terms, terms):
-
-
-        for i in range(len(terms)):
-            term_i = terms[i]
-            state_i = MultiTapeOutput(
-                tape_no=TapeNo(term_i.get_state()[0]),
-                tape_cell_state=TapeCellState(term_i.get_state()[1])
+        for term_a, term_b in zip_preserve_types(terms, terms):
+            tape_no_a, tape_state_a = term_a.get_state()
+            offset_a = term_a.get_position()
+            output_state_a = MultiTapeOutput(
+                tape_no=TapeNo(tape_no_a),
+                tape_cell_state=TapeCellState(tape_state_a)
             )
-            offset_i = term_i.get_position()
 
-            for j in range(i+1, len(terms)):
-                term_j = terms[j]
-                state_j = MultiTapeOutput(
-                    tape_no=TapeNo(term_j.get_state()[0]),
-                    tape_cell_state=TapeCellState(term_j.get_state()[1])
-                )
-                offset_j = term_j.get_position()
-                relative_offset = offset_j - offset_i
+            tape_no_b, tape_state_b = term_b.get_state()
+            offset_b = term_b.get_position()
+            output_state_b = MultiTapeOutput(
+                tape_no=TapeNo(tape_no_b),
+                tape_cell_state=TapeCellState(tape_state_b)
+            )
 
-                if state_j not in self._initial_overlaps[state_i][relative_offset]:
-                    return False
+            relative_offset = offset_b - offset_a
+            overlap_output_states = overlaps[output_state_a][relative_offset]
+            if output_state_b not in overlap_output_states:
+                """
+                output_state_b cannot be found at a position offset of 
+                relative_offset from output_state_a
+                """
+                return False
 
         return True
 
@@ -724,4 +739,3 @@ class MultiTapeBuilder(object):
         # TODO: infer existing overlaps from the automata as well
         global_overlaps = copy.deepcopy(self._initial_overlaps)
         prod_to_state_map = self.get_prod_to_state_map()
-
