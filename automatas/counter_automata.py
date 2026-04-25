@@ -8,7 +8,7 @@ from py_ca_compiler import D
 from rule_generator_multitape import (
     MultiTapeAutomataTransitionsGroup, TapeNo, TapeCellState,
     MultiTapeRuleGenerator, MultiTapeAutomata,
-    MultiTapeOutput, BLANK_INT
+    MultiTapeOutput, BLANK_INT, VOID_STATE
 )
 
 DATA_TAPE: Final[TapeNo] = TapeNo(0)
@@ -26,8 +26,6 @@ For the signals tape (LSB first to MSB last):
     - bits[0] == 1: state is a non-counter state 
         - bits[1] == 1: the state is a REDUCE_START state
 """
-VOID_STATE: Final[TapeCellState] = TapeCellState(0b0)
-HALT_STATE: Final[TapeCellState] = TapeCellState(0b1)
 
 DT_DATA: Final[TapeCellState] = TapeCellState(0b1)
 """
