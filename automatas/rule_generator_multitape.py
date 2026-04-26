@@ -659,7 +659,7 @@ class TapeOverlaps(object):
     def insert_overlap(
         self, source_state: MultiTapeOutput, target_state: MultiTapeOutput,
         offset: int
-    ):
+    ) -> bool:
         """
         If state A overlaps with state B at offset k,
         then state B also overlaps with state A at offset -k
@@ -671,8 +671,17 @@ class TapeOverlaps(object):
         one has to conscientious about direction
         :return:
         """
-        self._overlaps[source_state][offset].add(target_state)
-        self._overlaps[target_state][-offset].add(source_state)
+        source_overlaps = self._overlaps[source_state][offset]
+        target_overlaps = self._overlaps[target_state][-offset]
+
+        if target_state in source_overlaps:
+            # overlap already exists
+            return False
+
+        source_overlaps.add(target_state)
+        assert source_state not in target_overlaps
+        target_overlaps.add(source_state)
+        return True
 
     def can_overlap_exist(
         self, source_state: MultiTapeOutput,
@@ -715,7 +724,7 @@ class MultiTapeBuilder(object):
     def get_tape_nos(self) -> list[TapeNo]:
         return self._automata.get_tape_nos()
 
-    def get_prod_to_state_map(self) -> defaultdict[
+    def _get_prod_to_state_map(self) -> defaultdict[
         PyMultiTapeProduct, dict[TapeNo, TapeCellState]
     ]:
         return self._automata.get_prod_to_state_map()
@@ -802,12 +811,11 @@ class MultiTapeBuilder(object):
 
         return True
 
-    def compose(self):
-        # TODO: infer existing overlaps from the automata as well
-        global_overlaps = copy.deepcopy(self._initial_overlaps)
-        # map input products to output tape writes
-        prod_to_state_map = self.get_prod_to_state_map()
-        # map state to products that contain it in their input terms
+    def build_input_state_to_prod_map(self) -> defaultdict[
+        MultiTapeOutput, set[PyMultiTapeProduct]
+    ]:
+        prod_to_state_map = self._get_prod_to_state_map()
+        # map state -> products that contain it in their input terms
         input_state_to_prod_map: defaultdict[
             MultiTapeOutput, set[PyMultiTapeProduct]
         ] = defaultdict(set)
@@ -819,6 +827,16 @@ class MultiTapeBuilder(object):
                 input_state = MultiTapeOutput.from_term(input_term)
                 input_state_to_prod_map[input_state].add(product)
 
+        return input_state_to_prod_map
+
+    def build_overlaps(self):
+        # TODO: infer existing overlaps from the automata as well
+        global_overlaps = copy.deepcopy(self._initial_overlaps)
+        # map input products to output tape writes
+        prod_to_state_map = self._get_prod_to_state_map()
+        # map state -> products that contain it in their input terms
+        input_state_to_prod_map = self.build_input_state_to_prod_map()
+        # input products that can effect a new state overlap
         relevant_input_products = list(prod_to_state_map.keys())
 
         while relevant_input_products:
@@ -832,21 +850,33 @@ class MultiTapeBuilder(object):
                 product_writes = prod_to_state_map[product]
                 input_terms = product.get_flat_terms()
 
-                for input_term in input_terms:
-                    input_state = MultiTapeOutput.from_term(input_term)
-                    term_offset_from_output = input_term.get_position()
-                    term_offset_from_input = -term_offset_from_output
+                for write_tape_no in product_writes:
+                    output_tape_cell_state = product_writes[write_tape_no]
+                    output_state = MultiTapeOutput(
+                        tape_no=write_tape_no,
+                        tape_cell_state=output_tape_cell_state
+                    )
 
-                    for write_tape_no in product_writes:
-                        output_tape_cell_state = product_writes[write_tape_no]
-                        output_state = MultiTapeOutput(
-                            tape_no=write_tape_no,
-                            tape_cell_state=output_tape_cell_state
-                        )
+                    for input_term in input_terms:
+                        # Insert overlaps between the products' constituent
+                        # input states and the output state it writes to
+                        input_state = MultiTapeOutput.from_term(input_term)
+                        term_offset_from_output = input_term.get_position()
+                        term_offset_from_input = -term_offset_from_output
+
                         global_overlaps.insert_overlap(
                             source_state=input_state,
                             target_state=output_state,
                             offset=term_offset_from_input
                         )
 
-            # TODO: update input_state_to_prod_map
+                    # Get the other products that use the current products'
+                    # output state as one of their input states, and add it
+                    # to list of products to check for satisfiability later
+                    affected_products = input_state_to_prod_map[output_state]
+                    for affected_product in affected_products:
+                        new_relevant_input_products.add(affected_product)
+
+            relevant_input_products = new_relevant_input_products
+
+        return global_overlaps
