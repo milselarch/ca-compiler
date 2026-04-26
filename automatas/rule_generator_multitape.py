@@ -420,9 +420,7 @@ class MultiTapeAutomata(object):
     def get_tape_nos(self) -> list[TapeNo]:
         return self._multi_tape.get_tape_nos()
 
-    def get_prod_to_state_map(self) -> defaultdict[
-        PyMultiTapeProduct, dict[TapeNo, TapeCellState]
-    ]:
+    def get_prod_to_state_map(self) -> ProductWritesMap:
         return copy.deepcopy(self._prod_to_state_map)
 
     def get_state_eq_map(self) -> dict[
@@ -477,7 +475,7 @@ class MultiTapeAutomata(object):
     @classmethod
     def reverse_state_eq_map(
         cls, state_eq_map: dict[MultiTapeOutput, PyMultiTapeExpression]
-    ) -> defaultdict[PyMultiTapeProduct, dict[TapeNo, TapeCellState]]:
+    ) -> ProductWritesMap:
         """
         given a mapping from output tape states to expressions
         over input tape states, create a mapping of tape state products to the
@@ -493,14 +491,10 @@ class MultiTapeAutomata(object):
         :param state_eq_map:
         :return:
         """
-        prod_to_state_map: defaultdict[
-            PyMultiTapeProduct, dict[TapeNo, TapeCellState]
-        ] = defaultdict(lambda: dict())
+        prod_to_state_map = ProductWritesMap()
 
         for multi_tape_output, expr in state_eq_map.items():
             products = expr.get_flat_products()
-            write_tape_no = multi_tape_output.tape_no
-            write_tape_cell_state = multi_tape_output.tape_cell_state
 
             for product in products:
                 product_terms = product.get_flat_terms()
@@ -525,19 +519,9 @@ class MultiTapeAutomata(object):
                         f"infinite"
                     )
 
-                writes_map = prod_to_state_map[product]
-                existing_tape_write_state = writes_map.get(
-                    write_tape_no, write_tape_cell_state
+                prod_to_state_map.insert(
+                    product=product, tape_output=multi_tape_output
                 )
-                if existing_tape_write_state != write_tape_cell_state:
-                    raise ValueError(
-                        f"Conflicting output states for {product=} "
-                        f"on tape {write_tape_no}: "
-                        f"{existing_tape_write_state} vs "
-                        f"{write_tape_cell_state}"
-                    )
-
-                writes_map[write_tape_no] = write_tape_cell_state
 
         return prod_to_state_map
 
@@ -758,6 +742,53 @@ class ProductTrie(object):
         return self.has_term_path(terms)
 
 
+@dataclasses.dataclass
+class ProductWritesMap(object):
+    """
+    map product -> tape_no -> output tape cell state
+    """
+    prod_to_state_map: defaultdict[
+        PyMultiTapeProduct, dict[TapeNo, TapeCellState]
+    ] = dataclasses.field(
+        default_factory=lambda: defaultdict(lambda: dict())
+    )
+
+    def __iter__(self):
+        return iter(self.prod_to_state_map.items())
+
+    def items(self):
+        return self.prod_to_state_map.items()
+
+    def keys(self):
+        return self.prod_to_state_map.keys()
+
+    def values(self):
+        return self.prod_to_state_map.values()
+
+    def __getitem__(self, item):
+        return copy.copy(self.prod_to_state_map[item])
+
+    def insert(
+        self, product: PyMultiTapeProduct, tape_output: MultiTapeOutput
+    ):
+        write_tape_no = tape_output.tape_no
+        write_tape_cell_state = tape_output.tape_cell_state
+
+        writes_map = self.prod_to_state_map[product]
+        existing_tape_write_state = writes_map.get(
+            write_tape_no, write_tape_cell_state
+        )
+        if existing_tape_write_state != write_tape_cell_state:
+            raise ValueError(
+                f"Conflicting output states for {product=} "
+                f"on tape {write_tape_no}: "
+                f"{existing_tape_write_state} vs "
+                f"{write_tape_cell_state}"
+            )
+
+        writes_map[write_tape_no] = write_tape_cell_state
+
+
 class MultiTapeBuilder(object):
     def __init__(self, multi_tape_automata: MultiTapeAutomata):
         self._automata = multi_tape_automata
@@ -785,9 +816,7 @@ class MultiTapeBuilder(object):
     def get_tape_nos(self) -> list[TapeNo]:
         return self._automata.get_tape_nos()
 
-    def _get_prod_to_state_map(self) -> defaultdict[
-        PyMultiTapeProduct, dict[TapeNo, TapeCellState]
-    ]:
+    def _get_prod_to_state_map(self) -> ProductWritesMap:
         return self._automata.get_prod_to_state_map()
 
     def declare_group_overlaps(
@@ -942,6 +971,17 @@ class MultiTapeBuilder(object):
 
         return global_overlaps
 
+    @staticmethod
+    def _get_zero_terms(product: PyMultiTapeProduct) -> list[D]:
+        terms = product.get_flat_terms()
+        zero_terms = []
+
+        for term in terms:
+            if term.get_position() == 0:
+                zero_terms.append(term)
+
+        return zero_terms
+
     def compose(self):
         """
         TODO: reorder existing products for comparison with generated ones
@@ -950,8 +990,7 @@ class MultiTapeBuilder(object):
         overlaps = self.build_overlaps()
 
         def build_all_products(
-            current_product: list[D], offset: int,
-            rightmost_extent: int
+            current_product: list[D], offset: int, rightmost_extent: int
         ) -> defaultdict[PyMultiTapeProduct, dict[TapeNo, TapeCellState]]:
             if offset == rightmost_extent:
                 # TODO: check against existing products as well
