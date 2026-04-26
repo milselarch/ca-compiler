@@ -768,12 +768,53 @@ class ProductWritesMap(object):
     def __getitem__(self, item):
         return copy.copy(self.prod_to_state_map[item])
 
+    @staticmethod
+    def _get_zero_terms(product: PyMultiTapeProduct) -> list[D]:
+        terms = product.get_flat_terms()
+        zero_terms = []
+
+        for term in terms:
+            if term.get_position() == 0:
+                zero_terms.append(term)
+
+        return zero_terms
+
+    def insert_neutral_product(self, product: PyMultiTapeProduct):
+        """
+        Insert a product whose outputs rewrite the input terms
+        that have an offset = 0 to have the same state
+        :param product:
+        :return:
+        """
+        zero_terms = self._get_zero_terms(product)
+
+        for zero_term in zero_terms:
+            zero_state = MultiTapeOutput.from_term(zero_term)
+            self.insert(product=product, tape_output=zero_state)
+
+    def merge(self, other_writes_map: ProductWritesMap):
+        for other_product in other_writes_map:
+            other_product_writes = other_writes_map[other_product]
+
+            for tape_no in other_product_writes:
+                tape_cell_state = other_product_writes[tape_no]
+                tape_output = MultiTapeOutput(tape_no, tape_cell_state)
+                self.insert(product=other_product, tape_output=tape_output)
+
     def insert(
         self, product: PyMultiTapeProduct, tape_output: MultiTapeOutput
     ):
         write_tape_no = tape_output.tape_no
         write_tape_cell_state = tape_output.tape_cell_state
+        self._insert(
+            product=product, write_tape_no=write_tape_no,
+            write_tape_cell_state=write_tape_cell_state
+        )
 
+    def _insert(
+        self, product: PyMultiTapeProduct, write_tape_no: TapeNo,
+        write_tape_cell_state: TapeCellState
+    ):
         writes_map = self.prod_to_state_map[product]
         existing_tape_write_state = writes_map.get(
             write_tape_no, write_tape_cell_state
@@ -971,17 +1012,6 @@ class MultiTapeBuilder(object):
 
         return global_overlaps
 
-    @staticmethod
-    def _get_zero_terms(product: PyMultiTapeProduct) -> list[D]:
-        terms = product.get_flat_terms()
-        zero_terms = []
-
-        for term in terms:
-            if term.get_position() == 0:
-                zero_terms.append(term)
-
-        return zero_terms
-
     def compose(self):
         """
         TODO: reorder existing products for comparison with generated ones
@@ -989,11 +1019,23 @@ class MultiTapeBuilder(object):
         """
         overlaps = self.build_overlaps()
 
+        def construct_from_product(product: PyMultiTapeProduct):
+            zero_terms = self._get_zero_terms(product)
+            if not zero_terms:
+                # product has no terms at offset 0, so it can't be satisfied
+                return None
+
+            writes_map = ProductWritesMap()
+            writes_map
+
         def build_all_products(
             current_product: list[D], offset: int, rightmost_extent: int
-        ) -> defaultdict[PyMultiTapeProduct, dict[TapeNo, TapeCellState]]:
+        ) -> ProductWritesMap:
+            product_writes_map = ProductWritesMap()
+
             if offset == rightmost_extent:
                 # TODO: check against existing products as well
+                product_writes_map.insert_neutral_product(current_product)
                 return {PyMultiTapeProduct(current_product)}
 
             if not current_product:
