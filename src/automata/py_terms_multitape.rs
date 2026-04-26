@@ -345,6 +345,16 @@ impl PartialEq<MultiTapeTerm> for &MultiTapeTerm {
 #[gen_stub_pymethods]
 #[pymethods]
 impl PyMultiTapeProduct {
+    #[new]
+    pub fn init(terms: Vec<D>) -> PyResult<PyMultiTapeProduct> {
+        if terms.len() == 0 {
+            return Err(PyValueError::new_err("terms cannot be empty"));
+        }
+        let rs_terms: Vec<MultiTapeTerm> =
+            terms.into_iter().map(|term| term.term).collect();
+        let product = MultiTapeProduct::new(rs_terms);
+        Ok(PyMultiTapeProduct { product })
+    }
     pub fn to_py_product(&self) -> PyResult<PyMultiTapeProduct> {
         Ok(Self::from_product(self.product.copy()))
     }

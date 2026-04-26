@@ -41,8 +41,11 @@ class MultiTapeOutput:
     def __hash__(self):
         return hash((self.tape_no, self.tape_cell_state))
 
-    def to_term(self) -> D:
-        return D(position=0, tape_no=self.tape_no, state=self.tape_cell_state)
+    def to_term(self, offset: int = 0) -> D:
+        return D(
+            position=offset,
+            tape_no=self.tape_no, state=self.tape_cell_state
+        )
 
     @classmethod
     def from_term(cls, term: D):
@@ -656,6 +659,19 @@ class TapeOverlaps(object):
             MultiTapeOutput, defaultdict[int, set[MultiTapeOutput]]
         ] = defaultdict(lambda: defaultdict(set))
 
+    def get_all_states(self) -> set[MultiTapeOutput]:
+        return set(self._overlaps.keys())
+
+    def get_overlaps_for_offset(
+        self, source_state: MultiTapeOutput, offset: int
+    ) -> set[MultiTapeOutput]:
+        return copy.copy(self._overlaps[source_state][offset])
+
+    def get_overlaps(
+        self, source_state: MultiTapeOutput
+    ) -> defaultdict[int, set[MultiTapeOutput]]:
+        return copy.deepcopy(self._overlaps[source_state])
+
     def insert_overlap(
         self, source_state: MultiTapeOutput, target_state: MultiTapeOutput,
         offset: int
@@ -695,6 +711,51 @@ class TapeOverlaps(object):
         :return:
         """
         return target_state in self._overlaps[source_state][offset]
+
+
+@dataclasses.dataclass
+class ProductTrie(object):
+    """
+    A trie of product terms nested from smallest to largest term offset
+    """
+    is_end: bool = False
+    # map offset from current term to next trie
+    next_term: defaultdict[D, ProductTrie] = dataclasses.field(
+        default_factory=lambda: defaultdict(ProductTrie)
+    )
+
+    def _insert_term_path(self, term_path: list[D]):
+        if not term_path:
+            return
+
+        current_term, next_terms = term_path[0], term_path[1:]
+        self.next_term[current_term]._insert_term_path(next_terms)
+
+    def insert_term_path(self, term_path: list[D]):
+        term_path = sorted(term_path, key=lambda term: term.get_position())
+        self._insert_term_path(term_path)
+
+    def insert_product(self, product: PyMultiTapeProduct):
+        terms = product.get_flat_terms()
+        self.insert_term_path(terms)
+
+    def _has_term_path(self, term_path: list[D]) -> bool:
+        if not term_path:
+            return self.is_end
+
+        current_term, next_terms = term_path[0], term_path[1:]
+        if current_term not in self.next_term:
+            return False
+
+        return self.next_term[current_term]._has_term_path(next_terms)
+
+    def has_term_path(self, term_path: list[D]) -> bool:
+        term_path = sorted(term_path, key=lambda term: term.get_position())
+        return self._has_term_path(term_path)
+
+    def has_product(self, product: PyMultiTapeProduct) -> bool:
+        terms = product.get_flat_terms()
+        return self.has_term_path(terms)
 
 
 class MultiTapeBuilder(object):
@@ -880,3 +941,48 @@ class MultiTapeBuilder(object):
             relevant_input_products = new_relevant_input_products
 
         return global_overlaps
+
+    def compose(self):
+        """
+        TODO: reorder existing products for comparison with generated ones
+        :return:
+        """
+        overlaps = self.build_overlaps()
+
+        def build_all_products(
+            current_product: list[D], offset: int,
+            rightmost_extent: int
+        ) -> defaultdict[PyMultiTapeProduct, dict[TapeNo, TapeCellState]]:
+            if offset == rightmost_extent:
+                # TODO: check against existing products as well
+                return {PyMultiTapeProduct(current_product)}
+
+            if not current_product:
+                states = overlaps.get_all_states()
+            else:
+                last_term = current_product[-1]
+                last_state = MultiTapeOutput.from_term(last_term)
+                states = overlaps.get_overlaps_for_offset(
+                    source_state=last_state, offset=offset
+                )
+
+            all_products: set[PyMultiTapeProduct] = set()
+
+            for state in states:
+                term = state.to_term(offset=offset)
+                current_product.append(term)
+                sub_products = build_all_products(
+                    offset=offset+1,
+                    current_product=current_product,
+                    rightmost_extent=rightmost_extent
+                )
+                all_products = all_products | sub_products
+                current_product.pop()
+
+            return all_products
+
+        all_products = build_all_products(
+            current_product=[], offset=self.leftmost_extent,
+            rightmost_extent=self.rightmost_extent
+        )
+        return all_products
