@@ -9,6 +9,7 @@ from typing import Final, List, TypeVar, Iterator, Tuple
 from py_ca_compiler import (
     D, PyMultiTapeProduct, PyMultiTapeExpression
 )
+from result import Result, Err, Ok
 
 from renderer import RenderFrame
 
@@ -702,18 +703,22 @@ class ProductTrie(object):
     """
     A trie of product terms nested from smallest to largest term offset
     """
-    is_end: bool = False
+    # whether the path of all terms till here constitute ann inserted product
+    is_end_product: bool = False
     # map offset from current term to next trie
-    next_term: defaultdict[D, ProductTrie] = dataclasses.field(
+    next_terms: defaultdict[D, ProductTrie] = dataclasses.field(
         default_factory=lambda: defaultdict(ProductTrie)
     )
+
+    def next(self, term: D) -> ProductTrie:
+        return self.next_terms[term]
 
     def _insert_term_path(self, term_path: list[D]):
         if not term_path:
             return
 
         current_term, next_terms = term_path[0], term_path[1:]
-        self.next_term[current_term]._insert_term_path(next_terms)
+        self.next_terms[current_term]._insert_term_path(next_terms)
 
     def insert_term_path(self, term_path: list[D]):
         term_path = sorted(term_path, key=lambda term: term.get_position())
@@ -725,13 +730,13 @@ class ProductTrie(object):
 
     def _has_term_path(self, term_path: list[D]) -> bool:
         if not term_path:
-            return self.is_end
+            return self.is_end_product
 
         current_term, next_terms = term_path[0], term_path[1:]
-        if current_term not in self.next_term:
+        if current_term not in self.next_terms:
             return False
 
-        return self.next_term[current_term]._has_term_path(next_terms)
+        return self.next_terms[current_term]._has_term_path(next_terms)
 
     def has_term_path(self, term_path: list[D]) -> bool:
         term_path = sorted(term_path, key=lambda term: term.get_position())
@@ -1020,32 +1025,35 @@ class MultiTapeBuilder(object):
         return global_overlaps
 
     @classmethod
-    def build_all_products(
+    def build_all_products_over(
         cls, overlaps: TapeOverlaps, current_product_path: list[D],
-        start_offset: int, rightmost_extent: int,
+        start_offset: int, end_offset: int,
         product_exclusions: ProductTrie
     ) -> ProductWritesMap:
         """
         Generate all possible product combinations
         from an offset of start_offset up until a maximum offset of
-        rightmost_extent, based on the overlaps that exist in the automata
+        end_offset, given the set of all possible
+        overlaps that exist in the automata
 
+        :param product_exclusions:
         :param overlaps:
         :param current_product_path:
         :param start_offset:
-        :param rightmost_extent:
+        :param end_offset:
         :return:
         """
         product_writes_map = ProductWritesMap()
 
-        if start_offset == rightmost_extent:
+        if start_offset == end_offset:
             # TODO: check against existing products as well
             current_product = PyMultiTapeProduct(current_product_path)
             product_writes_map.insert_neutral_product(current_product)
             return product_writes_map
 
         if not current_product_path:
-            # if the path is empty, we just start with
+            # if the path is empty, then we construct
+            # paths starting with every possible state in the automata
             states = overlaps.get_all_states()
         else:
             last_term = current_product_path[-1]
@@ -1056,12 +1064,18 @@ class MultiTapeBuilder(object):
 
         for state in states:
             term = state.to_term(offset=start_offset)
+            next_product_exclusions = product_exclusions.next(term)
+            if next_product_exclusions.is_end_product:
+                # product is among the excluded products
+                continue
+
             current_product_path.append(term)
-            sub_products = cls.build_all_products(
+            sub_products = cls.build_all_products_over(
                 overlaps=overlaps,
                 start_offset=start_offset + 1,
                 current_product_path=current_product_path,
-                rightmost_extent=rightmost_extent,
+                end_offset=end_offset,
+                product_exclusions=next_product_exclusions
             )
             product_writes_map.merge(sub_products)
             current_product_path.pop()
@@ -1079,10 +1093,30 @@ class MultiTapeBuilder(object):
         for product in self._get_prod_to_state_map():
             excluded_products.insert_product(product)
 
-        all_products = self.build_all_products(
+        product_writes_map = self.build_all_products_over(
             overlaps=overlaps, current_product_path=[],
             start_offset=self.leftmost_extent,
-            rightmost_extent=self.rightmost_extent,
+            end_offset=self.rightmost_extent,
             product_exclusions=excluded_products
         )
+
+        multi_tape_states_map: defaultdict[
+            TapeNo, set[TapeCellState]
+        ] = defaultdict(set)
+
+        for product in product_writes_map:
+            product_writes = product_writes_map[product]
+
+            for tape_no in product_writes:
+                tape_cell_state = product_writes[tape_no]
+                multi_tape_states_map[tape_no].add(tape_cell_state)
+
+        # remap individual tape states to a global combined tape state
+        global_tape_state_remap: dict[MultiTapeOutput, TapeCellState] = dict()
+        tape_nos = sorted(multi_tape_states_map.keys())
+        global_state_counter: TapeCellState = TapeCellState(0)
+
+        for tape_no in tape_nos:
+            tape_states =
+
         return all_products
