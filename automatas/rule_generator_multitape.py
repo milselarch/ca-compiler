@@ -753,7 +753,7 @@ class ProductWritesMap(object):
         default_factory=lambda: defaultdict(lambda: dict())
     )
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[PyMultiTapeProduct]:
         return iter(self.prod_to_state_map.items())
 
     def items(self):
@@ -768,16 +768,23 @@ class ProductWritesMap(object):
     def __getitem__(self, item):
         return copy.copy(self.prod_to_state_map[item])
 
-    @staticmethod
-    def _get_zero_terms(product: PyMultiTapeProduct) -> list[D]:
-        terms = product.get_flat_terms()
+    @classmethod
+    def get_zero_terms_from_path(cls, product_path: list[D]) -> list[D]:
         zero_terms = []
 
-        for term in terms:
+        for term in product_path:
             if term.get_position() == 0:
                 zero_terms.append(term)
 
         return zero_terms
+
+    @classmethod
+    def get_zero_terms_from_product(
+        cls, product: PyMultiTapeProduct
+    ) -> list[D]:
+        return cls.get_zero_terms_from_path(
+            product_path=product.get_flat_terms()
+        )
 
     def insert_neutral_product(self, product: PyMultiTapeProduct):
         """
@@ -786,7 +793,7 @@ class ProductWritesMap(object):
         :param product:
         :return:
         """
-        zero_terms = self._get_zero_terms(product)
+        zero_terms = self.get_zero_terms_from_product(product)
 
         for zero_term in zero_terms:
             zero_state = MultiTapeOutput.from_term(zero_term)
@@ -1012,58 +1019,70 @@ class MultiTapeBuilder(object):
 
         return global_overlaps
 
+    @classmethod
+    def build_all_products(
+        cls, overlaps: TapeOverlaps, current_product_path: list[D],
+        start_offset: int, rightmost_extent: int,
+        product_exclusions: ProductTrie
+    ) -> ProductWritesMap:
+        """
+        Generate all possible product combinations
+        from an offset of start_offset up until a maximum offset of
+        rightmost_extent, based on the overlaps that exist in the automata
+
+        :param overlaps:
+        :param current_product_path:
+        :param start_offset:
+        :param rightmost_extent:
+        :return:
+        """
+        product_writes_map = ProductWritesMap()
+
+        if start_offset == rightmost_extent:
+            # TODO: check against existing products as well
+            current_product = PyMultiTapeProduct(current_product_path)
+            product_writes_map.insert_neutral_product(current_product)
+            return product_writes_map
+
+        if not current_product_path:
+            # if the path is empty, we just start with
+            states = overlaps.get_all_states()
+        else:
+            last_term = current_product_path[-1]
+            last_state = MultiTapeOutput.from_term(last_term)
+            states = overlaps.get_overlaps_for_offset(
+                source_state=last_state, offset=start_offset
+            )
+
+        for state in states:
+            term = state.to_term(offset=start_offset)
+            current_product_path.append(term)
+            sub_products = cls.build_all_products(
+                overlaps=overlaps,
+                start_offset=start_offset + 1,
+                current_product_path=current_product_path,
+                rightmost_extent=rightmost_extent,
+            )
+            product_writes_map.merge(sub_products)
+            current_product_path.pop()
+
+        return product_writes_map
+
     def compose(self):
         """
         TODO: reorder existing products for comparison with generated ones
         :return:
         """
         overlaps = self.build_overlaps()
+        excluded_products = ProductTrie()
 
-        def construct_from_product(product: PyMultiTapeProduct):
-            zero_terms = self._get_zero_terms(product)
-            if not zero_terms:
-                # product has no terms at offset 0, so it can't be satisfied
-                return None
+        for product in self._get_prod_to_state_map():
+            excluded_products.insert_product(product)
 
-            writes_map = ProductWritesMap()
-            writes_map
-
-        def build_all_products(
-            current_product: list[D], offset: int, rightmost_extent: int
-        ) -> ProductWritesMap:
-            product_writes_map = ProductWritesMap()
-
-            if offset == rightmost_extent:
-                # TODO: check against existing products as well
-                product_writes_map.insert_neutral_product(current_product)
-                return {PyMultiTapeProduct(current_product)}
-
-            if not current_product:
-                states = overlaps.get_all_states()
-            else:
-                last_term = current_product[-1]
-                last_state = MultiTapeOutput.from_term(last_term)
-                states = overlaps.get_overlaps_for_offset(
-                    source_state=last_state, offset=offset
-                )
-
-            all_products: set[PyMultiTapeProduct] = set()
-
-            for state in states:
-                term = state.to_term(offset=offset)
-                current_product.append(term)
-                sub_products = build_all_products(
-                    offset=offset+1,
-                    current_product=current_product,
-                    rightmost_extent=rightmost_extent
-                )
-                all_products = all_products | sub_products
-                current_product.pop()
-
-            return all_products
-
-        all_products = build_all_products(
-            current_product=[], offset=self.leftmost_extent,
-            rightmost_extent=self.rightmost_extent
+        all_products = self.build_all_products(
+            overlaps=overlaps, current_product_path=[],
+            start_offset=self.leftmost_extent,
+            rightmost_extent=self.rightmost_extent,
+            product_exclusions=excluded_products
         )
         return all_products
