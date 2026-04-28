@@ -77,8 +77,43 @@ class MultiTapeAutomataTransitionsGroup(object):
 
     def add_transition(
         self, input_terms: tuple[D, ...],
-        output_tape_no: int, output_cell_state: int
+        output_tape_no: int, output_cell_state: int,
+        validate_void: bool = True,
+        validate_halt: bool = True
     ):
+        """
+        :param input_terms:
+        :param output_tape_no:
+        :param output_cell_state:
+        :param validate_void:
+        If true, check that the input terms do not all have void state
+        :param validate_halt:
+        If true, check that the halt state is not within input terms
+        :return:
+        """
+        if validate_void:
+            is_all_void = True
+
+            for term in input_terms:
+                if term.get_state() != VOID_STATE:
+                    is_all_void = False
+
+            if is_all_void:
+                raise ValueError(
+                    f"Input terms are all void, which is not "
+                    f"allowed since it would make the simulation range "
+                    f"infinite"
+                )
+        if validate_halt:
+            for term in input_terms:
+                if term.get_state() != HALT_STATE:
+                    continue
+
+                raise ValueError(
+                    f"Input term {term} has halt state, which is not "
+                    f"allowed since it has predefined behavior"
+                )
+
         self.transitions.append((
             input_terms, MultiTapeOutput(
                 tape_no=TapeNo(output_tape_no),
@@ -759,7 +794,7 @@ class ProductWritesMap(object):
     )
 
     def __iter__(self) -> Iterator[PyMultiTapeProduct]:
-        return iter(self.prod_to_state_map.items())
+        return iter(self.prod_to_state_map.keys())
 
     def items(self):
         return self.prod_to_state_map.items()
@@ -770,7 +805,7 @@ class ProductWritesMap(object):
     def values(self):
         return self.prod_to_state_map.values()
 
-    def __getitem__(self, item):
+    def __getitem__(self, item: PyMultiTapeProduct):
         return copy.copy(self.prod_to_state_map[item])
 
     @classmethod
@@ -1033,7 +1068,7 @@ class MultiTapeBuilder(object):
         """
         Generate all possible product combinations
         from an offset of start_offset up until a maximum offset of
-        end_offset, given the set of all possible
+        end_offset, given information about all the possible
         overlaps that exist in the automata
 
         :param product_exclusions:
@@ -1082,24 +1117,15 @@ class MultiTapeBuilder(object):
 
         return product_writes_map
 
-    def compose(self):
+    @classmethod
+    def build_global_tape_states_remap(
+        cls, product_writes_map: ProductWritesMap
+    ) -> dict[MultiTapeOutput, TapeCellState]:
         """
-        TODO: reorder existing products for comparison with generated ones
+        remap individual tape states to a global combined tape state
+        :param product_writes_map:
         :return:
         """
-        overlaps = self.build_overlaps()
-        excluded_products = ProductTrie()
-
-        for product in self._get_prod_to_state_map():
-            excluded_products.insert_product(product)
-
-        product_writes_map = self.build_all_products_over(
-            overlaps=overlaps, current_product_path=[],
-            start_offset=self.leftmost_extent,
-            end_offset=self.rightmost_extent,
-            product_exclusions=excluded_products
-        )
-
         multi_tape_states_map: defaultdict[
             TapeNo, set[TapeCellState]
         ] = defaultdict(set)
@@ -1114,9 +1140,64 @@ class MultiTapeBuilder(object):
         # remap individual tape states to a global combined tape state
         global_tape_state_remap: dict[MultiTapeOutput, TapeCellState] = dict()
         tape_nos = sorted(multi_tape_states_map.keys())
-        global_state_counter: TapeCellState = TapeCellState(0)
+        global_state_counter: TapeCellState = TapeCellState(2)
 
         for tape_no in tape_nos:
-            tape_states =
+            tape_cell_states_set = multi_tape_states_map[tape_no]
+            tape_cell_states = list(sorted(tape_cell_states_set))
 
-        return all_products
+            for tape_cell_state in tape_cell_states:
+                tape_output = MultiTapeOutput(tape_no, tape_cell_state)
+
+                if tape_cell_state == VOID_STATE:
+                    # remap all void states to global void state
+                    global_tape_state_remap[tape_output] = VOID_STATE
+                    continue
+                elif tape_cell_state == HALT_STATE:
+                    # remap all halt states to global halt state
+                    global_tape_state_remap[tape_output] = HALT_STATE
+                    continue
+
+                global_tape_state_remap[tape_output] = global_state_counter
+                global_state_counter += 1
+
+        return global_tape_state_remap
+
+    def compose(self):
+        """
+        TODO: reorder existing products for comparison with generated ones
+        :return:
+        """
+        overlaps = self.build_overlaps()
+        preexisting_products = ProductTrie()
+        preexisting_writes_map = self._get_prod_to_state_map()
+
+        for product in preexisting_writes_map:
+            preexisting_products.insert_product(product)
+
+        # generate rules for all possible term combinations
+        product_writes_map = self.build_all_products_over(
+            overlaps=overlaps, current_product_path=[],
+            start_offset=self.leftmost_extent,
+            end_offset=self.rightmost_extent,
+            product_exclusions=preexisting_products
+        )
+        # merge in rules that we already previously had in the automata
+        product_writes_map.merge(preexisting_writes_map)
+
+        multi_tape_states_map: defaultdict[
+            TapeNo, set[TapeCellState]
+        ] = defaultdict(set)
+
+        for product in product_writes_map:
+            product_writes = product_writes_map[product]
+
+            for tape_no in product_writes:
+                tape_cell_state = product_writes[tape_no]
+                multi_tape_states_map[tape_no].add(tape_cell_state)
+
+        # remap individual tape states to a global combined tape state
+        global_tape_state_remap = self.build_global_tape_states_remap(
+            product_writes_map=product_writes_map
+        )
+

@@ -17,23 +17,23 @@ CARRY_TAPE: Final[TapeNo] = TapeNo(2)
 
 """
 For the signals tape (LSB first to MSB last):
-- bits[0] - whether the rest of the state is a counter state 
+- bits[0] => whether the rest of the state is a counter state 
     - bits[0] == 0: the state is a counter state
-        - bits[1] - whether the counter state is paused or not
-        - bits[2...] - 1 + the value of the counter state (in base self.base)
+        - bits[1] => whether the counter state is paused or not
+        - bits[2...] => 1 + the value of the counter state (in base self.base)
           we add one to the counter value to distinguish between the 
           void state (counter value 0) and the counter state with value 0
     - bits[0] == 1: state is a non-counter state 
         - bits[1] == 1: the state is a REDUCE_START state
 """
 
-DT_DATA: Final[TapeCellState] = TapeCellState(0b1)
+DT_DATA: Final[TapeCellState] = TapeCellState(0b10)
 """
 - bits[0] == 1: state is a non-counter state 
 - bits[1] == 1: the state is a REDUCE_START state
 """
 ST_REDUCE_START: Final[TapeCellState] = TapeCellState(0b11)
-CT_DATA: Final[TapeCellState] = TapeCellState(0b1)
+CT_DATA: Final[TapeCellState] = TapeCellState(0b10)
 
 
 def prefill_tape(position: int, tape_no: int) -> Callable[[int], D]:
@@ -327,7 +327,9 @@ class CounterAutomataRunner(object):
         self.initial_write_start = initial_write_start
         self.initial_write_end = initial_write_end
         self.multi_tape_automata = MultiTapeAutomata(self.state_eq_map)
-        self.multi_tape_automata.init_tapes([DATA_TAPE, SIGNALS_TAPE, CARRY_TAPE])
+        self.multi_tape_automata.init_tapes([
+            DATA_TAPE, SIGNALS_TAPE, CARRY_TAPE
+        ])
         self.multi_tape_automata.write_region(
             position=0, end_position=20,
             data=[MultiTapeOutput(DATA_TAPE, DT_DATA)]
