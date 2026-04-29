@@ -27,7 +27,7 @@ class AutomataTransitionsGroup(object):
         return cls(num_states=num_states, transitions=[])
 
     def add_transition(
-            self, input_terms: tuple[A, ...], output_state: int
+        self, input_terms: tuple[A, ...], output_state: int
     ):
         assert 0 <= output_state < self.num_states
         for term in input_terms:

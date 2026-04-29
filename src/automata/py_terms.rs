@@ -8,7 +8,9 @@ use pyo3::exceptions::{PyIndexError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3_stub_gen::define_stub_info_gatherer;
 use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
+use crate::automata::py_terms_multitape::{PyMultiTapeProduct, D};
 use crate::automata::terms::{clip_after_space, validate_debug_info_exists, AbstractExpression, CellState, ExprDebugInfo, Expression, Product, Term};
+use crate::automata::terms_multitape::{MultiTapeProduct, MultiTapeTerm};
 /*
 Reasons to redo this in rust
 - expansion of terms grows hyper-exponentially with each timestep,
@@ -340,6 +342,16 @@ impl PartialEq<Term> for &Term {
 #[gen_stub_pymethods]
 #[pymethods]
 impl PyProduct {
+    #[new]
+    pub fn init(terms: Vec<A>) -> PyResult<PyProduct> {
+        if terms.len() == 0 {
+            return Err(PyValueError::new_err("terms cannot be empty"));
+        }
+        let rs_terms: Vec<Term> =
+            terms.into_iter().map(|term| term.term).collect();
+        let product = Product::new(rs_terms);
+        Ok(PyProduct { product })
+    }
     pub fn to_py_product(&self) -> PyResult<PyProduct> {
         Ok(Self::from_product(self.product.copy()))
     }
