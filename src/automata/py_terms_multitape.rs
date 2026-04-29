@@ -6,6 +6,7 @@ use std::collections::hash_map::DefaultHasher;
 use pyo3::{pyclass, pymethods, PyResult};
 use pyo3::exceptions::{PyIndexError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
+use pyo3::types::PyDict;
 use pyo3_stub_gen::define_stub_info_gatherer;
 use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 use crate::automata::terms::{clip_after_space, CellState, ExprDebugInfo};
@@ -161,6 +162,9 @@ impl D {
         let mut hasher = DefaultHasher::new();
         self.term.hash(&mut hasher);
         hasher.finish() as isize
+    }
+    pub fn __deepcopy__(&self, _memo: &Bound<PyDict>) -> Self {
+        self.clone()
     }
     pub fn to_py_product(&self) -> PyResult<PyMultiTapeProduct> {
         Ok(self._to_product())
@@ -368,6 +372,9 @@ impl PyMultiTapeProduct {
         self.product.hash(&mut hasher);
         hasher.finish() as isize
     }
+    pub fn __deepcopy__(&self, _memo: &Bound<PyDict>) -> Self {
+        self.clone()
+    }
     fn __or__(&self, other: &Bound<PyAny>) -> PyResult<PyMultiTapeExpression> {
         if let Ok(other_term) = other.extract::<D>() {
             Ok((self.product.copy() | other_term.term).to_pyexpr())
@@ -525,6 +532,9 @@ impl PyMultiTapeExpression {
         let mut hasher = DefaultHasher::new();
         self.expression.hash(&mut hasher);
         hasher.finish() as isize
+    }
+    pub fn __deepcopy__(&self, _memo: &Bound<PyDict>) -> Self {
+        self.clone()
     }
     fn __or__(&self, other: &Bound<PyAny>) -> PyResult<PyMultiTapeExpression> {
         if let Ok(other_term) = other.extract::<D>() {

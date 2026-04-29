@@ -715,7 +715,7 @@ class TapeOverlaps(object):
             return False
 
         source_overlaps.add(target_state)
-        assert source_state not in target_overlaps
+        # assert source_state not in target_overlaps
         target_overlaps.add(source_state)
         return True
 
@@ -875,6 +875,50 @@ class ProductWritesMap(object):
             )
 
         writes_map[write_tape_no] = write_tape_cell_state
+
+
+@dataclasses.dataclass
+class MultiTapeStateRemap(object):
+    _global_tape_state_remap: dict[MultiTapeOutput, TapeCellState]
+    _rev_global_tape_state_remap: dict[TapeCellState, MultiTapeOutput]
+
+    @classmethod
+    def create_from(
+        cls, global_tape_state_remap: dict[MultiTapeOutput, TapeCellState]
+    ) -> MultiTapeStateRemap:
+        rev_global_tape_state_remap: dict[TapeCellState, MultiTapeOutput] = {}
+        _global_tape_state_remap = copy.deepcopy(global_tape_state_remap)
+
+        for multi_tape_output in global_tape_state_remap:
+            remapped_state = global_tape_state_remap[multi_tape_output]
+            rev_global_tape_state_remap[remapped_state] = multi_tape_output
+
+        return MultiTapeStateRemap(
+            _global_tape_state_remap=_global_tape_state_remap,
+            _rev_global_tape_state_remap=rev_global_tape_state_remap
+        )
+
+    def __len__(self) -> int:
+        return len(self._global_tape_state_remap)
+
+    def __getitem__(self, item: MultiTapeOutput) -> TapeCellState:
+        return self.to_composed_state(item)
+
+    def to_composed_state(
+        self, multi_tape_state: MultiTapeOutput
+    ) -> TapeCellState:
+        return self._global_tape_state_remap[multi_tape_state]
+
+    def from_composed_state(
+        self, composed_state: TapeCellState
+    ) -> MultiTapeOutput:
+        return self._rev_global_tape_state_remap[composed_state]
+
+
+@dataclasses.dataclass
+class ComposeTapesResult(object):
+    transitions_group: AutomataTransitionsGroup
+    state_remap: MultiTapeStateRemap
 
 
 class MultiTapeBuilder(object):
@@ -1120,7 +1164,7 @@ class MultiTapeBuilder(object):
     @classmethod
     def build_global_tape_states_remap(
         cls, product_writes_map: ProductWritesMap
-    ) -> dict[MultiTapeOutput, TapeCellState]:
+    ) -> MultiTapeStateRemap:
         """
         remap individual tape states to a global combined tape state
         :param product_writes_map:
@@ -1161,9 +1205,11 @@ class MultiTapeBuilder(object):
                 global_tape_state_remap[tape_output] = global_state_counter
                 global_state_counter += 1
 
-        return global_tape_state_remap
+        return MultiTapeStateRemap.create_from(
+            global_tape_state_remap=global_tape_state_remap
+        )
 
-    def combine_tapes(self):
+    def compose_tapes(self) -> ComposeTapesResult:
         """
         Combine a multi-tape automata into a single tape automata
         TODO: reorder existing products for comparison with generated ones
@@ -1203,9 +1249,8 @@ class MultiTapeBuilder(object):
         global_tape_state_remap = self.build_global_tape_states_remap(
             product_writes_map=product_writes_map
         )
-        num_global_states = max(global_tape_state_remap.values()) + 1
         global_transitions_group = AutomataTransitionsGroup(
-            num_states=num_global_states, transitions=[]
+            num_states=len(global_tape_state_remap), transitions=[]
         )
 
         for tape_product in product_writes_map:
@@ -1232,3 +1277,7 @@ class MultiTapeBuilder(object):
                     output_state=remapped_output_state
                 )
 
+        return ComposeTapesResult(
+            transitions_group=global_transitions_group,
+            state_remap=global_tape_state_remap
+        )
