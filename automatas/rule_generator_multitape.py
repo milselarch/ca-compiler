@@ -15,11 +15,19 @@ from py_ca_compiler import (
 
 
 class TapeNo(int):
-    pass
+    def __eq__(self, other: int):
+        return int(self) == int(other)
+
+    def __hash__(self):
+        return hash(int(self))
 
 
 class TapeCellState(int):
-    pass
+    def __eq__(self, other: int):
+        return int(self) == int(other)
+
+    def __hash__(self):
+        return hash(int(self))
 
 
 BLANK_INT: Final[int] = -1
@@ -36,11 +44,22 @@ def zip_preserve_types(a: List[T], b: List[U]) -> Iterator[Tuple[T, U]]:
 
 @dataclasses.dataclass
 class MultiTapeOutput:
+    """
+    This represents the state of a cell in a specific tape of
+    a multi-tape automaton
+    Also this is technically the same as D, but without term position
+    """
     tape_no: TapeNo
     tape_cell_state: TapeCellState
 
     def __hash__(self):
         return hash((self.tape_no, self.tape_cell_state))
+
+    def __eq__(self, other: MultiTapeOutput) -> bool:
+        return (
+            self.tape_no == other.tape_no and
+            self.tape_cell_state == other.tape_cell_state
+        )
 
     def to_term(self, offset: int = 0) -> D:
         return D(
@@ -799,6 +818,21 @@ class ProductWritesMap(object):
     def items(self):
         return self.prod_to_state_map.items()
 
+    def get_states_set(self) -> set[MultiTapeOutput]:
+        states_set: set[MultiTapeOutput] = set()
+
+        for tape_product in self.prod_to_state_map:
+            product_terms = tape_product.get_flat_terms()
+
+            for term in product_terms:
+                tape_no, tape_cell_state = term.get_state()
+                states_set.add(MultiTapeOutput(
+                    tape_no=TapeNo(tape_no),
+                    tape_cell_state=TapeCellState(tape_cell_state)
+                ))
+
+        return states_set
+
     def keys(self):
         return self.prod_to_state_map.keys()
 
@@ -907,6 +941,7 @@ class MultiTapeStateRemap(object):
     def to_composed_state(
         self, multi_tape_state: MultiTapeOutput
     ) -> TapeCellState:
+        assert isinstance(multi_tape_state, MultiTapeOutput), multi_tape_state
         return self._global_tape_state_remap[multi_tape_state]
 
     def from_composed_state(
@@ -1063,12 +1098,12 @@ class MultiTapeBuilder(object):
 
         while relevant_input_products:
             new_relevant_input_products: set[PyMultiTapeProduct] = set()
+            # print(f'{relevant_input_products=}')
 
             for product in relevant_input_products:
                 if not self.is_prodict_satisfiable(product, global_overlaps):
                     continue
 
-                new_relevant_input_products.add(product)
                 product_writes = prod_to_state_map[product]
                 input_terms = product.get_flat_terms()
 
@@ -1177,8 +1212,17 @@ class MultiTapeBuilder(object):
         for product in product_writes_map:
             product_writes = product_writes_map[product]
 
+            # insert product output terms into multi_tape_states_map
             for tape_no in product_writes:
                 tape_cell_state = product_writes[tape_no]
+                multi_tape_states_map[tape_no].add(tape_cell_state)
+
+            product_terms = product.get_flat_terms()
+            # insert product input terms into multi_tape_states_map
+            for product_term in product_terms:
+                term_state = MultiTapeOutput.from_term(product_term)
+                tape_no = term_state.tape_no
+                tape_cell_state = term_state.tape_cell_state
                 multi_tape_states_map[tape_no].add(tape_cell_state)
 
         # remap individual tape states to a global combined tape state
@@ -1218,7 +1262,13 @@ class MultiTapeBuilder(object):
         overlaps = self.build_overlaps()
         preexisting_products = ProductTrie()
         preexisting_writes_map = self._get_prod_to_state_map()
-
+        """
+        print(f'STAGE_0 {preexisting_writes_map=}')
+        assert (
+            MultiTapeOutput.from_term(D(0, 0, 2))
+            in preexisting_writes_map.get_states_set()
+        )
+        """
         for tape_product in preexisting_writes_map:
             preexisting_products.insert_product(tape_product)
 
@@ -1229,10 +1279,16 @@ class MultiTapeBuilder(object):
             end_offset=self.rightmost_extent,
             product_exclusions=preexisting_products
         )
+        """
+        print(f'STAGE_1 {product_writes_map=}')
         # TODO: build / include halt state products as well somehow
         # merge in rules that we already previously had in the automata
         product_writes_map.merge(preexisting_writes_map)
-
+        assert (
+            MultiTapeOutput.from_term(D(0, 0, 2))
+            in product_writes_map.get_states_set()
+        )
+        """
         # collate all possible states that can exist in each tape
         multi_tape_states_map: defaultdict[
             TapeNo, set[TapeCellState]
@@ -1249,6 +1305,12 @@ class MultiTapeBuilder(object):
         global_tape_state_remap = self.build_global_tape_states_remap(
             product_writes_map=product_writes_map
         )
+        """
+        print(f'{global_tape_state_remap=}')
+        for state in product_writes_map.get_states_set():
+            print(f'prod state {state=}')
+            print(global_tape_state_remap[state])
+        """
         global_transitions_group = AutomataTransitionsGroup(
             num_states=len(global_tape_state_remap), transitions=[]
         )
