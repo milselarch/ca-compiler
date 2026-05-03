@@ -694,6 +694,9 @@ class TapeOverlaps(object):
             MultiTapeState, defaultdict[int, set[MultiTapeState]]
         ] = defaultdict(lambda: defaultdict(set))
 
+    def __repr__(self):
+        return f'TapeOverlaps(overlaps={self._overlaps})'
+
     def get_all_states(self) -> set[MultiTapeState]:
         return set(self._overlaps.keys())
 
@@ -1227,6 +1230,11 @@ class MultiTapeBuilder(object):
         return input_state_to_prod_map
 
     def build_overlaps(self) -> TapeOverlaps:
+        """
+        Builds a mapping of which tape states can overlap with
+        which other tape states at what relative offsets
+        :return:
+        """
         # TODO: infer existing overlaps from the automata as well
         global_overlaps = copy.deepcopy(self._initial_overlaps)
         # map input products to output tape writes
@@ -1387,7 +1395,7 @@ class MultiTapeBuilder(object):
                 prev_tape_state
             )
 
-        global_tape_state_remap = MultiTapeStatePathRemap(
+        collated_tape_state_remap = MultiTapeStatePathRemap(
             remap_counter_start=remap_counter_start
         )
         tape_no = tape_nos[tape_no_index]
@@ -1417,10 +1425,10 @@ class MultiTapeBuilder(object):
                 remap_counter_start=remap_counter_start,
                 tape_state_whitelist=tape_state_whitelist
             )
-            global_tape_state_remap.merge(sub_tape_state_path_remap)
+            collated_tape_state_remap.merge(sub_tape_state_path_remap)
             _overlap_state_path.pop()
 
-        return global_tape_state_remap
+        return collated_tape_state_remap
 
     @classmethod
     def build_global_state_path_remap(
@@ -1430,7 +1438,11 @@ class MultiTapeBuilder(object):
         """
         remap individual tape states to a global combined tape state
         :param overlaps:
+        mapping for which tape states can overlap with which other
+        tape states over all relevant relative offsets
         :param product_writes_map:
+        mapping containing what output writes are emitted by the
+        input products in product_writes_map
         :return:
         """
         multi_tape_states_map: defaultdict[
@@ -1503,13 +1515,7 @@ class MultiTapeBuilder(object):
         preexisting_products = ProductTrie()
         preexisting_writes_map = self._get_prod_to_state_map()
         all_tape_nos = sorted(self.get_tape_nos())
-        """
-        print(f'STAGE_0 {preexisting_writes_map=}')
-        assert (
-            MultiTapeOutput.from_term(D(0, 0, 2))
-            in preexisting_writes_map.get_states_set()
-        )
-        """
+
         for multi_tape_product in preexisting_writes_map:
             preexisting_products.insert_product(multi_tape_product)
 
@@ -1525,39 +1531,11 @@ class MultiTapeBuilder(object):
             product_exclusions=preexisting_products
         )
         product_writes_map.merge(preexisting_writes_map)
-        """
-        print(f'STAGE_1 {product_writes_map=}')
-        # TODO: build / include halt state products as well somehow
-        # merge in rules that we already previously had in the automata
-        product_writes_map.merge(preexisting_writes_map)
-        assert (
-            MultiTapeOutput.from_term(D(0, 0, 2))
-            in product_writes_map.get_states_set()
-        )
-        """
-        # collate all possible states that can exist in each tape
-        """
-        multi_tape_states_map: defaultdict[
-            TapeNo, set[TapeCellState]
-        ] = defaultdict(set)
-
-        for multi_tape_product in product_writes_map:
-            product_writes = product_writes_map[multi_tape_product]
-
-            for tape_no in product_writes:
-                tape_cell_state = product_writes[tape_no]
-                multi_tape_states_map[tape_no].add(tape_cell_state)
-        """
         # remap individual tape states to a global combined tape state
         global_state_path_remap = self.build_global_state_path_remap(
             product_writes_map=product_writes_map, overlaps=overlaps
         )
-        """
-        print(f'{global_tape_state_remap=}')
-        for state in product_writes_map.get_states_set():
-            print(f'prod state {state=}')
-            print(global_tape_state_remap[state])
-        """
+        # input-output pairs for the final combined automata
         global_transitions_group = AutomataTransitionsGroup(
             num_states=len(global_state_path_remap), transitions=[]
         )
@@ -1574,7 +1552,7 @@ class MultiTapeBuilder(object):
             product_term_positions_set: set[int] = set()
             product_state_whitelists: defaultdict[
                 int, defaultdict[TapeNo, set[TapeCellState]]
-            ] = defaultdict(defaultdict(set))
+            ] = defaultdict(lambda: defaultdict(set))
 
             for product_term in product_terms:
                 term_pos = product_term.get_position()
@@ -1589,14 +1567,24 @@ class MultiTapeBuilder(object):
             input_pos_whitelist = product_state_whitelists[0]
             remapped_output_state_set: set[TapeCellState] = set()
 
-            for tape_no in product_outputs:
-                product_output_whitelist = copy.deepcopy(input_pos_whitelist)
-                tape_cell_state = product_outputs[tape_no]
-                # add current output to whitelist
+            for output_tape_no in product_outputs:
+                product_states_whitelist = copy.deepcopy(input_pos_whitelist)
+                output_tape_cell_state = product_outputs[output_tape_no]
+                current_output_tape_cell_state = product_states_whitelist.get(
+                    output_tape_no, output_tape_cell_state
+                )
+                if current_output_tape_cell_state != output_tape_cell_state:
+                    # whitelist is not satisfiable for current
+                    # output tape cell state
+                    continue
 
+                product_states_whitelist[output_tape_no].add(
+                    output_tape_cell_state
+                )
                 remapped_outputs = self.build_remap_states(
                     tape_no_index=0, tape_nos=all_tape_nos,
                     multi_tape_states_map=input_pos_whitelist,
+                    tape_state_whitelist=product_states_whitelist,
                     tape_overlaps=overlaps
                 )
                 remapped_output_state_set = (
@@ -1631,40 +1619,11 @@ class MultiTapeBuilder(object):
                     remapped_term = A(position=term_pos, state=remapped_state)
                     remapped_product_terms.append(remapped_term)
 
-                global_transitions_group
-
-            """
-            tape_state_whitelist = {}
-            for product_term in product_terms:
-                tape_no, tape_cell_state = product_term.get_state()
-                if tape_no not in tape_state_whitelist:
-                    tape_state_whitelist[tape_no] = {}
-
-                tape_state_whitelist[tape_no].add(tape_cell_state)
-            """
-            """
-            product_tape_writes = product_writes_map[multi_tape_product]
-            remapped_product_terms: list[A] = []
-
-            for product_term in product_terms:
-                term_state = MultiTapeState.from_term(product_term)
-                remapped_state = global_tape_state_remap[term_state]
-                remapped_term = A(
-                    position=product_term.get_position(),
-                    state=remapped_state
-                )
-                remapped_product_terms.append(remapped_term)
-
-            for tape_no in product_tape_writes:
-                tape_cell_state = product_tape_writes[tape_no]
-                tape_output = MultiTapeState(tape_no, tape_cell_state)
-                remapped_output_state = global_tape_state_remap[tape_output]
-
-                global_transitions_group.add_transition(
-                    input_terms=tuple(remapped_product_terms),
-                    output_state=remapped_output_state
-                )
-            """
+                for remapped_output_state in remapped_output_state_set:
+                    global_transitions_group.add_transition(
+                        input_terms=tuple(remapped_product_terms),
+                        output_state=remapped_output_state
+                    )
 
         return ComposeTapesResult(
             transitions_group=global_transitions_group,
