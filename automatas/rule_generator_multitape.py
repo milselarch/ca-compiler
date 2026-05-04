@@ -1383,34 +1383,39 @@ class MultiTapeBuilder(object):
                 remap_counter_start=remap_counter_start
             )
 
-        overlappable_next_states: defaultdict[
-            int, set[MultiTapeState]
-        ] = defaultdict(set)
-
-        _overlap_state_path: list[MultiTapeState] = list(overlap_state_path)
-
-        if _overlap_state_path:
-            prev_tape_state = _overlap_state_path[-1]
-            overlappable_next_states = tape_overlaps.get_overlaps(
-                prev_tape_state
-            )
-
         collated_tape_state_remap = MultiTapeStatePathRemap(
             remap_counter_start=remap_counter_start
         )
         tape_no = tape_nos[tape_no_index]
-        tape_cell_states_set = multi_tape_states_map[tape_no]
-        tape_cell_states = list(sorted(tape_cell_states_set))
+        next_tape_cell_states_set = multi_tape_states_map[tape_no]
+        next_tape_cell_states = list(sorted(next_tape_cell_states_set))
         # if tape_no isn't in whitelist we consider all states whitelisted
         whitelisted_states: set[TapeCellState] = tape_state_whitelist.get(
-            tape_no, set(tape_cell_states)
+            tape_no, set(next_tape_cell_states)
         )
 
-        for tape_cell_state in tape_cell_states:
-            next_tape_state = MultiTapeState(
-                tape_no=tape_no, tape_cell_state=tape_cell_state
+        # what other states can overlap directly on top of
+        # the last state in the overlap_state_path
+        _overlap_state_path: list[MultiTapeState] = []
+        if not isinstance(overlap_state_path, list):
+            _overlap_state_path = list(overlap_state_path)
+
+        if _overlap_state_path:
+            prev_tape_state = _overlap_state_path[-1]
+            next_state_overlaps: set[MultiTapeState] = (
+                tape_overlaps.get_overlaps(prev_tape_state)[0]
             )
-            if next_tape_state not in overlappable_next_states:
+        else:
+            next_state_overlaps: set[MultiTapeState] = set([
+                MultiTapeState(tape_no=tape_no, tape_cell_state=cell_state)
+                for cell_state in next_tape_cell_states_set
+            ])
+
+        for next_tape_cell_state in next_tape_cell_states:
+            next_tape_state = MultiTapeState(
+                tape_no=tape_no, tape_cell_state=next_tape_cell_state
+            )
+            if next_tape_state not in next_state_overlaps:
                 continue
             if next_tape_state not in whitelisted_states:
                 continue
@@ -1445,6 +1450,7 @@ class MultiTapeBuilder(object):
         input products in product_writes_map
         :return:
         """
+        # contains which tape cell states can exist in each tape
         multi_tape_states_map: defaultdict[
             TapeNo, set[TapeCellState]
         ] = defaultdict(set)
