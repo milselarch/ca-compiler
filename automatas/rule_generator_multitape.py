@@ -1077,10 +1077,10 @@ class MultiTapeStatePathRemap(object):
         for path in other_remap.tape_state_path_remap:
             self.insert_overlap_path(path)
 
-        for void_path in self.void_state_paths:
+        for void_path in other_remap.void_state_paths:
             self.insert_overlap_path(void_path)
 
-        for halt_path in self.halt_state_paths:
+        for halt_path in other_remap.halt_state_paths:
             self.insert_overlap_path(halt_path)
 
     @classmethod
@@ -1378,6 +1378,7 @@ class MultiTapeBuilder(object):
 
         if tape_no_index >= len(tape_nos):
             # TODO: handle void / halt edge cases
+            print("INSERT_PATH", overlap_state_path)
             return MultiTapeStatePathRemap.from_path(
                 path=tuple(overlap_state_path),
                 remap_counter_start=remap_counter_start
@@ -1390,15 +1391,20 @@ class MultiTapeBuilder(object):
         next_tape_cell_states_set = multi_tape_states_map[tape_no]
         next_tape_cell_states = list(sorted(next_tape_cell_states_set))
         # if tape_no isn't in whitelist we consider all states whitelisted
-        whitelisted_states: set[TapeCellState] = tape_state_whitelist.get(
-            tape_no, set(next_tape_cell_states)
-        )
+        whitelisted_states: set[MultiTapeState] = set([
+            MultiTapeState(tape_no=tape_no, tape_cell_state=tape_cell_state)
+            for tape_cell_state in tape_state_whitelist.get(
+                tape_no, set(next_tape_cell_states)
+            )
+        ])
 
         # what other states can overlap directly on top of
         # the last state in the overlap_state_path
         _overlap_state_path: list[MultiTapeState] = []
         if not isinstance(overlap_state_path, list):
             _overlap_state_path = list(overlap_state_path)
+        else:
+            _overlap_state_path = overlap_state_path
 
         if _overlap_state_path:
             prev_tape_state = _overlap_state_path[-1]
@@ -1416,10 +1422,13 @@ class MultiTapeBuilder(object):
                 tape_no=tape_no, tape_cell_state=next_tape_cell_state
             )
             if next_tape_state not in next_state_overlaps:
+                print("SKIP_STATE_1", _overlap_state_path, next_tape_state)
                 continue
             if next_tape_state not in whitelisted_states:
+                print("SKIP_STATE_2", _overlap_state_path, next_tape_state)
                 continue
 
+            print("PUSH", _overlap_state_path, next_tape_state)
             _overlap_state_path.append(next_tape_state)
             sub_tape_state_path_remap = cls.build_remap_states(
                 tape_no_index=tape_no_index+1,
@@ -1431,6 +1440,7 @@ class MultiTapeBuilder(object):
                 tape_state_whitelist=tape_state_whitelist
             )
             collated_tape_state_remap.merge(sub_tape_state_path_remap)
+            print("POP", _overlap_state_path)
             _overlap_state_path.pop()
 
         return collated_tape_state_remap
