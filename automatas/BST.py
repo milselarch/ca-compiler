@@ -19,7 +19,7 @@ class Node(Generic[T]):
         return len(str(self.value))
 
     @property
-    def balance(self):
+    def balance(self) -> int:
         if self.left is None:
             left_height = 0
         else:
@@ -34,7 +34,7 @@ class Node(Generic[T]):
         return balance
 
     @property
-    def height(self):
+    def height(self) -> int:
         if not self.has_children:
             return 0
 
@@ -51,7 +51,7 @@ class Node(Generic[T]):
         return max(left_height, right_height) + 1
 
     @property
-    def has_children(self):
+    def has_children(self) -> bool:
         return (
             (self.left is not None) or
             (self.right is not None)
@@ -101,7 +101,7 @@ class BST(Generic[T]):
     def delete(self, value: T):
         self.root = self.delete_node(self.root, value)
 
-    def delete_node(self, root, value):
+    def delete_node(self, root: Node[T] | None, value: T):
         if root is None:
             return root
 
@@ -112,22 +112,23 @@ class BST(Generic[T]):
         else:
             if root.left is None:
                 temp = root.right
-                root = None
+                # root = None
                 return temp
 
             elif root.right is None:
                 temp = root.left
-                root = None
+                # root = None
                 return temp
 
-            temp = self.sucessor_node(root.right)
+            temp = self.successor_node(root.right)
+            assert temp is not None
             root.value = temp.value
             root.right = self.delete_node(root.right, temp.value)
 
         return root
 
     @staticmethod
-    def sucessor_node(root):
+    def successor_node(root: Node[T]) -> Node[T] | None:
         current = root
 
         while current.left is not None:
@@ -135,15 +136,18 @@ class BST(Generic[T]):
 
         return current
 
-    def get_nodes_at_depth(self, depth=0):
+    def get_nodes_at_depth(self, depth: int = 0) -> list[Node[T]]:
         if depth == 0:
-            return [self.root]
+            if self.root:
+                return [self.root]
+            else:
+                return []
 
         parent_nodes = self.get_nodes_at_depth(depth-1)
         return self.get_child_nodes(parent_nodes)
 
     @staticmethod
-    def get_child_nodes(parent_nodes):
+    def get_child_nodes(parent_nodes: list[Node[T]]) -> list[Node[T]]:
         child_nodes = []
 
         for parent_node in parent_nodes:
@@ -154,9 +158,12 @@ class BST(Generic[T]):
 
         return child_nodes
 
-    def get_height(self):
+    def get_height(self) -> int:
+        if not self.root:
+            return 0
+
         height = 0
-        nodes = [self.root]
+        nodes: list[Node[T]] = [self.root]
 
         while len(nodes) > 0:
             nodes = self.get_child_nodes(nodes)
@@ -231,19 +238,19 @@ class BST(Generic[T]):
             value = node.value
             parent = node.parent
             is_leaf = (
-                    (node.left is None) and (node.right is None)
+                (node.left is None) and (node.right is None)
             )
 
             no_descend_left = (
-                    (current_max is not None) and
-                    (node.left is not None) and
-                    (current_max >= node.left.value)
+                (current_max is not None) and
+                (node.left is not None) and
+                (current_max >= node.left.value)
             )
 
             no_descend_right = (
-                    (current_max is not None) and
-                    (node.right is not None) and
-                    (current_max >= node.right.value)
+                (current_max is not None) and
+                (node.right is not None) and
+                (current_max >= node.right.value)
             )
 
             if is_leaf:
