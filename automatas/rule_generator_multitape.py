@@ -57,8 +57,20 @@ class MultiTapeState(object):
             self.tape_cell_state == other.tape_cell_state
         )
 
+    def __gt__(self, other: MultiTapeState):
+        if self.tape_no != other.tape_no:
+            return self.tape_no > other.tape_no
+
+        return self.tape_cell_state > other.tape_cell_state
+
     def to_tuple(self) -> tuple[int, int]:
         return int(self.tape_no), int(self.tape_cell_state)
+
+    def to_str(self) -> str:
+        tape_no = int(self.tape_no)
+        tape_cell_state = int(self.tape_cell_state)
+        str_state = f'T{tape_no}:{tape_cell_state}'
+        return str_state
 
     def to_term(self, offset: int = 0) -> D:
         return D(
@@ -699,7 +711,50 @@ class TapeOverlaps(object):
 
     def visualize_for(self, source_state: MultiTapeState) -> str:
         overlap_map = self._overlaps[source_state]
-        overlap_offsets = sorted(overlap_map.keys())
+        overlap_offsets = set(overlap_map.keys())
+        min_offset = min(overlap_offsets)
+        max_offset = max(overlap_offsets)
+        mid_line = f'{source_state.to_str()} -'
+        lines = []
+
+        for offset in range(min_offset, max_offset + 1):
+            target_states_set: set[MultiTapeState] = overlap_map[offset]
+            sorted_target_states = sorted(list(target_states_set))
+            prev_target_state_tape_no: TapeNo | None = None
+            current_tape_cell_states: list[int] = []
+            # encodes what tape-tape_cell_state pairs are there
+            target_states_str = ''
+
+            for sorted_target_state in sorted_target_states:
+                tape_no = sorted_target_state.tape_no
+                tape_cell_state = sorted_target_state.tape_cell_state
+
+                if tape_no != prev_target_state_tape_no:
+                    target_states_str += (
+                        f' ' +
+                        f'T{tape_no}:' +
+                        f'{current_tape_cell_states}'
+                    )
+                    prev_target_state_tape_no = tape_no
+                    current_tape_cell_states = []
+                else:
+                    current_tape_cell_states.append(int(tape_cell_state))
+
+            if offset == 0:
+                lines.append(f'{mid_line}|{target_states_str}')
+                continue
+
+            buffer = " " * len(mid_line)
+
+            if offset < 0:
+                lines.append(f'{" " * len(mid_line)} {offset} -> {target_states_str}')
+            else:
+                lines.append(f'{" " * len(mid_line)} {offset} -> {target_states_str}')
+
+        min_offset = min(overlap_offsets)
+        max_offset = max(overlap_offsets)
+
+
 
 
         lines = [f"Overlaps for {source_state}:"]
