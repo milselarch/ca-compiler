@@ -1,3 +1,10 @@
+import sys
+
+from pathlib import Path
+
+_project_root_dir = Path(__file__).resolve().parents[1]
+sys.path.append(str(_project_root_dir))
+
 from automatas.counter_automata import CounterAutomataRunner
 from automatas.rule_generator_multitape import MultiTapeBuilder
 

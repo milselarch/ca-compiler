@@ -1,6 +1,4 @@
-import textwrap
-
-from typing import TypeVar, Generic, Optional, Sequence
+from typing import TypeVar, Generic, Sequence
 
 T = TypeVar('T')
 
@@ -59,7 +57,7 @@ class Node(Generic[T]):
 
 
 class BST(Generic[T]):
-    def __init__(self, values: Sequence[Node[T]] = ()):
+    def __init__(self, values: Sequence[T] = ()):
         self.root: Node[T] | None = None
         self.size: int = 0
 

@@ -39,7 +39,7 @@ HALT_STATE: Final[TapeCellState] = TapeCellState(0b1)
 
 
 @dataclasses.dataclass
-class MultiTapeState:
+class MultiTapeState(object):
     """
     This represents the state of a cell in a specific tape of
     a multi-tape automaton
@@ -56,6 +56,9 @@ class MultiTapeState:
             self.tape_no == other.tape_no and
             self.tape_cell_state == other.tape_cell_state
         )
+
+    def to_tuple(self) -> tuple[int, int]:
+        return int(self.tape_no), int(self.tape_cell_state)
 
     def to_term(self, offset: int = 0) -> D:
         return D(
@@ -694,8 +697,24 @@ class TapeOverlaps(object):
             MultiTapeState, defaultdict[int, set[MultiTapeState]]
         ] = defaultdict(lambda: defaultdict(set))
 
+    def visualize_for(self, source_state: MultiTapeState) -> str:
+        overlap_map = self._overlaps[source_state]
+        overlap_offsets = sorted(overlap_map.keys())
+
+
+        lines = [f"Overlaps for {source_state}:"]
+
+
+
+        for offset in sorted(overlap_map.keys()):
+            target_states = overlap_map[offset]
+            target_states_str = ', '.join([str(state) for state in target_states])
+            lines.append(f"  Offset {offset}: {target_states_str}")
+
+        return '\n'.join(lines)
+
     def __repr__(self):
-        return f'TapeOverlaps(overlaps={self._overlaps})'
+        return f'{self.__class__.__name__}(overlaps={self._overlaps})'
 
     def get_all_states(self) -> set[MultiTapeState]:
         return set(self._overlaps.keys())
