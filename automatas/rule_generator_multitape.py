@@ -9,6 +9,7 @@ from collections import defaultdict
 from typing import Final, Iterator, Sequence
 from frozendict import frozendict
 
+from automatas.renderer import RenderFrame
 from automatas.rule_generator import AutomataTransitionsGroup
 from renderer import RenderFrame
 from py_ca_compiler import (
@@ -709,16 +710,26 @@ class TapeOverlaps(object):
             MultiTapeState, defaultdict[int, set[MultiTapeState]]
         ] = defaultdict(lambda: defaultdict(set))
 
-    def visualize_for(self, source_state: MultiTapeState) -> str:
+    def visualize_for(self, source_state: MultiTapeState) -> list[str]:
         overlap_map = self._overlaps[source_state]
         overlap_offsets = set(overlap_map.keys())
         min_offset = min(overlap_offsets)
         max_offset = max(overlap_offsets)
-        mid_line = f'{source_state.to_str()} -'
+        offset_pad_length = max(len(str(min_offset)), len(str(max_offset)))
+        mid_pre_line = f'{source_state.to_str()} —'
         lines = []
 
         for offset in range(min_offset, max_offset + 1):
+            if offset == 0:
+                pre_line = mid_pre_line
+            else:
+                pre_line = " " * len(mid_pre_line)
+
             target_states_set: set[MultiTapeState] = overlap_map[offset]
+            if not target_states_set:
+                lines.append(pre_line + f'|—')
+                continue
+
             sorted_target_states = sorted(list(target_states_set))
             prev_target_state_tape_no: TapeNo | None = None
             current_tape_cell_states: list[int] = []
@@ -728,45 +739,26 @@ class TapeOverlaps(object):
             for sorted_target_state in sorted_target_states:
                 tape_no = sorted_target_state.tape_no
                 tape_cell_state = sorted_target_state.tape_cell_state
+                print(f"TAPE_CELL_STATE {tape_cell_state}")
 
                 if tape_no != prev_target_state_tape_no:
                     target_states_str += (
-                        f' ' +
-                        f'T{tape_no}:' +
-                        f'{current_tape_cell_states}'
+                        f' T{tape_no}:' +
+                        '|'.join([str(x) for x in current_tape_cell_states])
                     )
                     prev_target_state_tape_no = tape_no
                     current_tape_cell_states = []
-                else:
-                    current_tape_cell_states.append(int(tape_cell_state))
 
-            if offset == 0:
-                lines.append(f'{mid_line}|{target_states_str}')
-                continue
+                current_tape_cell_states.append(int(tape_cell_state))
 
-            buffer = " " * len(mid_line)
+            offset_str = str(offset)
+            offset_pad_chars = (offset_pad_length - len(offset_str)) * ' '
+            offset_padded_str = offset_pad_chars + offset_str
+            lines.append(
+                pre_line + f'|— {offset_padded_str} —>{target_states_str}'
+            )
 
-            if offset < 0:
-                lines.append(f'{" " * len(mid_line)} {offset} -> {target_states_str}')
-            else:
-                lines.append(f'{" " * len(mid_line)} {offset} -> {target_states_str}')
-
-        min_offset = min(overlap_offsets)
-        max_offset = max(overlap_offsets)
-
-
-
-
-        lines = [f"Overlaps for {source_state}:"]
-
-
-
-        for offset in sorted(overlap_map.keys()):
-            target_states = overlap_map[offset]
-            target_states_str = ', '.join([str(state) for state in target_states])
-            lines.append(f"  Offset {offset}: {target_states_str}")
-
-        return '\n'.join(lines)
+        return lines
 
     def __repr__(self):
         return f'{self.__class__.__name__}(overlaps={self._overlaps})'
