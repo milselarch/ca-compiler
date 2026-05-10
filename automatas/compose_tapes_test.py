@@ -5,8 +5,12 @@ from pathlib import Path
 _project_root_dir = Path(__file__).resolve().parents[1]
 sys.path.append(str(_project_root_dir))
 
-from automatas.counter_automata import CounterAutomataRunner
-from automatas.rule_generator_multitape import MultiTapeBuilder
+from automatas.counter_automata import (
+    CounterAutomataRunner, DT_DATA, DATA_TAPE
+)
+from automatas.rule_generator_multitape import (
+    MultiTapeBuilder, MultiTapeState
+)
 
 runner = CounterAutomataRunner(
     base=6,
@@ -16,6 +20,11 @@ runner = CounterAutomataRunner(
 
 multi_tape_builder = MultiTapeBuilder(
     multi_tape_automata=runner.multi_tape_automata
+)
+multi_tape_builder.declare_initial_group_overlaps(
+    overlap_states={
+        MultiTapeState(tape_no=DATA_TAPE, tape_cell_state=DT_DATA)
+    }
 )
 compose_result = multi_tape_builder.compose_tapes()
 print(f'{compose_result=}')

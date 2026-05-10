@@ -169,22 +169,28 @@ class BST(Generic[T]):
 
         return height
 
-    def make_lines(self, node=None):
+    def make_lines(self, node: Node[T] | None = None):
         if node is None:
-            node = self.root
+            _node = self.root
+        else:
+            assert isinstance(node, Node)
+            _node = node
 
-        str_value = f' {node.value} '
-        if not node.has_children:
+        if _node is None:
+            return ''
+
+        str_value = f' {_node.value} '
+        if not _node.has_children:
             return [str_value], 0
 
         node_length = len(str_value) + 1
         left_lines, right_lines = [], []
         left_mid, right_mid = 0, 0
 
-        if node.left is not None:
-            left_lines, left_mid = self.make_lines(node.left)
-        if node.right is not None:
-            right_lines, right_mid = self.make_lines(node.right)
+        if _node.left is not None:
+            left_lines, left_mid = self.make_lines(_node.left)
+        if _node.right is not None:
+            right_lines, right_mid = self.make_lines(_node.right)
 
         new_lines = []
         for k, left_line in enumerate(left_lines):
@@ -224,9 +230,9 @@ class BST(Generic[T]):
         return self.traverse_bst_in_order(self, show=show)
 
     @classmethod
-    def traverse_bst_in_order(cls, T, show=False):
-        size = T.size
-        node = T.root
+    def traverse_bst_in_order(cls, tree, show=False):
+        size = tree.size
+        node = tree.root
         current_max = None
         values = []
         steps = 0

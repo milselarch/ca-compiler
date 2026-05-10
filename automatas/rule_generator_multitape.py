@@ -710,13 +710,40 @@ class TapeOverlaps(object):
             MultiTapeState, defaultdict[int, set[MultiTapeState]]
         ] = defaultdict(lambda: defaultdict(set))
 
-    def visualize_for(self, source_state: MultiTapeState) -> list[str]:
+    def visualize_for_states(
+        self, source_states: set[MultiTapeState]
+    ) -> list[str]:
+        max_prefix_length = 0
+
+        for source_state in source_states:
+            tree_prefix = source_state.to_str()
+            max_prefix_length = max(max_prefix_length, len(tree_prefix))
+
+        lines = []
+        source_states_seq = sorted(list(source_states))
+
+        for source_state in source_states_seq:
+            source_state_lines = self.visualize_for_state(
+                source_state, prefix_length=max_prefix_length
+            )
+            lines.extend(source_state_lines)
+            lines.append('')
+
+        return lines
+
+    def visualize_for_state(
+        self, source_state: MultiTapeState, prefix_length: int = 0
+    ) -> list[str]:
+        tree_prefix = source_state.to_str()
+        if prefix_length > len(tree_prefix):
+            tree_prefix += ' ' * (prefix_length - len(tree_prefix))
+
         overlap_map = self._overlaps[source_state]
         overlap_offsets = set(overlap_map.keys())
         min_offset = min(overlap_offsets)
         max_offset = max(overlap_offsets)
         offset_pad_length = max(len(str(min_offset)), len(str(max_offset)))
-        mid_pre_line = f'{source_state.to_str()} —'
+        mid_pre_line = tree_prefix + ' —'
         lines = []
 
         for offset in range(min_offset, max_offset + 1):
@@ -727,7 +754,7 @@ class TapeOverlaps(object):
 
             target_states_set: set[MultiTapeState] = overlap_map[offset]
             if not target_states_set:
-                lines.append(pre_line + f'|—')
+                # lines.append(pre_line + f'|—')
                 continue
 
             sorted_target_states = sorted(list(target_states_set))
@@ -739,11 +766,15 @@ class TapeOverlaps(object):
             for sorted_target_state in sorted_target_states:
                 tape_no = sorted_target_state.tape_no
                 tape_cell_state = sorted_target_state.tape_cell_state
-                print(f"TAPE_CELL_STATE {tape_cell_state}")
+                # print(f"TAPE_CELL_STATE {tape_cell_state}")
 
                 if tape_no != prev_target_state_tape_no:
+                    if prev_target_state_tape_no is None:
+                        prev_target_state_tape_no = tape_no
+                        continue
+
                     target_states_str += (
-                        f' T{tape_no}:' +
+                        f' T{prev_target_state_tape_no}:' +
                         '|'.join([str(x) for x in current_tape_cell_states])
                     )
                     prev_target_state_tape_no = tape_no
@@ -751,7 +782,11 @@ class TapeOverlaps(object):
 
                 current_tape_cell_states.append(int(tape_cell_state))
 
-            offset_str = str(offset)
+            if offset < 0:
+                offset_str = str(offset)
+            else:
+                offset_str = f'+{offset}'
+
             offset_pad_chars = (offset_pad_length - len(offset_str)) * ' '
             offset_padded_str = offset_pad_chars + offset_str
             lines.append(
@@ -1179,7 +1214,7 @@ class MultiTapeBuilder(object):
             for tape_no in tape_nos
         ])
         # declare that void states can overlap with one another
-        self.declare_group_overlaps(void_overlap_states)
+        self.declare_initial_group_overlaps(void_overlap_states)
 
     @property
     def leftmost_extent(self) -> int:
@@ -1195,7 +1230,7 @@ class MultiTapeBuilder(object):
     def _get_prod_to_state_map(self) -> ProductWritesMap:
         return self._automata.get_prod_to_state_map()
 
-    def declare_group_overlaps(
+    def declare_initial_group_overlaps(
         self, overlap_states: set[MultiTapeState]
     ):
         """
