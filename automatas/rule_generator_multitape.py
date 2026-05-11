@@ -731,9 +731,39 @@ class TapeOverlaps(object):
 
         return lines
 
+    @staticmethod
+    def list_for_offset(
+        target_states_set: set[MultiTapeState]
+    ) -> str:
+        print(f"{target_states_set=}")
+        sorted_target_states = sorted(list(target_states_set))
+        tape_states_map: defaultdict[
+            TapeNo, list[TapeCellState]
+        ] = defaultdict(list)
+
+        for sorted_target_state in sorted_target_states:
+            tape_no = sorted_target_state.tape_no
+            tape_cell_state = sorted_target_state.tape_cell_state
+            tape_states_map[tape_no].append(tape_cell_state)
+
+        tape_nos = sorted(list(tape_states_map.keys()))
+        tape_chunks = []
+
+        for tape_no in tape_nos:
+            tape_cell_states = tape_states_map[tape_no]
+            tape_cell_states_str = '|'.join([str(x) for x in tape_cell_states])
+            tape_chunk = f'T{tape_no}:' + tape_cell_states_str
+            tape_chunks.append(tape_chunk)
+
+        target_states_str = ' '.join(tape_chunks)
+        print(f'{target_states_str=}')
+        print('')
+        return target_states_str
+
     def visualize_for_state(
         self, source_state: MultiTapeState, prefix_length: int = 0
     ) -> list[str]:
+        # print(source_state)
         tree_prefix = source_state.to_str()
         if prefix_length > len(tree_prefix):
             tree_prefix += ' ' * (prefix_length - len(tree_prefix))
@@ -757,30 +787,7 @@ class TapeOverlaps(object):
                 # lines.append(pre_line + f'|—')
                 continue
 
-            sorted_target_states = sorted(list(target_states_set))
-            prev_target_state_tape_no: TapeNo | None = None
-            current_tape_cell_states: list[int] = []
-            # encodes what tape-tape_cell_state pairs are there
-            target_states_str = ''
-
-            for sorted_target_state in sorted_target_states:
-                tape_no = sorted_target_state.tape_no
-                tape_cell_state = sorted_target_state.tape_cell_state
-                # print(f"TAPE_CELL_STATE {tape_cell_state}")
-
-                if tape_no != prev_target_state_tape_no:
-                    if prev_target_state_tape_no is None:
-                        prev_target_state_tape_no = tape_no
-                        continue
-
-                    target_states_str += (
-                        f' T{prev_target_state_tape_no}:' +
-                        '|'.join([str(x) for x in current_tape_cell_states])
-                    )
-                    prev_target_state_tape_no = tape_no
-                    current_tape_cell_states = []
-
-                current_tape_cell_states.append(int(tape_cell_state))
+            target_states_str = self.list_for_offset(target_states_set)
 
             if offset < 0:
                 offset_str = str(offset)
@@ -790,7 +797,7 @@ class TapeOverlaps(object):
             offset_pad_chars = (offset_pad_length - len(offset_str)) * ' '
             offset_padded_str = offset_pad_chars + offset_str
             lines.append(
-                pre_line + f'|— {offset_padded_str} —>{target_states_str}'
+                pre_line + f'|— {offset_padded_str} —> {target_states_str}'
             )
 
         return lines
@@ -1347,7 +1354,12 @@ class MultiTapeBuilder(object):
 
         while relevant_input_products:
             new_relevant_input_products: set[PyMultiTapeProduct] = set()
-            # print(f'{relevant_input_products=}')
+            print(f'{relevant_input_products=}')
+            print('')
+
+            # tape_overlap_states = global_overlaps.get_all_states()
+            # lines = global_overlaps.visualize_for_states(tape_overlap_states)
+            # print('\n'.join(lines))
 
             for product in relevant_input_products:
                 if not self.is_prodict_satisfiable(product, global_overlaps):
