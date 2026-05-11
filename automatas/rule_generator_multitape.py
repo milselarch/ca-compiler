@@ -735,7 +735,7 @@ class TapeOverlaps(object):
     def list_for_offset(
         target_states_set: set[MultiTapeState]
     ) -> str:
-        print(f"{target_states_set=}")
+        # print(f"{target_states_set=}")
         sorted_target_states = sorted(list(target_states_set))
         tape_states_map: defaultdict[
             TapeNo, list[TapeCellState]
@@ -756,8 +756,8 @@ class TapeOverlaps(object):
             tape_chunks.append(tape_chunk)
 
         target_states_str = ' '.join(tape_chunks)
-        print(f'{target_states_str=}')
-        print('')
+        # print(f'{target_states_str=}')
+        # print('')
         return target_states_str
 
     def visualize_for_state(
@@ -1357,9 +1357,9 @@ class MultiTapeBuilder(object):
             print(f'{relevant_input_products=}')
             print('')
 
-            # tape_overlap_states = global_overlaps.get_all_states()
-            # lines = global_overlaps.visualize_for_states(tape_overlap_states)
-            # print('\n'.join(lines))
+            tape_overlap_states = global_overlaps.get_all_states()
+            lines = global_overlaps.visualize_for_states(tape_overlap_states)
+            print('\n'.join(lines))
 
             for product in relevant_input_products:
                 if not self.is_prodict_satisfiable(product, global_overlaps):

@@ -30,6 +30,9 @@ tape_overlaps: TapeOverlaps = multi_tape_builder.build_overlaps()
 tape_overlap_states = tape_overlaps.get_all_states()
 # print(f'{tape_overlap_states=}')
 # print('')
+
 lines = tape_overlaps.visualize_for_states(tape_overlap_states)
+
+print("\nFINAL_TAPE_OVERLAPS")
 print('')
 print('\n'.join(lines))
