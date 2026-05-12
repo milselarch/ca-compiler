@@ -820,6 +820,49 @@ class TapeOverlaps(object):
 
     def insert_overlap(
         self, source_state: MultiTapeState, target_state: MultiTapeState,
+        offset: int, min_offset: int, max_offset: int
+    ) -> bool:
+        source_updated = self.insert_overlaps_for(
+            source_state=source_state, target_state=target_state,
+            offset=offset, min_offset=min_offset, max_offset=max_offset
+        )
+        target_updated = self.insert_overlaps_for(
+            source_state=target_state, target_state=source_state,
+            offset=-offset, min_offset=min_offset, max_offset=max_offset
+        )
+        return source_updated or target_updated
+
+    def insert_overlaps_for(
+        self, source_state: MultiTapeState, target_state: MultiTapeState,
+        offset: int, min_offset: int, max_offset: int
+    ) -> bool:
+        self._overlaps[source_state][offset].add(target_state)
+        source_overlaps_map = self._overlaps[source_state]
+        target_overlaps_map = self._overlaps[target_state]
+        target_overlap_offsets = list(target_overlaps_map.keys())
+        overlaps_inserted = False
+
+        for target_state_offset in target_overlap_offsets:
+            source_state_offset = offset + target_state_offset
+            if source_state_offset < min_offset:
+                continue
+            if source_state_offset > max_offset:
+                continue
+
+            target_overlap_states = target_overlaps_map[target_state_offset]
+            source_overlap_states = source_overlaps_map[source_state_offset]
+
+            for target_overlap_state in target_overlap_states:
+                if target_overlap_state in source_overlap_states:
+                    continue
+
+                source_overlap_states.add(target_overlap_state)
+                overlaps_inserted = True
+
+        return overlaps_inserted
+
+    def _insert_overlap(
+        self, source_state: MultiTapeState, target_state: MultiTapeState,
         offset: int
     ) -> bool:
         """
@@ -1265,14 +1308,16 @@ class MultiTapeBuilder(object):
                     # covered across all the automata's rules
                     self._initial_overlaps.insert_overlap(
                         source_state=state, target_state=other_state,
-                        offset=offset
+                        offset=offset, min_offset=self.leftmost_extent,
+                        max_offset=self.rightmost_extent
                     )
                 for tape_no in tape_nos:
                     # every tape state can overlap with void at any offset
                     tape_void = MultiTapeState(tape_no, VOID_STATE)
                     self._initial_overlaps.insert_overlap(
                         source_state=state, target_state=tape_void,
-                        offset=offset
+                        offset=offset, min_offset=self.leftmost_extent,
+                        max_offset=self.rightmost_extent
                     )
 
     @staticmethod
@@ -1385,7 +1430,9 @@ class MultiTapeBuilder(object):
                         global_overlaps.insert_overlap(
                             source_state=input_state,
                             target_state=output_state,
-                            offset=term_offset_from_input
+                            offset=term_offset_from_input,
+                            min_offset=self.leftmost_extent,
+                            max_offset=self.rightmost_extent
                         )
 
                     # Get the other products that use the current products'
