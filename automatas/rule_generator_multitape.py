@@ -1415,6 +1415,8 @@ class MultiTapeBuilder(object):
 
                 for write_tape_no in product_writes:
                     output_tape_cell_state = product_writes[write_tape_no]
+                    overlaps_updated = False
+
                     output_state = MultiTapeState(
                         tape_no=write_tape_no,
                         tape_cell_state=output_tape_cell_state
@@ -1427,13 +1429,16 @@ class MultiTapeBuilder(object):
                         term_offset_from_output = input_term.get_position()
                         term_offset_from_input = -term_offset_from_output
 
-                        global_overlaps.insert_overlap(
+                        overlaps_updated |= global_overlaps.insert_overlap(
                             source_state=input_state,
                             target_state=output_state,
                             offset=term_offset_from_input,
                             min_offset=self.leftmost_extent,
                             max_offset=self.rightmost_extent
                         )
+
+                    if not overlaps_updated:
+                        continue
 
                     # Get the other products that use the current products'
                     # output state as one of their input states, and add it
