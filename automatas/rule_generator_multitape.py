@@ -844,6 +844,7 @@ class TapeOverlaps(object):
 
         for target_state_offset in target_overlap_offsets:
             source_state_offset = offset + target_state_offset
+
             if source_state_offset < min_offset:
                 continue
             if source_state_offset > max_offset:
@@ -861,7 +862,7 @@ class TapeOverlaps(object):
 
         return overlaps_inserted
 
-    def _insert_overlap(
+    def insert_direct_overlap(
         self, source_state: MultiTapeState, target_state: MultiTapeState,
         offset: int
     ) -> bool:
@@ -1302,22 +1303,35 @@ class MultiTapeBuilder(object):
 
         for offset in range(self.leftmost_extent, self.rightmost_extent+1):
             for state in overlap_states:
+                state_tape_no = state.tape_no
+
                 for other_state in overlap_states:
-                    # every tape state could overlap with any other tape state
-                    # at any offset within the range of possible offsets
-                    # covered across all the automata's rules
-                    self._initial_overlaps.insert_overlap(
+                    """
+                    every tape state could overlap with any other tape state
+                    at any offset within the range of possible offsets
+                    covered across all the automata's rules
+                    """
+                    self._initial_overlaps.insert_direct_overlap(
                         source_state=state, target_state=other_state,
-                        offset=offset, min_offset=self.leftmost_extent,
-                        max_offset=self.rightmost_extent
+                        offset=offset,
+                        # min_offset=self.leftmost_extent,
+                        # max_offset=self.rightmost_extent
                     )
                 for tape_no in tape_nos:
+                    if (tape_no == state_tape_no) and (offset == 0):
+                        """
+                        a tape state can't overlap directly
+                        on the same position with void on the same tape
+                        """
+                        continue
+
                     # every tape state can overlap with void at any offset
                     tape_void = MultiTapeState(tape_no, VOID_STATE)
-                    self._initial_overlaps.insert_overlap(
+                    self._initial_overlaps.insert_direct_overlap(
                         source_state=state, target_state=tape_void,
-                        offset=offset, min_offset=self.leftmost_extent,
-                        max_offset=self.rightmost_extent
+                        offset=offset,
+                        # min_offset=self.leftmost_extent,
+                        # max_offset=self.rightmost_extent
                     )
 
     @staticmethod
@@ -1399,8 +1413,8 @@ class MultiTapeBuilder(object):
 
         while relevant_input_products:
             new_relevant_input_products: set[PyMultiTapeProduct] = set()
-            print(f'{relevant_input_products=}')
-            print('')
+            # print(f'{relevant_input_products=}')
+            print('NEXT_ROUND\n')
 
             tape_overlap_states = global_overlaps.get_all_states()
             lines = global_overlaps.visualize_for_states(tape_overlap_states)
@@ -1411,6 +1425,7 @@ class MultiTapeBuilder(object):
                     continue
 
                 product_writes = prod_to_state_map[product]
+                print('SATISFIABLE PRODUCT:', product, product_writes)
                 input_terms = product.get_flat_terms()
 
                 for write_tape_no in product_writes:
@@ -1436,6 +1451,13 @@ class MultiTapeBuilder(object):
                             min_offset=self.leftmost_extent,
                             max_offset=self.rightmost_extent
                         )
+                        """
+                        overlaps_updated |= global_overlaps.insert_direct_overlap(
+                            source_state=input_state,
+                            target_state=output_state,
+                            offset=term_offset_from_input
+                        )
+                        """
 
                     if not overlaps_updated:
                         continue
