@@ -79,6 +79,18 @@ class MultiTapeState(object):
             tape_no=self.tape_no, state=self.tape_cell_state
         )
 
+    def has_tape_mutual_exclusion(self, other: MultiTapeState) -> bool:
+        """
+        Check if this state has tape mutual exclusion with the other state
+        i.e. they are on the same tape but have different cell states
+        :param other:
+        :return:
+        """
+        return (
+            self.tape_no == other.tape_no and
+            self.tape_cell_state != other.tape_cell_state
+        )
+
     @classmethod
     def from_term(cls, term: D):
         tape_no, tape_cell_state = term.get_state()
@@ -731,6 +743,17 @@ class TapeOverlaps(object):
 
         return lines
 
+    def print_for_states(
+        self, source_states: set[MultiTapeState] | None = None
+    ) -> None:
+        if source_states is None:
+            _source_states = set(self._overlaps.keys())
+        else:
+            _source_states = set(source_states)
+
+        lines = self.visualize_for_states(_source_states)
+        print("\n".join(lines))
+
     @staticmethod
     def list_for_offset(
         target_states_set: set[MultiTapeState]
@@ -770,8 +793,12 @@ class TapeOverlaps(object):
 
         overlap_map = self._overlaps[source_state]
         overlap_offsets = set(overlap_map.keys())
-        min_offset = min(overlap_offsets)
-        max_offset = max(overlap_offsets)
+        min_offset, max_offset = 0, 0
+
+        if overlap_offsets:
+            min_offset = min(overlap_offsets)
+            max_offset = max(overlap_offsets)
+
         offset_pad_length = max(len(str(min_offset)), len(str(max_offset)))
         mid_pre_line = tree_prefix + ' —'
         lines = []
@@ -836,6 +863,17 @@ class TapeOverlaps(object):
         self, source_state: MultiTapeState, target_state: MultiTapeState,
         offset: int, min_offset: int, max_offset: int
     ) -> bool:
+        has_tape_mutual_exclusion = (
+            source_state.tape_no == target_state.tape_no and
+            source_state.tape_cell_state != target_state.tape_cell_state and
+            offset == 0
+        )
+        if has_tape_mutual_exclusion:
+            # if the states have same-tape mutual exclusion,
+            # then they can't overlap
+            return False
+
+        source_tape_cell_state = source_state.tape_cell_state
         self._overlaps[source_state][offset].add(target_state)
         source_overlaps_map = self._overlaps[source_state]
         target_overlaps_map = self._overlaps[target_state]
@@ -855,6 +893,17 @@ class TapeOverlaps(object):
 
             for target_overlap_state in target_overlap_states:
                 if target_overlap_state in source_overlap_states:
+                    continue
+
+                target_tape_cell_state = target_overlap_state.tape_cell_state
+                has_tape_mutual_exclusion = (
+                    source_state.tape_no == target_state.tape_no and
+                    source_tape_cell_state != target_tape_cell_state and
+                    source_state_offset == 0
+                )
+                if has_tape_mutual_exclusion:
+                    # if the states have same-tape mutual exclusion,
+                    # then they can't overlap
                     continue
 
                 source_overlap_states.add(target_overlap_state)
@@ -1425,7 +1474,7 @@ class MultiTapeBuilder(object):
                     continue
 
                 product_writes = prod_to_state_map[product]
-                print('SATISFIABLE PRODUCT:', product, product_writes)
+                print('SATISFIABLE PRODUCT PRE:', product, product_writes)
                 input_terms = product.get_flat_terms()
 
                 for write_tape_no in product_writes:
@@ -1468,6 +1517,9 @@ class MultiTapeBuilder(object):
                     affected_products = input_state_to_prod_map[output_state]
                     for affected_product in affected_products:
                         new_relevant_input_products.add(affected_product)
+
+                print('SATISFIABLE PRODUCT:', product, product_writes)
+                print('>>>')
 
             relevant_input_products = new_relevant_input_products
 
