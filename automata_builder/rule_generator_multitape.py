@@ -879,23 +879,24 @@ class TapeOverlaps(object):
         self, source_state: MultiTapeState, target_state: MultiTapeState,
         offset: int, min_offset: int, max_offset: int
     ) -> bool:
+        source_tape_cell_state = source_state.tape_cell_state
         has_tape_mutual_exclusion = (
             source_state.tape_no == target_state.tape_no and
             source_state.tape_cell_state != target_state.tape_cell_state and
             offset == 0
         )
-        if has_tape_mutual_exclusion:
+
+        if not has_tape_mutual_exclusion:
             """
             if two multi tape states are on the same tape and 
             have different tape cell states then they must 
             necessarily never be able to overlap with one another directly 
             (i.e. with an overlap offset=0)
             """
-            return False
+            self._overlaps[source_state][offset].add(target_state)
+            self.validate_overlaps_for(source_state)
+            # return False
 
-        source_tape_cell_state = source_state.tape_cell_state
-        self._overlaps[source_state][offset].add(target_state)
-        self.validate_overlaps_for(source_state)
         source_overlaps_map = self._overlaps[source_state]
         target_overlaps_map = self._overlaps[target_state]
         target_overlap_offsets = list(target_overlaps_map.keys())
