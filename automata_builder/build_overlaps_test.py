@@ -5,10 +5,10 @@ from pathlib import Path
 _project_root_dir = Path(__file__).resolve().parents[1]
 sys.path.append(str(_project_root_dir))
 
-from automatas.rule_generator_multitape import (
+from automata_builder.rule_generator_multitape import (
     MultiTapeBuilder, MultiTapeState, TapeCellState, TapeNo, TapeOverlaps
 )
-from automatas.counter_automata import (
+from automata_builder.counter_automata import (
     CounterAutomataRunner, DT_DATA, DATA_TAPE
 )
 

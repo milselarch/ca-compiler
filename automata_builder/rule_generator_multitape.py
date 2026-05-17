@@ -9,8 +9,8 @@ from collections import defaultdict
 from typing import Final, Iterator, Sequence
 from frozendict import frozendict
 
-from automatas.renderer import RenderFrame
-from automatas.rule_generator import AutomataTransitionsGroup
+from automata_builder.renderer import RenderFrame
+from automata_builder.rule_generator import AutomataTransitionsGroup
 from renderer import RenderFrame
 from py_ca_compiler import (
     D, PyMultiTapeProduct, PyMultiTapeExpression,
@@ -1459,9 +1459,16 @@ class MultiTapeBuilder(object):
 
         return True
 
-    def build_input_state_to_prod_map(self) -> defaultdict[
+    def build_input_state_to_prod_map(
+        self, verbose: bool = False
+    ) -> defaultdict[
         MultiTapeState, set[PyMultiTapeProduct]
     ]:
+        """
+        maps state -> products that contain it in their input terms
+        :param verbose:
+        :return:
+        """
         prod_to_state_map = self._get_prod_to_state_map()
         # map state -> products that contain it in their input terms
         input_state_to_prod_map: defaultdict[
@@ -1474,6 +1481,16 @@ class MultiTapeBuilder(object):
             for input_term in input_terms:
                 input_state = MultiTapeState.from_term(input_term)
                 input_state_to_prod_map[input_state].add(product)
+
+        if verbose:
+            for input_state in input_state_to_prod_map:
+                print(f'Input products for {input_state}')
+
+                products = input_state_to_prod_map[input_state]
+                for product in products:
+                    print(f'- {product}')
+
+            print('')
 
         return input_state_to_prod_map
 
@@ -1488,7 +1505,7 @@ class MultiTapeBuilder(object):
         # map input products to output tape writes
         prod_to_state_map = self._get_prod_to_state_map()
         # map state -> products that contain it in their input terms
-        input_state_to_prod_map = self.build_input_state_to_prod_map()
+        input_state_to_prod_map = self.build_input_state_to_prod_map(True)
         # input products that can effect a new state overlap
         relevant_input_products = list(prod_to_state_map.keys())
 
