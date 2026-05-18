@@ -937,6 +937,7 @@ class TapeOverlaps(object):
                     # then they can't overlap
                     continue
 
+                # TODO: use insert_direct_overlap?
                 source_overlap_states.add(target_overlap_state)
                 self.validate_overlaps_for(source_state)
                 overlaps_inserted = True
@@ -1077,7 +1078,7 @@ class ProductWritesMap(object):
             MultiTapeState, set[PyMultiTapeProduct]
         ] = defaultdict(set)
 
-        for product in self.items():
+        for product in self.prod_to_state_map:
             writes_map = self.prod_to_state_map[product]
 
             for tape_no in writes_map:
@@ -1088,7 +1089,9 @@ class ProductWritesMap(object):
                 state_to_products_map[tape_state].add(product)
 
         if verbose:
-            for state in state_to_products_map:
+            states = sorted(state_to_products_map.keys())
+
+            for state in states:
                 print(f'Products that produce {state=}')
 
                 production_products = state_to_products_map[state]
