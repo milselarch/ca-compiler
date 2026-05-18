@@ -1508,9 +1508,11 @@ class MultiTapeBuilder(object):
         input_state_to_prod_map = self.build_input_state_to_prod_map(True)
         # input products that can effect a new state overlap
         relevant_input_products = list(prod_to_state_map.keys())
+        overlaps_updated = True
 
-        while relevant_input_products:
-            new_relevant_input_products: set[PyMultiTapeProduct] = set()
+        while overlaps_updated:
+            overlaps_updated = False
+            # new_relevant_input_products: set[PyMultiTapeProduct] = set()
             # print(f'{relevant_input_products=}')
             print('NEXT_ROUND\n')
 
@@ -1528,7 +1530,6 @@ class MultiTapeBuilder(object):
 
                 for write_tape_no in product_writes:
                     output_tape_cell_state = product_writes[write_tape_no]
-                    overlaps_updated = False
 
                     output_state = MultiTapeState(
                         tape_no=write_tape_no,
@@ -1558,21 +1559,23 @@ class MultiTapeBuilder(object):
                         """
 
                     if not overlaps_updated:
-                        print("SKIP_WRITE", write_tape_no)
+                        print("SKIP_WRITE", (write_tape_no, output_tape_cell_state))
                         continue
 
-                    print("DO_WRITE", write_tape_no)
+                    print("DO_WRITE", (write_tape_no, output_tape_cell_state))
                     # Get the other products that use the current products'
                     # output state as one of their input states, and add it
                     # to list of products to check for satisfiability later
+                    """
                     affected_products = input_state_to_prod_map[output_state]
                     for affected_product in affected_products:
                         new_relevant_input_products.add(affected_product)
+                    """
 
                 print('SATISFIABLE PRODUCT:', product, product_writes)
                 print('>>>')
 
-            relevant_input_products = new_relevant_input_products
+            # relevant_input_products = new_relevant_input_products
 
         return global_overlaps
 
