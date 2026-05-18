@@ -1065,6 +1065,72 @@ class ProductWritesMap(object):
 
         return tape_state_writes
 
+    def build_state_to_products_map(
+        self, verbose: bool = False
+    ) -> defaultdict[MultiTapeState, set[PyMultiTapeProduct]]:
+        """
+        maps states -> products that produce them in their output terms
+        :param verbose:
+        :return:
+        """
+        state_to_products_map: defaultdict[
+            MultiTapeState, set[PyMultiTapeProduct]
+        ] = defaultdict(set)
+
+        for product in self.items():
+            writes_map = self.prod_to_state_map[product]
+
+            for tape_no in writes_map:
+                tape_cell_state = writes_map[tape_no]
+                tape_state = MultiTapeState(
+                    tape_no=tape_no, tape_cell_state=tape_cell_state
+                )
+                state_to_products_map[tape_state].add(product)
+
+        if verbose:
+            for state in state_to_products_map:
+                print(f'Products that produce {state=}')
+
+                production_products = state_to_products_map[state]
+                for product in production_products:
+                    print(f'- {product}')
+
+        return state_to_products_map
+
+    def build_input_state_to_prod_map(
+        self, verbose: bool = False
+    ) -> defaultdict[
+        MultiTapeState, set[PyMultiTapeProduct]
+    ]:
+        """
+        maps state -> products that contain it in their input terms
+        :param verbose:
+        :return:
+        """
+        # map state -> products that contain it in their input terms
+        input_state_to_prod_map: defaultdict[
+            MultiTapeState, set[PyMultiTapeProduct]
+        ] = defaultdict(set)
+
+        for product in self.prod_to_state_map:
+            input_terms = product.get_flat_terms()
+
+            for input_term in input_terms:
+                input_state = MultiTapeState.from_term(input_term)
+                input_state_to_prod_map[input_state].add(product)
+
+        if verbose:
+            for input_state in input_state_to_prod_map:
+                print(f'Input products for {input_state}')
+
+                products = input_state_to_prod_map[input_state]
+                for product in products:
+                    print(f'- {product}')
+
+            print('')
+
+        return input_state_to_prod_map
+
     def get_states_set(self) -> set[MultiTapeState]:
         states_set: set[MultiTapeState] = set()
 
@@ -1459,41 +1525,6 @@ class MultiTapeBuilder(object):
 
         return True
 
-    def build_input_state_to_prod_map(
-        self, verbose: bool = False
-    ) -> defaultdict[
-        MultiTapeState, set[PyMultiTapeProduct]
-    ]:
-        """
-        maps state -> products that contain it in their input terms
-        :param verbose:
-        :return:
-        """
-        prod_to_state_map = self._get_prod_to_state_map()
-        # map state -> products that contain it in their input terms
-        input_state_to_prod_map: defaultdict[
-            MultiTapeState, set[PyMultiTapeProduct]
-        ] = defaultdict(set)
-
-        for product in prod_to_state_map:
-            input_terms = product.get_flat_terms()
-
-            for input_term in input_terms:
-                input_state = MultiTapeState.from_term(input_term)
-                input_state_to_prod_map[input_state].add(product)
-
-        if verbose:
-            for input_state in input_state_to_prod_map:
-                print(f'Input products for {input_state}')
-
-                products = input_state_to_prod_map[input_state]
-                for product in products:
-                    print(f'- {product}')
-
-            print('')
-
-        return input_state_to_prod_map
-
     def build_overlaps(self) -> TapeOverlaps:
         """
         Builds a mapping of which tape states can overlap with
@@ -1505,7 +1536,10 @@ class MultiTapeBuilder(object):
         # map input products to output tape writes
         prod_to_state_map = self._get_prod_to_state_map()
         # map state -> products that contain it in their input terms
-        input_state_to_prod_map = self.build_input_state_to_prod_map(True)
+        input_state_to_prod_map = (
+            prod_to_state_map.build_input_state_to_prod_map()
+        )
+        prod_to_state_map.build_state_to_products_map(verbose=True)
         # input products that can effect a new state overlap
         relevant_input_products = list(prod_to_state_map.keys())
         overlaps_updated = True
