@@ -73,6 +73,9 @@ class MultiTapeState(object):
         str_state = f'T{tape_no}:{tape_cell_state}'
         return str_state
 
+    def __repr__(self):
+        return self.to_str()
+
     def to_term(self, offset: int = 0) -> D:
         return D(
             position=offset,
@@ -708,6 +711,32 @@ class MultiTapeAutomata(object):
         return process_result
 
 
+@dataclasses.dataclass
+class TapeOverlapEntry(object):
+    source_state: MultiTapeState
+    target_state: MultiTapeState
+    offset: int
+
+    def __hash__(self):
+        return hash((self.source_state, self.target_state, self.offset))
+
+    @property
+    def has_tape_mutual_exclusion(self):
+        """
+        if two multi tape states are on the same tape and
+        have different tape cell states then they must
+        necessarily never be able to overlap with one another directly
+        (i.e. with an overlap offset=0)
+        """
+        source_state = self.source_state
+        target_state = self.target_state
+        return (
+            source_state.tape_no == target_state.tape_no and
+            source_state.tape_cell_state != target_state.tape_cell_state and
+            self.offset == 0
+        )
+
+
 class TapeOverlaps(object):
     """
     we say that a tape state A can overlap with tape state B at offset k if
@@ -721,6 +750,45 @@ class TapeOverlaps(object):
         self._overlaps: defaultdict[
             MultiTapeState, defaultdict[int, set[MultiTapeState]]
         ] = defaultdict(lambda: defaultdict(set))
+
+    def __eq__(self, other: TapeOverlaps) -> bool:
+        return self._overlaps == other._overlaps
+
+    def apply_overlaps_set(
+        self, overlaps: set[TapeOverlapEntry]
+    ) -> set[TapeOverlapEntry]:
+        overlaps_inserted: set[TapeOverlapEntry] = set()
+
+        for overlap in overlaps:
+            if self.apply_overlap_entry(overlap):
+                overlaps_inserted.add(overlap)
+
+        return overlaps_inserted
+
+    def apply_overlap_entry(self, overlap: TapeOverlapEntry) -> bool:
+        if overlap.has_tape_mutual_exclusion:
+            return False
+
+        source_state = overlap.source_state
+        target_state = overlap.target_state
+        source_overlaps = self._overlaps[source_state][overlap.offset]
+        target_overlaps = self._overlaps[target_state][-overlap.offset]
+        overlap_inserted = False
+
+        if target_state not in source_overlaps:
+            # overlap already exists
+            source_overlaps.add(target_state)
+            overlap_inserted = True
+
+        if source_state not in target_overlaps:
+            target_overlaps.add(source_state)
+            overlap_inserted = True
+
+        if overlap_inserted:
+            self.validate_mutual_overlaps_for(source_state=source_state)
+            self.validate_symmetric_overlaps_for(source_state=source_state)
+
+        return overlap_inserted
 
     def visualize_for_states(
         self, source_states: set[MultiTapeState]
@@ -856,24 +924,25 @@ class TapeOverlaps(object):
     ) -> defaultdict[int, set[MultiTapeState]]:
         return copy.deepcopy(self._overlaps[source_state])
 
-    def insert_overlap(
+    def insert_full_overlap(
         self, source_state: MultiTapeState, target_state: MultiTapeState,
         offset: int, min_offset: int, max_offset: int
-    ) -> bool:
-        source_updated = self.insert_overlaps_for(
+    ) -> set[TapeOverlapEntry]:
+        source_updated = self.create_overlaps_for(
             source_state=source_state, target_state=target_state,
             offset=offset, min_offset=min_offset, max_offset=max_offset
         )
         self.validate_mutual_overlaps_for(source_state=source_state)
         self.validate_symmetric_overlaps_for(source_state=source_state)
 
-        target_updated = self.insert_overlaps_for(
+        target_updated = self.create_overlaps_for(
             source_state=target_state, target_state=source_state,
             offset=-offset, min_offset=min_offset, max_offset=max_offset
         )
         self.validate_mutual_overlaps_for(source_state=source_state)
         self.validate_symmetric_overlaps_for(source_state=source_state)
-        return source_updated or target_updated
+        # assert not target_updated
+        return source_updated | target_updated
         # return source_updated
 
     def validate_mutual_overlaps_for(self, source_state: MultiTapeState) -> None:
@@ -924,11 +993,13 @@ class TapeOverlaps(object):
                         f"{source_state} at offset {-offset}"
                     )
 
-    def insert_overlaps_for(
+    def create_overlaps_for(
         self, source_state: MultiTapeState, target_state: MultiTapeState,
-        offset: int, min_offset: int, max_offset: int
-    ) -> bool:
+        offset: int, min_offset: int, max_offset: int,
+        existing_overlaps: set[TapeOverlapEntry] | None = None
+    ) -> set[TapeOverlapEntry]:
         """
+        :param existing_overlaps:
         :param source_state:
         :param target_state:
         :param offset:
@@ -936,6 +1007,11 @@ class TapeOverlaps(object):
         :param min_offset:
         :param max_offset:
         :return:
+        """
+        _existing_overlaps: set[TapeOverlapEntry] = set()
+        if existing_overlaps is not None:
+            _existing_overlaps = copy.copy(existing_overlaps)
+
         """
         print("SOURCE_STATE", source_state)
         if source_state == MultiTapeState(
@@ -947,13 +1023,25 @@ class TapeOverlaps(object):
 
         print("PRE_INSERT")
         self.print_for_states()
+        """
+        direct_overlap_entry = TapeOverlapEntry(
+            source_state=source_state,
+            target_state=target_state,
+            offset=offset
+        )
 
-        source_cell_state = source_state.tape_cell_state
-        target_cell_state = target_state.tape_cell_state
+        if direct_overlap_entry in _existing_overlaps:
+            return set()
+
+        _existing_overlaps.add(direct_overlap_entry)
+        new_overlap_entries: set[TapeOverlapEntry] = set()
+        new_overlap_entries.add(direct_overlap_entry)
+
+        # source_cell_state = source_state.tape_cell_state
+        # target_cell_state = target_state.tape_cell_state
         source_overlaps_map = self._overlaps[source_state]
         target_overlaps_map = self._overlaps[target_state]
         target_overlap_offsets = list(target_overlaps_map.keys())
-        overlaps_inserted = False
 
         for target_state_offset in target_overlap_offsets:
             """
@@ -964,6 +1052,9 @@ class TapeOverlaps(object):
             So what we are doing here is to add all relevant states C 
             to the overlaps of state A at relevant (shifted) offsets 
             accordingly
+            
+            But also state C overlaps with state A at offset -(k+m) 
+            so we also need to add that as well to maintain symmetric overlaps
             """
             source_state_offset = offset + target_state_offset
             # target_state_offset_overlap_inserted = False
@@ -974,123 +1065,31 @@ class TapeOverlaps(object):
 
             target_overlap_states = target_overlaps_map[target_state_offset]
             source_overlap_states = source_overlaps_map[source_state_offset]
-            prev_target_overlap_states = copy.copy(target_overlap_states)
-            prev_source_overlap_states = copy.copy(source_overlap_states)
 
-            for target_overlap_state in prev_target_overlap_states:
-                if target_overlap_state in source_overlap_states:
-                    print("SKIP_TARGET", source_state_offset, target_overlap_state)
-                    continue
+            for target_overlap_state in target_overlap_states:
+                for source_overlap_state in source_overlap_states:
+                    """
+                    overlap_entry = TapeOverlapEntry(
+                        source_state=source_state,
+                        target_state=target_overlap_state,
+                        offset=source_state_offset
+                    )
+                    new_overlap_entries.add(overlap_entry)
+                    """
+                    sub_overlap_entries = self.create_overlaps_for(
+                        source_state=source_overlap_state,
+                        target_state=target_overlap_state,
+                        offset=0,
+                        min_offset=min_offset, max_offset=max_offset,
+                        existing_overlaps=_existing_overlaps
+                    )
 
-                target_overlap_cell_state = (
-                    target_overlap_state.tape_cell_state
-                )
-                has_tape_mutual_exclusion = (
-                    source_state_offset == 0 and
-                    target_overlap_cell_state != source_cell_state and
-                    target_overlap_state.tape_no == source_state.tape_no
-                )
-                if has_tape_mutual_exclusion:
-                    print("TME_SOURCE", source_state_offset, target_overlap_state)
-                    # if the states have same-tape mutual exclusion,
-                    # then they can't overlap
-                    continue
+                    _existing_overlaps.update(sub_overlap_entries)
+                    new_overlap_entries.update(sub_overlap_entries)
 
-                # TODO: use insert_direct_overlap?
-                # new_source_overlap_states.add(target_overlap_state)
-                print("SOURCE_INSERT", source_state_offset, target_overlap_state)
-                source_overlap_states.add(target_overlap_state)
-                assert target_overlap_state in source_overlaps_map[source_state_offset]
-                # target_state_offset_overlap_inserted = True
+        return new_overlap_entries
 
-                # TODO: insert source_state = source_overlap_state at target_offset?
-                # TODO: loop source_overlap_state also
-                """
-                overlaps_inserted |= self.insert_direct_overlap(
-                    source_state=source_state,
-                    target_state=target_overlap_state,
-                    offset=source_state_offset
-                )
-                """
-                # self.validate_mutual_overlaps_for(source_state)
-                # self.validate_symmetric_overlaps_for(source_state)
-                # target_overlaps_map[target_state_offset] = new_target_overlap_states
-                # source_overlaps_map[source_state_offset] = new_source_overlap_states
-                overlaps_inserted = True
-
-            for source_overlap_state in prev_source_overlap_states:
-                if source_overlap_state in target_overlap_states:
-                    print("SKIP_TARGET", target_state_offset, source_overlap_state)
-                    continue
-
-                source_overlap_cell_state = (
-                    source_overlap_state.tape_cell_state
-                )
-                has_tape_mutual_exclusion = (
-                    target_state_offset == 0 and
-                    source_overlap_cell_state != target_cell_state and
-                    source_overlap_state.tape_no == target_state.tape_no
-                )
-                if has_tape_mutual_exclusion:
-                    # if the states have same-tape mutual exclusion,
-                    # then they can't overlap
-                    print('TME_TARGET', target_state_offset, source_overlap_state)
-                    continue
-
-                print("TARGET_INSERT", target_state_offset, source_overlap_state)
-                target_overlap_states.add(source_overlap_state)
-                overlaps_inserted = True
-
-            # self.validate_mutual_overlaps_for(source_state)
-            # self.validate_symmetric_overlaps_for(source_state)
-
-            # if target_state_offset_overlap_inserted:
-            #    target_overlap_states.add(source_state)
-
-            """
-            for source_overlap_state in source_overlap_states:
-                if source_overlap_state in target_overlap_states:
-                    continue
-
-                overlap_cell_state = source_overlap_state.tape_cell_state
-                has_tape_mutual_exclusion = (
-                    target_state.tape_no == source_overlap_state.tape_no and
-                    target_state.tape_cell_state != overlap_cell_state and
-                    target_state_offset == 0
-                )
-                if has_tape_mutual_exclusion:
-                    # if the states have same-tape mutual exclusion,
-                    # then they can't overlap
-                    continue
-            """
-
-        has_tape_mutual_exclusion = (
-            source_state.tape_no == target_state.tape_no and
-            source_state.tape_cell_state != target_state.tape_cell_state and
-            offset == 0
-        )
-
-        if not has_tape_mutual_exclusion:
-            """
-            if two multi tape states are on the same tape and 
-            have different tape cell states then they must 
-            necessarily never be able to overlap with one another directly 
-            (i.e. with an overlap offset=0)
-            """
-            overlaps_inserted |= self.insert_direct_overlap(
-                source_state=source_state, target_state=target_state,
-                offset=offset
-            )
-            # self._overlaps[source_state][offset].add(target_state)
-            # self._overlaps[target_state][-offset].add(source_state)
-            self.validate_mutual_overlaps_for(source_state)
-            # return False
-
-        self.validate_mutual_overlaps_for(source_state)
-        self.validate_symmetric_overlaps_for(source_state)
-        return overlaps_inserted
-
-    def insert_direct_overlap(
+    def apply_direct_overlap(
         self, source_state: MultiTapeState, target_state: MultiTapeState,
         offset: int
     ) -> bool:
@@ -1105,6 +1104,12 @@ class TapeOverlaps(object):
         one has to conscientious about direction
         :return:
         """
+        """
+        if two multi tape states are on the same tape and 
+        have different tape cell states then they must 
+        necessarily never be able to overlap with one another directly 
+        (i.e. with an overlap offset=0)
+        """
         has_tape_mutual_exclusion = (
             source_state.tape_no == target_state.tape_no and
             source_state.tape_cell_state != target_state.tape_cell_state and
@@ -1115,17 +1120,20 @@ class TapeOverlaps(object):
 
         source_overlaps = self._overlaps[source_state][offset]
         target_overlaps = self._overlaps[target_state][-offset]
+        overlaps_inserted = False
 
-        if target_state in source_overlaps:
+        if target_state not in source_overlaps:
             # overlap already exists
-            return False
+            source_overlaps.add(target_state)
+            overlaps_inserted = True
 
-        source_overlaps.add(target_state)
-        # assert source_state not in target_overlaps
-        target_overlaps.add(source_state)
+        if source_state not in target_overlaps:
+            target_overlaps.add(source_state)
+            overlaps_inserted = True
+
         self.validate_mutual_overlaps_for(source_state=source_state)
         self.validate_symmetric_overlaps_for(source_state=source_state)
-        return True
+        return overlaps_inserted
 
     def can_overlap_exist(
         self, source_state: MultiTapeState,
@@ -1139,6 +1147,13 @@ class TapeOverlaps(object):
         :return:
         """
         return target_state in self._overlaps[source_state][offset]
+
+    def contains(self, entry: TapeOverlapEntry):
+        return self.can_overlap_exist(
+            source_state=entry.source_state,
+            target_state=entry.target_state,
+            offset=entry.offset
+        )
 
 
 @dataclasses.dataclass
@@ -1617,7 +1632,7 @@ class MultiTapeBuilder(object):
                     at any offset within the range of possible offsets
                     covered across all the automata's rules
                     """
-                    self._initial_overlaps.insert_direct_overlap(
+                    self._initial_overlaps.apply_direct_overlap(
                         source_state=state, target_state=other_state,
                         offset=offset,
                         # min_offset=self.leftmost_extent,
@@ -1633,7 +1648,7 @@ class MultiTapeBuilder(object):
 
                     # every tape state can overlap with void at any offset
                     tape_void = MultiTapeState(tape_no, VOID_STATE)
-                    self._initial_overlaps.insert_direct_overlap(
+                    self._initial_overlaps.apply_direct_overlap(
                         source_state=state, target_state=tape_void,
                         offset=offset,
                         # min_offset=self.leftmost_extent,
@@ -1701,16 +1716,18 @@ class MultiTapeBuilder(object):
         prod_to_state_map.build_state_to_products_map(verbose=True)
         # input products that can effect a new state overlap
         relevant_input_products = list(prod_to_state_map.keys())
-        overlaps_updated = True
+        update_round = 0
 
-        while overlaps_updated:
-            overlaps_updated = False
+        while True:
+            # overlaps_updated = False
             # new_relevant_input_products: set[PyMultiTapeProduct] = set()
             # print(f'{relevant_input_products=}')
-            print('NEXT_ROUND\n')
+            print(f'UPDATE_ROUND {update_round}\n')
+            update_round += 1
 
             tape_overlap_states = global_overlaps.get_all_states()
             lines = global_overlaps.visualize_for_states(tape_overlap_states)
+            all_overlap_entrees: set[TapeOverlapEntry] = set()
             print('\n'.join(lines))
 
             for product in relevant_input_products:
@@ -1736,13 +1753,14 @@ class MultiTapeBuilder(object):
                         term_offset_from_output = input_term.get_position()
                         term_offset_from_input = -term_offset_from_output
 
-                        overlaps_updated |= global_overlaps.insert_overlap(
+                        overlap_entrees = global_overlaps.insert_full_overlap(
                             source_state=input_state,
                             target_state=output_state,
                             offset=term_offset_from_input,
                             min_offset=self.leftmost_extent,
                             max_offset=self.rightmost_extent
                         )
+                        all_overlap_entrees.update(overlap_entrees)
                         """
                         overlaps_updated |= global_overlaps.insert_direct_overlap(
                             source_state=input_state,
@@ -1751,9 +1769,11 @@ class MultiTapeBuilder(object):
                         )
                         """
 
-                    if not overlaps_updated:
+                    """
+                    if not overlap_entrees:
                         print("SKIP_WRITE", (write_tape_no, output_tape_cell_state))
                         continue
+                    """
 
                     print("DO_WRITE", (write_tape_no, output_tape_cell_state))
                     # Get the other products that use the current products'
@@ -1768,6 +1788,13 @@ class MultiTapeBuilder(object):
                 print('SATISFIABLE PRODUCT:', product, product_writes)
                 print('>>>')
 
+            overlaps_inserted = global_overlaps.apply_overlaps_set(
+                all_overlap_entrees
+            )
+            if not overlaps_inserted:
+                break
+
+            print("INSERTED", overlaps_inserted)
             # relevant_input_products = new_relevant_input_products
 
         return global_overlaps

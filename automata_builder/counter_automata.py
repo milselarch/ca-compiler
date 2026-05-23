@@ -123,12 +123,12 @@ def active_counter(counter_digit: int) -> int:
 def from_counter_state(state: int) -> tuple[int, bool]:
     """
     Examples:
-    digit=0: pasued=6 active=4
-    digit=1: pasued=10 active=8
-    digit=2: pasued=14 active=12
-    digit=3: pasued=18 active=16
-    digit=4: pasued=22 active=20
-    digit=5: pasued=26 active=24
+    digit=0: paused=6 active=4
+    digit=1: paused=10 active=8
+    digit=2: paused=14 active=12
+    digit=3: paused=18 active=16
+    digit=4: paused=22 active=20
+    digit=5: paused=26 active=24
 
     :param state: counter state in the signals tape encoding
     :return:
