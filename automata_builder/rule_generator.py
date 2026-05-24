@@ -269,6 +269,8 @@ class RuleGenerator(object):
                     state_eq_map[next_state] |= end_product
 
         sorted_states = sorted(list(state_eq_map.keys()))
+        log(f'{sorted_states=}')
+
         for next_state in sorted_states:
             log(f'{next_state} -> {state_eq_map[next_state]}')
 

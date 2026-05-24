@@ -937,20 +937,8 @@ class TapeOverlaps(object):
         :param max_offset:
         :return:
         """
-        print("SOURCE_STATE", source_state)
-        print("TARGET_STATE", target_state)
-        if source_state == MultiTapeState(
-            tape_no=TapeNo(1), tape_cell_state=TapeCellState(8)
-        ):
-            print(f'INS {source_state=}, {target_state=}, {offset=}')
-            print(f'{self._overlaps[source_state]=}')
-            print('')
-
-        print("PRE_INSERT")
-        self.print_for_states()
-
         source_cell_state = source_state.tape_cell_state
-        target_cell_state = target_state.tape_cell_state
+        # target_cell_state = target_state.tape_cell_state
         source_overlaps_map = self._overlaps[source_state]
         target_overlaps_map = self._overlaps[target_state]
         target_overlap_offsets = list(target_overlaps_map.keys())
@@ -979,8 +967,7 @@ class TapeOverlaps(object):
             # prev_source_overlap_states = copy.copy(source_overlap_states)
 
             for target_overlap_state in prev_target_overlap_states:
-                # overlaps_snapshot = copy.deepcopy(self)
-
+                # overlaps_snapshot = copy.deepcopy(self)\
                 if target_overlap_state in source_overlap_states:
                     # print("SKIP_TARGET", source_state_offset, target_overlap_state)
                     continue
@@ -994,13 +981,11 @@ class TapeOverlaps(object):
                     target_overlap_state.tape_no == source_state.tape_no
                 )
                 if has_tape_mutual_exclusion:
-                    print("TME_SOURCE", source_state_offset, target_overlap_state)
                     # if the states have same-tape mutual exclusion,
                     # then they can't overlap
                     continue
 
                 # new_source_overlap_states.add(target_overlap_state)
-                print("SOURCE_INSERT", source_state_offset, target_overlap_state)
                 # source_overlap_states.add(target_overlap_state)
                 overlaps_inserted |= self.insert_direct_overlap(
                     source_state=source_state,
@@ -1673,12 +1658,14 @@ class MultiTapeBuilder(object):
         # input products that can effect a new state overlap
         relevant_input_products = list(prod_to_state_map.keys())
         overlaps_updated = True
+        round_no: int = 0
 
         while overlaps_updated:
             overlaps_updated = False
             new_relevant_input_products: set[PyMultiTapeProduct] = set()
             # print(f'{relevant_input_products=}')
-            print('NEXT_ROUND\n')
+            print(f'NEXT_ROUND: {round_no}\n')
+            round_no += 1
 
             tape_overlap_states = global_overlaps.get_all_states()
             lines = global_overlaps.visualize_for_states(tape_overlap_states)
@@ -1736,7 +1723,7 @@ class MultiTapeBuilder(object):
                         new_relevant_input_products.add(affected_product)
                     # """
 
-                print('SATISFIABLE PRODUCT:', product, product_writes)
+                # print('SATISFIABLE PRODUCT:', product, product_writes)
                 print('>>>')
 
             relevant_input_products = new_relevant_input_products
@@ -1879,13 +1866,13 @@ class MultiTapeBuilder(object):
                 tape_no=tape_no, tape_cell_state=next_tape_cell_state
             )
             if next_tape_state not in next_state_overlaps:
-                print("SKIP_STATE_1", _overlap_state_path, next_tape_state)
+                # print("SKIP_STATE_1", _overlap_state_path, next_tape_state)
                 continue
             if next_tape_state not in whitelisted_states:
-                print("SKIP_STATE_2", _overlap_state_path, next_tape_state)
+                # print("SKIP_STATE_2", _overlap_state_path, next_tape_state)
                 continue
 
-            print("PUSH", _overlap_state_path, next_tape_state)
+            # print("PUSH", _overlap_state_path, next_tape_state)
             _overlap_state_path.append(next_tape_state)
             sub_tape_state_path_remap = cls.build_remap_states(
                 tape_no_index=tape_no_index+1,
@@ -1897,7 +1884,7 @@ class MultiTapeBuilder(object):
                 tape_state_whitelist=tape_state_whitelist
             )
             collated_tape_state_remap.merge(sub_tape_state_path_remap)
-            print("POP", _overlap_state_path)
+            # print("POP", _overlap_state_path)
             _overlap_state_path.pop()
 
         return collated_tape_state_remap
@@ -2018,9 +2005,9 @@ class MultiTapeBuilder(object):
             product_outputs = product_writes_map[multi_tape_product]
             """
             For every position that is covered by the current product, 
-            we want to know which states for individual tapes are present 
-            in the product terms at that position, to narrow the range 
-            of possible of fully formed term combinations that would 
+            we want to know which states could be present in the product terms 
+            at that position across all individual tapes, 
+            to narrow the range of possible of fully formed term combinations
             """
             product_term_positions_set: set[int] = set()
             product_state_whitelists: defaultdict[

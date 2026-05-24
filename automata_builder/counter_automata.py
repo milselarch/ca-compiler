@@ -322,7 +322,7 @@ class CounterAutomataBuilder(object):
 
 class CounterAutomataRunner(object):
     def __init__(
-        self, base: int = 6, initial_write_start: int = 0,
+        self, base: int = 8, initial_write_start: int = 0,
         initial_write_end: int = 20
     ):
         self.base = base
