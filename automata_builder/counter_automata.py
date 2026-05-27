@@ -163,8 +163,8 @@ class CounterAutomataBuilder(object):
         # begin the counter accumulator on the right side
         transitions_group.add_transition(
             input_terms=(
-                ST_MID(VOID_STATE), ST_RIGHT(VOID_STATE),
-                DT_MID(DT_DATA), DT_RIGHT(VOID_STATE)
+                ST_MID(VOID_STATE), DT_MID(DT_DATA),
+                DT_RIGHT(VOID_STATE), ST_RIGHT(VOID_STATE)
             ),
             output_tape_no=SIGNALS_TAPE,
             output_cell_state=paused_counter(1)

@@ -2001,15 +2001,22 @@ class MultiTapeBuilder(object):
         )
 
         for multi_tape_product in product_writes_map:
-            product_terms = multi_tape_product.get_flat_terms()
-            product_outputs = product_writes_map[multi_tape_product]
             """
             For every position that is covered by the current product, 
             we want to know which states could be present in the product terms 
             at that position across all individual tapes, 
-            to narrow the range of possible of fully formed term combinations
+            and then determine all fully formed term combinations that 
+            could satisfy the multi_tape_product
             """
+            product_terms = multi_tape_product.get_flat_terms()
+            # tape writes that the multi_tape_product produces as output
+            product_outputs = product_writes_map[multi_tape_product]
             product_term_positions_set: set[int] = set()
+            """
+            map position offset -> tape_no -> set of possible tape cell states
+            that are allowed to be present at the aforementioned 
+            (offset, tape_no)
+            """
             product_state_whitelists: defaultdict[
                 int, defaultdict[TapeNo, set[TapeCellState]]
             ] = defaultdict(lambda: defaultdict(set))
@@ -2018,8 +2025,9 @@ class MultiTapeBuilder(object):
                 term_pos = product_term.get_position()
                 product_term_positions_set.add(term_pos)
                 term_state = MultiTapeState.from_term(product_term)
-                position_whitelist = product_state_whitelists[term_pos]
-                position_whitelist[term_state.tape_no].add(
+                # tape_no -> set of possible tape cell states
+                position_states_whitelist = product_state_whitelists[term_pos]
+                position_states_whitelist[term_state.tape_no].add(
                     term_state.tape_cell_state
                 )
 
@@ -2028,12 +2036,18 @@ class MultiTapeBuilder(object):
             remapped_output_state_set: set[TapeCellState] = set()
 
             for output_tape_no in product_outputs:
-                product_states_whitelist = copy.deepcopy(input_pos_whitelist)
                 output_tape_cell_state = product_outputs[output_tape_no]
-                current_output_tape_cell_state = product_states_whitelist.get(
-                    output_tape_no, output_tape_cell_state
+
+                product_states_whitelist = copy.deepcopy(input_pos_whitelist)
+                """
+                This is the set of input states within the input terms 
+                of the current product whose position and tape_no is the same 
+                as that of the current output tape state
+                """
+                overlapping_input_states = product_states_whitelist.get(
+                    output_tape_no, {output_tape_cell_state}
                 )
-                if current_output_tape_cell_state != output_tape_cell_state:
+                if output_tape_cell_state not in overlapping_input_states:
                     # whitelist is not satisfiable for current
                     # output tape cell state
                     continue
