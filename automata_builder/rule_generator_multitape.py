@@ -1381,8 +1381,10 @@ class MultiTapeStateRemap(object):
 @dataclasses.dataclass
 class MultiTapeStatePathRemap(object):
     """
-    Contains all possible tape cell state combinations
+    Contains a remap of
+    possible tape cell state combinations
     along the exact same position across all tapes
+    to global tape cell state values
     """
     remap_counter_start: TapeCellState
 
@@ -1413,15 +1415,20 @@ class MultiTapeStatePathRemap(object):
 
         return self.tape_state_path_remap[state_path]
 
-    def get_all_remap_outputs(self) -> set[TapeCellState]:
-        remap_outputs = set(self.tape_state_path_remap.values())
+    def get_all_remap_states(self) -> set[TapeCellState]:
+        """
+        Get all remapped tape cell state values that
+        have been allocated in this remap
+        :return:
+        """
+        remap_states = set(self.tape_state_path_remap.values())
 
         if self.void_state_paths:
-            remap_outputs.add(VOID_STATE)
+            remap_states.add(VOID_STATE)
         if self.halt_state_paths:
-            remap_outputs.add(HALT_STATE)
+            remap_states.add(HALT_STATE)
 
-        return remap_outputs
+        return remap_states
 
     def __getitem__(self, item: tuple[MultiTapeState, ...]) -> TapeCellState:
         return self.remap(item)
@@ -1790,17 +1797,19 @@ class MultiTapeBuilder(object):
 
     @classmethod
     def build_remap_states(
-        cls, tape_no_index: int, tape_nos: list[TapeNo],
+        cls, tape_nos: list[TapeNo],
         multi_tape_states_map: defaultdict[TapeNo, set[TapeCellState]],
         tape_overlaps: TapeOverlaps,
         overlap_state_path: Sequence[MultiTapeState] = (),
+        tape_no_index: int = 0,
         remap_counter_start: TapeCellState = TapeCellState(2),
-        tape_state_whitelist: dict[TapeNo, set[TapeCellState]] = frozendict()
     ) -> MultiTapeStatePathRemap:
         """
+        TODO: not sure if its the best to set a default counter start
+            and have MultiTapeStatePathRemap merge shift conflicting remaps
         Basically we want to remap all combinations of states
-        that can overlap over each other directly in the same position
-        (so offset=0) across all tapes to a global tape state number
+        that can overlap over each other directly along the same position
+        (so offset=0) across all tapes to global tape state numbers
 
         :param tape_no_index:
         index of the current tape we are building the remap
@@ -1814,7 +1823,6 @@ class MultiTapeBuilder(object):
         :param overlap_state_path:
         The currently built combination of tape states
         :param remap_counter_start:
-        :param tape_state_whitelist:
         :return:
         """
         # counter state cannot collide with void (0) and halt (1) states
@@ -1834,13 +1842,6 @@ class MultiTapeBuilder(object):
         tape_no = tape_nos[tape_no_index]
         next_tape_cell_states_set = multi_tape_states_map[tape_no]
         next_tape_cell_states = list(sorted(next_tape_cell_states_set))
-        # if tape_no isn't in whitelist we consider all states whitelisted
-        whitelisted_states: set[MultiTapeState] = set([
-            MultiTapeState(tape_no=tape_no, tape_cell_state=tape_cell_state)
-            for tape_cell_state in tape_state_whitelist.get(
-                tape_no, set(next_tape_cell_states)
-            )
-        ])
 
         # what other states can overlap directly on top of
         # the last state in the overlap_state_path
@@ -1868,9 +1869,6 @@ class MultiTapeBuilder(object):
             if next_tape_state not in next_state_overlaps:
                 # print("SKIP_STATE_1", _overlap_state_path, next_tape_state)
                 continue
-            if next_tape_state not in whitelisted_states:
-                # print("SKIP_STATE_2", _overlap_state_path, next_tape_state)
-                continue
 
             # print("PUSH", _overlap_state_path, next_tape_state)
             _overlap_state_path.append(next_tape_state)
@@ -1881,7 +1879,6 @@ class MultiTapeBuilder(object):
                 multi_tape_states_map=multi_tape_states_map,
                 tape_overlaps=tape_overlaps,
                 remap_counter_start=remap_counter_start,
-                tape_state_whitelist=tape_state_whitelist
             )
             collated_tape_state_remap.merge(sub_tape_state_path_remap)
             # print("POP", _overlap_state_path)
@@ -2033,38 +2030,45 @@ class MultiTapeBuilder(object):
 
             # get input state combinations at position 0 (relative)
             input_pos_whitelist = product_state_whitelists[0]
-            remapped_output_state_set: set[TapeCellState] = set()
+            remapped_global_state_set: set[TapeCellState] = set()
+            """
+            possible tape states that can exist for each tape 
+            that exists, along the output write position for the 
+            current product, right *after* output has been written 
+            """
+            post_output_whitelist = copy.deepcopy(input_pos_whitelist)
 
             for output_tape_no in product_outputs:
+                """
+                When we spit out output tape_cell_states, we have to 
+                consider the possible tape cell state values for tapes 
+                that weren't explicitly written to, and remap all 
+                possible combinations of unwritten tape states and 
+                output tape states to a global tape state 
+                """
                 output_tape_cell_state = product_outputs[output_tape_no]
-
-                product_states_whitelist = copy.deepcopy(input_pos_whitelist)
                 """
-                This is the set of input states within the input terms 
-                of the current product whose position and tape_no is the same 
-                as that of the current output tape state
+                Immediately after writing, the current tape state
+                would have the output tape state
+                TODO: shouldn't we have to consider all output tape 
+                states across all tapes?
                 """
-                overlapping_input_states = product_states_whitelist.get(
-                    output_tape_no, {output_tape_cell_state}
-                )
-                if output_tape_cell_state not in overlapping_input_states:
-                    # whitelist is not satisfiable for current
-                    # output tape cell state
-                    continue
-
-                product_states_whitelist[output_tape_no].add(
+                post_output_whitelist[output_tape_no] = {
                     output_tape_cell_state
-                )
-                remapped_outputs = self.build_remap_states(
-                    tape_no_index=0, tape_nos=all_tape_nos,
-                    multi_tape_states_map=input_pos_whitelist,
-                    tape_state_whitelist=product_states_whitelist,
-                    tape_overlaps=overlaps
-                )
-                remapped_output_state_set = (
-                    remapped_output_state_set |
-                    remapped_outputs.get_all_remap_outputs()
-                )
+                }
+
+            remapped_inputs = self.build_remap_states(
+                tape_nos=all_tape_nos,
+                multi_tape_states_map=input_pos_whitelist,
+                tape_overlaps=overlaps
+            )
+            remapped_outputs = self.build_remap_states(
+                tape_nos=all_tape_nos,
+                multi_tape_states_map=post_output_whitelist,
+                tape_overlaps=overlaps
+            )
+            remapped_outputs_state_set = remapped_outputs.get_all_remap_states()
+            # TODO: cartesian product of input and output combinations
 
             product_term_positions = sorted(list(product_term_positions_set))
             product_pos_combos: list[list[tuple[MultiTapeState, ...]]] = []
@@ -2093,7 +2097,7 @@ class MultiTapeBuilder(object):
                     remapped_term = A(position=term_pos, state=remapped_state)
                     remapped_product_terms.append(remapped_term)
 
-                for remapped_output_state in remapped_output_state_set:
+                for remapped_output_state in remapped_global_state_set:
                     global_transitions_group.add_transition(
                         input_terms=tuple(remapped_product_terms),
                         output_state=remapped_output_state
