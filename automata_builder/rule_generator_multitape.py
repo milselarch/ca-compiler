@@ -1483,6 +1483,18 @@ class MultiTapeStatePathRemap(object):
             self.void_state_paths | self.halt_state_paths
         )
 
+    @property
+    def remap_counter_end(self) -> TapeCellState:
+        return TapeCellState(
+            self.remap_counter_start + self.num_normal_remaps
+        )
+
+    @property
+    def next_free_counter(self) -> TapeCellState:
+        return TapeCellState(
+            self.remap_counter_end + TapeCellState(1)
+        )
+
     def remap(self, state_path: tuple[MultiTapeState, ...]) -> TapeCellState:
         if self.is_halt_path(state_path):
             return HALT_STATE
@@ -2192,33 +2204,48 @@ class MultiTapeBuilder(object):
                     output_tape_cell_state
                 }
 
-            # TODO: remap by combinations in offset_tape_states_map
-            remapped_inputs = self.build_remap_states(
-                tape_nos=all_tape_nos,
-                multi_tape_states_map=input_zero_whitelist,
-                tape_overlaps=overlaps
+            remap_counter_start = TapeCellState(2)
+            offset_combos_map: dict[int, MultiTapeStatePathRemap] = {}
+            global_combos_remap = MultiTapeStatePathRemap(
+                remap_counter_start=remap_counter_start
             )
-            remapped_outputs = self.build_remap_states(
-                tape_nos=all_tape_nos,
-                multi_tape_states_map=post_output_whitelist,
-                tape_overlaps=overlaps
+
+            for term_offset in product_state_whitelists:
+                offset_states_whitelist = offset_tape_states_map[term_offset]
+                offset_input_combos = self.build_remap_states(
+                    tape_nos=all_tape_nos,
+                    multi_tape_states_map=offset_states_whitelist,
+                    tape_overlaps=overlaps,
+                    remap_counter_start=remap_counter_start
+                )
+                remap_counter_start = offset_input_combos.next_free_counter
+                global_combos_remap.merge(offset_input_combos)
+                offset_combos_map[term_offset] = offset_input_combos
+
+            global_combos_remap.merge(
+                output_combos := self.build_remap_states(
+                    tape_nos=all_tape_nos,
+                    multi_tape_states_map=post_output_whitelist,
+                    tape_overlaps=overlaps
+                )
             )
-            remapped_outputs_state_set = remapped_outputs.get_all_remap_states()
-            # TODO: cartesian product of input and output combinations
 
             product_term_positions = sorted(list(product_term_positions_set))
-            product_pos_combos: list[list[tuple[MultiTapeState, ...]]] = []
+            product_pos_combos: list[list[tuple[A, ...]]] = []
 
             for product_term_position in product_term_positions:
-                position_state_whitelist = product_state_whitelists[
-                    product_term_position
-                ]
-                position_state_remaps = self.build_remap_states(
-                    tape_no_index=0, tape_nos=all_tape_nos,
-                    multi_tape_states_map=position_state_whitelist,
-                    tape_overlaps=overlaps,
-                )
-                position_combos = position_state_remaps.get_all_state_paths()
+                offset_input_combos = offset_combos_map[product_term_position]
+                position_combos = offset_input_combos.get_all_state_paths()
+                position_remapped_terms: list[A] = []
+
+                for state_path in position_combos:
+                    remapped_cell_state = global_state_path_remap[state_path]
+                    remapped_term = A(
+                        position=product_term_position,
+                        state=remapped_cell_state
+                    )
+                    position_remapped_terms.append(remapped_term)
+
                 product_pos_combos.append(list(position_combos))
 
             specific_combos = utils.cartesian_product(product_pos_combos)
