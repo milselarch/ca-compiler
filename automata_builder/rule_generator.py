@@ -14,13 +14,23 @@ class AutomataTransitionsGroup(object):
     defined as a mapping from input states to output state
     map A[] -> output state
     """
-    num_states: int
+    num_states: int | None = None
+    transitions_set: set[
+        tuple[
+            tuple[A, ...],
+            int
+        ]
+    ] = dataclasses.field(
+        default_factory=set
+    )
     transitions: list[
         tuple[
             tuple[A, ...],
             int
         ]
-    ]
+    ] = dataclasses.field(
+        default_factory=list
+    )
 
     @classmethod
     def spawn_new(cls, num_states: int) -> AutomataTransitionsGroup:
@@ -28,14 +38,25 @@ class AutomataTransitionsGroup(object):
 
     def add_transition(
         self, input_terms: tuple[A, ...], output_state: int
-    ):
-        assert 0 <= output_state < self.num_states
+    ) -> bool:
+        transition_entry = (input_terms, output_state)
+        if transition_entry in self.transitions_set:
+            return False
+
+        _num_states: int | float = float('inf')
+        if self.num_states is not None:
+            _num_states = self.num_states
+
+        assert 0 <= output_state < _num_states
+
         for term in input_terms:
             assert isinstance(term, A)
             state = term.get_state()
-            assert 0 <= state < self.num_states
+            assert 0 <= state < _num_states
 
-        self.transitions.append((input_terms, output_state))
+        self.transitions.append(transition_entry)
+        self.transitions_set.add(transition_entry)
+        return True
 
 
 @dataclasses.dataclass

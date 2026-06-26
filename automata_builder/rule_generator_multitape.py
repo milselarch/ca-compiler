@@ -1126,7 +1126,7 @@ class TapeOverlaps(object):
 
             for offset_state_overlap in offset_state_overlaps:
                 whitelist.insert(
-                    tape_no=source_tape_no,
+                    tape_no=offset_state_overlap.tape_no,
                     state=offset_state_overlap
                 )
 
@@ -1923,7 +1923,7 @@ class MultiTapeBuilder(object):
 
         if tape_no_index >= len(tape_nos):
             # TODO: handle void / halt edge cases
-            print("INSERT_PATH", overlap_state_path)
+            # print("INSERT_PATH", overlap_state_path)
             return MultiTapeStatePathRemap.from_path(
                 path=tuple(overlap_state_path),
                 remap_counter_start=remap_counter_start
@@ -2090,7 +2090,11 @@ class MultiTapeBuilder(object):
         )
         # input-output pairs for the final combined automata
         global_transitions_group = AutomataTransitionsGroup(
-            num_states=len(global_state_path_remap), transitions=[]
+            # num_states=len(global_state_path_remap),
+            # TODO: actually calculate number of states to support?
+            # TODO: or just allow inf as a valid value
+            num_states=None,
+            transitions=[]
         )
 
         for multi_tape_product in product_writes_map:
@@ -2179,7 +2183,7 @@ class MultiTapeBuilder(object):
             # get input state combinations at offset 0
             # (relative to output position)
             input_zero_whitelist = product_state_whitelists[0]
-            remapped_global_state_set: set[TapeCellState] = set()
+            # remapped_global_state_set: set[TapeCellState] = set()
             """
             possible tape states that can exist for each tape 
             that exists, along the output write position for the 
@@ -2231,7 +2235,11 @@ class MultiTapeBuilder(object):
             )
 
             product_term_positions = sorted(list(product_term_positions_set))
-            product_pos_combos: list[list[tuple[A, ...]]] = []
+            """
+            Each list item contains the set of possible remapped terms 
+            that the corresponding term offset could contain
+            """
+            product_pos_combos: list[tuple[A, ...]] = []
 
             for product_term_position in product_term_positions:
                 offset_input_combos = offset_combos_map[product_term_position]
@@ -2246,23 +2254,16 @@ class MultiTapeBuilder(object):
                     )
                     position_remapped_terms.append(remapped_term)
 
-                product_pos_combos.append(list(position_combos))
+                product_pos_combos.append(tuple(set(position_remapped_terms)))
 
             specific_combos = utils.cartesian_product(product_pos_combos)
 
-            for specific_combo in specific_combos:
-                remapped_product_terms: list[A] = []
+            for remapped_product_input_terms in specific_combos:
+                all_remap_outputs = output_combos.get_all_remap_states()
 
-                for term_offset, state_path in utils.zip_preserve_types(
-                    product_term_positions, specific_combo
-                ):
-                    remapped_state = global_state_path_remap[state_path]
-                    remapped_term = A(position=term_offset, state=remapped_state)
-                    remapped_product_terms.append(remapped_term)
-
-                for remapped_output_state in remapped_global_state_set:
+                for remapped_output_state in all_remap_outputs:
                     global_transitions_group.add_transition(
-                        input_terms=tuple(remapped_product_terms),
+                        input_terms=tuple(remapped_product_input_terms),
                         output_state=remapped_output_state
                     )
 
