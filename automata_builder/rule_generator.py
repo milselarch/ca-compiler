@@ -32,6 +32,11 @@ class AutomataTransitionsGroup(object):
         default_factory=list
     )
 
+    def __getitem__(self, index: int) -> tuple[PyProduct, int]:
+        input_terms, output_state = self.transitions[index]
+        input_product = PyProduct(input_terms)
+        return input_product, output_state
+
     @classmethod
     def spawn_new(cls, num_states: int) -> AutomataTransitionsGroup:
         return cls(num_states=num_states, transitions=[])

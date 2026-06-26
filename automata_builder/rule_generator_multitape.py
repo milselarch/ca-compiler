@@ -3,6 +3,8 @@ from __future__ import annotations
 import copy
 import dataclasses
 
+from result import Result, Ok, Err
+
 import utils
 
 from collections import defaultdict
@@ -1472,7 +1474,14 @@ class MultiTapeStatePathRemap(object):
     )
     tape_state_path_remap: dict[
         tuple[MultiTapeState, ...], TapeCellState
-    ] = dataclasses.field(default_factory=dict)
+    ] = dataclasses.field(
+        default_factory=dict
+    )
+    rev_state_path_remap: dict[
+        TapeCellState, tuple[MultiTapeState, ...]
+    ] = dataclasses.field(
+        default_factory=dict
+    )
 
     def __len__(self):
         return self.num_normal_remaps
@@ -1563,18 +1572,31 @@ class MultiTapeStatePathRemap(object):
 
     def insert_overlap_path(
         self, path: tuple[MultiTapeState, ...],
-    ):
+    ) -> Result[TapeCellState, None]:
         if path in self.tape_state_path_remap:
-            return
+            return Err(None)
 
         if self.is_halt_path(path):
             self.halt_state_paths.add(path)
+            return Ok(HALT_STATE)
         elif self.is_void_path(path):
             self.void_state_paths.add(path)
+            return Ok(VOID_STATE)
         else:
-            self.tape_state_path_remap[path] = TapeCellState(
-                self.remap_counter_start + self.num_normal_remaps
-            )
+            new_tape_state = self.get_next_tape_state()
+            self.tape_state_path_remap[path] = new_tape_state
+            self.rev_state_path_remap[new_tape_state] = path
+            return Ok(new_tape_state)
+
+    def get_next_tape_state(self) -> TapeCellState:
+        """
+        :return:
+        The next available tape cell state that isn't being
+        used in a mapping from an existing path
+        """
+        return TapeCellState(
+            self.remap_counter_start + self.num_normal_remaps
+        )
 
     def merge(self, other_remap: MultiTapeStatePathRemap):
         """
@@ -1606,6 +1628,9 @@ class MultiTapeStatePathRemap(object):
 class ComposeTapesResult(object):
     transitions_group: AutomataTransitionsGroup
     state_remap: MultiTapeStatePathRemap
+
+    def get_transition_at(self, index: int) -> tuple[PyProduct, int]:
+        return self.transitions_group[index]
 
 
 class MultiTapeBuilder(object):

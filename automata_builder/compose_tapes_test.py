@@ -34,10 +34,10 @@ compose_result = multi_tape_builder.compose_tapes()
 transitions = compose_result.transitions_group.transitions
 print(f'num transitions = {len(transitions)}')
 
-for transition in transitions[:100]:
+for k, transition in enumerate(transitions[:100]):
     input_terms, output_state = transition
     input_product = PyProduct(input_terms)
-    print(f'{input_product} -> {output_state}')
+    print(f'[{k}]: {input_product} -> {output_state}')
 
 """
 ^CTraceback (most recent call last):
