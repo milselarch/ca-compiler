@@ -33,7 +33,7 @@ fn to_internal_expr_mapping(
 
 impl Term {
     fn to_py_term(&self) -> A {
-        A::from_term(self.clone())
+        A::from_term(&self.clone())
     }
 }
 impl Product {
@@ -112,8 +112,8 @@ impl A {
     pub fn copy(&self) -> A {
         A { term: self.term.clone() }
     }
-    pub fn from_term(term: Term) -> A {
-        A { term }
+    pub fn from_term(term: &Term) -> A {
+        A { term: term.clone() }
     }
     pub fn _assign_expr_position(
         &mut self, product_idx: u64, term_idx: u64
@@ -469,6 +469,14 @@ impl PyProduct {
                 "Term debug info is missing for term: {:?}", term
             );
         }
+    }
+    pub fn to_flat_terms(&self) -> PyResult<Vec<A>> {
+        let terms = self.product.to_flat_terms();
+        let mut flat_py_terms = Vec::new();
+        for term in terms {
+            flat_py_terms.push(term.to_py_term());
+        }
+        Ok(flat_py_terms)
     }
 }
 

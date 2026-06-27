@@ -277,6 +277,9 @@ impl Product {
             _terms: terms, _optimized: false,
         }
     }
+    pub fn to_flat_terms(&self) -> Vec<Term> {
+        self._terms.iter().map(|t| t.clone()).collect()
+    }
     pub(crate) fn _get_term(&self, index: usize) -> Option<&Term> {
         self._terms.get(index)
     }

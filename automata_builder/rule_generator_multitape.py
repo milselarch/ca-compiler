@@ -1486,6 +1486,11 @@ class MultiTapeStatePathRemap(object):
     def __len__(self):
         return self.num_normal_remaps
 
+    def rev_lookup(
+        self, tape_cell_state: TapeCellState
+    ) -> tuple[MultiTapeState, ...]:
+        return self.rev_state_path_remap[tape_cell_state]
+
     def get_all_state_paths(self) -> set[tuple[MultiTapeState, ...]]:
         return (
             set(self.tape_state_path_remap.keys()) |
@@ -1631,6 +1636,19 @@ class ComposeTapesResult(object):
 
     def get_transition_at(self, index: int) -> tuple[PyProduct, int]:
         return self.transitions_group[index]
+
+    def remap_inputs_to_multi_tape(
+        self, input_product: PyProduct
+    ) -> PyMultiTapeProduct:
+        """
+        Remaps the input product to a multi-tape product based
+        on the state remap
+        :param input_product:
+        :return:
+        """
+        input_product_terms = input_product.to_flat_terms()
+        # TODO: DO REVERSE LOOKUPS
+        raise NotImplemented
 
 
 class MultiTapeBuilder(object):
