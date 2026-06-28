@@ -1647,6 +1647,22 @@ class ComposeTapesResult(object):
         :return:
         """
         input_product_terms = input_product.to_flat_terms()
+
+        for term in input_product_terms:
+            global_tape_state = TapeCellState(term.get_state())
+            position = term.get_position()
+            multi_tape_states = self.state_remap.rev_lookup(
+                tape_cell_state=global_tape_state
+            )
+            for multi_tape_state in multi_tape_states:
+                tape_no = multi_tape_state.tape_no
+                tape_cell_state = multi_tape_state.tape_cell_state
+                individual_term = D(
+                    position=position,
+                    tape_no=tape_no,
+                    state=tape_cell_state
+                )
+
         # TODO: DO REVERSE LOOKUPS
         raise NotImplemented
 
