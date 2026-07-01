@@ -1,10 +1,8 @@
 import sys
 
 from pathlib import Path
-
 from py_ca_compiler.py_ca_compiler import PyProduct
-
-from automata_builder.rule_generator import RuleGenerator
+from py_ca_compiler import A
 
 _project_root_dir = Path(__file__).resolve().parents[1]
 sys.path.append(str(_project_root_dir))
@@ -38,6 +36,15 @@ for k, transition in enumerate(transitions[:100]):
     input_terms, output_state = transition
     input_product = PyProduct(input_terms)
     print(f'[{k}]: {input_product} -> {output_state}')
+
+    input_multi_term_product = compose_result.remap_prod_to_multi_tape(
+        input_product=input_product
+    )
+    output_product = compose_result.remap_term_to_multi_tape(
+        input_term=A(position=0, state=output_state)
+    )
+    print(f'|{k}|: {input_multi_term_product} -> {output_product}')
+
 
 """
 ^CTraceback (most recent call last):

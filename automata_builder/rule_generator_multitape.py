@@ -1637,7 +1637,7 @@ class ComposeTapesResult(object):
     def get_transition_at(self, index: int) -> tuple[PyProduct, int]:
         return self.transitions_group[index]
 
-    def remap_inputs_to_multi_tape(
+    def remap_prod_to_multi_tape(
         self, input_product: PyProduct
     ) -> PyMultiTapeProduct:
         """
@@ -1647,24 +1647,37 @@ class ComposeTapesResult(object):
         :return:
         """
         input_product_terms = input_product.to_flat_terms()
+        collected_global_terms: list[D] = []
 
         for term in input_product_terms:
-            global_tape_state = TapeCellState(term.get_state())
-            position = term.get_position()
-            multi_tape_states = self.state_remap.rev_lookup(
-                tape_cell_state=global_tape_state
-            )
-            for multi_tape_state in multi_tape_states:
-                tape_no = multi_tape_state.tape_no
-                tape_cell_state = multi_tape_state.tape_cell_state
-                individual_term = D(
-                    position=position,
-                    tape_no=tape_no,
-                    state=tape_cell_state
-                )
+            sub_product = self.remap_term_to_multi_tape(input_term=term)
+            sub_product_terms = sub_product.get_flat_terms()
+            collected_global_terms.extend(sub_product_terms)
 
-        # TODO: DO REVERSE LOOKUPS
-        raise NotImplemented
+        multi_tape_product = PyMultiTapeProduct(collected_global_terms)
+        return multi_tape_product
+
+    def remap_term_to_multi_tape(
+        self, input_term: A
+    ) -> PyMultiTapeProduct:
+        collected_global_terms: list[D] = []
+        position = input_term.get_position()
+        global_tape_state = TapeCellState(input_term.get_state())
+        multi_tape_states = self.state_remap.rev_lookup(
+            tape_cell_state=global_tape_state
+        )
+        for multi_tape_state in multi_tape_states:
+            tape_no = multi_tape_state.tape_no
+            tape_cell_state = multi_tape_state.tape_cell_state
+            individual_term = D(
+                position=position,
+                tape_no=tape_no,
+                state=tape_cell_state
+            )
+            collected_global_terms.append(individual_term)
+
+        multi_tape_product = PyMultiTapeProduct(collected_global_terms)
+        return multi_tape_product
 
 
 class MultiTapeBuilder(object):
