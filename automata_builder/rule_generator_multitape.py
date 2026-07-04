@@ -2135,6 +2135,7 @@ class MultiTapeBuilder(object):
         :return:
         """
         overlaps = self.build_overlaps()
+        # TODO assert that void state can overlap with itself at any offset
         # get all tape states that can exist in each tape
         all_tape_states_per_tape = overlaps.create_whitelist_for_offset()
         preexisting_products = ProductTrie()
@@ -2145,9 +2146,14 @@ class MultiTapeBuilder(object):
             preexisting_products.insert_product(multi_tape_product)
 
         """
-        generate rules for all possible term combinations
-        the products generated here will transition every combination 
-        of states to itself (so no change from input to output) 
+        Generate rules for all possible term combinations
+        that could exist given the state overlaps passed in.
+        
+        The products generated here will transition every combination 
+        of term states along the write position offset to itself, 
+        with the exception of the term state of the output tape  
+        (so no change from input to output other than the target 
+        tape_no and offset) 
         """
         product_writes_map = self.build_product_writes_map(
             overlaps=overlaps, current_product_path=[],

@@ -1,4 +1,5 @@
 import sys
+import argparse
 
 from pathlib import Path
 from py_ca_compiler.py_ca_compiler import PyProduct
@@ -14,10 +15,29 @@ from automata_builder.rule_generator_multitape import (
     MultiTapeBuilder, MultiTapeState
 )
 
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    '--base',
+    nargs='?', type=int, default=2, const=2,
+    help='reduction base'
+)
+parser.add_argument(
+    '--write-end',
+    nargs='?', type=int, default=20, const=20,
+    help='number of initially populated unary cells'
+)
+parser.add_argument(
+    '--display-transitions',
+    nargs='?', type=int, default=10, const=10,
+    help='number of transitions to display from composed transition group'
+)
+
+args = parser.parse_args()
+
 runner = CounterAutomataRunner(
-    base=8,
+    base=args.base,
     initial_write_start=0,
-    initial_write_end=20,
+    initial_write_end=args.write_end,
 )
 
 multi_tape_builder = MultiTapeBuilder(
@@ -32,7 +52,7 @@ compose_result = multi_tape_builder.compose_tapes()
 transitions = compose_result.transitions_group.transitions
 print(f'num transitions = {len(transitions)}')
 
-for k, transition in enumerate(transitions[:100]):
+for k, transition in enumerate(transitions[:args.display_transitions]):
     input_terms, output_state = transition
     input_product = PyProduct(input_terms)
     print(f'[{k}]: {input_product} -> {output_state}')
