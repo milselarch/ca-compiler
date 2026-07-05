@@ -27,7 +27,7 @@ parser.add_argument(
     help='number of initially populated unary cells'
 )
 parser.add_argument(
-    '--display-transitions',
+    '-d', '--display-transitions',
     nargs='?', type=int, default=10, const=10,
     help='number of transitions to display from composed transition group'
 )
@@ -57,39 +57,20 @@ for k, transition in enumerate(transitions[:args.display_transitions]):
     input_product = PyProduct(input_terms)
     print(f'[{k}]: {input_product} -> {output_state}')
 
-    input_multi_term_product = compose_result.remap_prod_to_multi_tape(
+    input_multi_term_product_res = compose_result.remap_prod_to_multi_tape(
         input_product=input_product
     )
-    output_product = compose_result.remap_term_to_multi_tape(
+    if input_multi_term_product_res.is_ok():
+        input_multi_term_product = input_multi_term_product_res.unwrap()
+    else:
+        input_multi_term_product = 'HALT'
+
+    output_product_res = compose_result.remap_term_to_multi_tape(
         input_term=A(position=0, state=output_state)
     )
+    if output_product_res.is_ok():
+        output_product = output_product_res.unwrap()
+    else:
+        output_product = 'HALT'
+
     print(f'|{k}|: {input_multi_term_product} -> {output_product}')
-
-
-"""
-^CTraceback (most recent call last):
-  File "/home/milselarch/projects/ca-compiler/automata_builder/compose_tapes_test.py", line 36, in <module>
-    composed_equations = RuleGenerator.generate_equations(
-                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/milselarch/projects/ca-compiler/automata_builder/rule_generator.py", line 253, in generate_equations
-    next_state: cls.aggregate_bit_or(state_eq_terms_map[next_state])
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/milselarch/projects/ca-compiler/automata_builder/rule_generator.py", line 135, in aggregate_bit_or
-    result = result | expr_list[k]
-    ^^^^^^
-KeyboardInterrupt
-"""
-
-"""
-# print(f'{compose_result=}')
-composed_equations = RuleGenerator.generate_equations(
-    transitions_group=compose_result.transitions_group,
-    pad_expr_length=False, pad_product_length=False,
-    verbose=True
-)
-
-for state in composed_equations:
-    equation = composed_equations[state]
-    print(f'{state} -> {equation}')
-
-"""

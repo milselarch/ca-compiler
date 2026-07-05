@@ -8,7 +8,7 @@ from result import Result, Ok, Err
 import utils
 
 from collections import defaultdict
-from typing import Final, Iterator, Sequence
+from typing import Final, Iterator, Sequence, Literal, Union
 from frozendict import frozendict
 
 from automata_builder.renderer import RenderFrame
@@ -1466,6 +1466,7 @@ class MultiTapeStatePathRemap(object):
     """
     remap_counter_start: TapeCellState
 
+    # TODO: technically only 1 state path can exist here
     void_state_paths: set[tuple[MultiTapeState, ...]] = dataclasses.field(
         default_factory=set
     )
@@ -1488,8 +1489,13 @@ class MultiTapeStatePathRemap(object):
 
     def rev_lookup(
         self, tape_cell_state: TapeCellState
-    ) -> tuple[MultiTapeState, ...]:
-        return self.rev_state_path_remap[tape_cell_state]
+    ) -> Result[tuple[MultiTapeState, ...], TapeCellState]:
+        if tape_cell_state == HALT_STATE:
+            return Err(tape_cell_state)
+        elif tape_cell_state == VOID_STATE:
+            return Ok(list(self.void_state_paths)[0])
+
+        return Ok(self.rev_state_path_remap[tape_cell_state])
 
     def get_all_state_paths(self) -> set[tuple[MultiTapeState, ...]]:
         return (
@@ -1639,7 +1645,7 @@ class ComposeTapesResult(object):
 
     def remap_prod_to_multi_tape(
         self, input_product: PyProduct
-    ) -> PyMultiTapeProduct:
+    ) -> Result[PyMultiTapeProduct, TapeCellState]:
         """
         Remaps the input product to a multi-tape product based
         on the state remap
@@ -1650,22 +1656,31 @@ class ComposeTapesResult(object):
         collected_global_terms: list[D] = []
 
         for term in input_product_terms:
-            sub_product = self.remap_term_to_multi_tape(input_term=term)
+            sub_product_res = self.remap_term_to_multi_tape(input_term=term)
+            if sub_product_res.is_err():
+                return sub_product_res
+
+            sub_product = sub_product_res.unwrap()
             sub_product_terms = sub_product.get_flat_terms()
             collected_global_terms.extend(sub_product_terms)
 
         multi_tape_product = PyMultiTapeProduct(collected_global_terms)
-        return multi_tape_product
+        return Ok(multi_tape_product)
 
     def remap_term_to_multi_tape(
         self, input_term: A
-    ) -> PyMultiTapeProduct:
+    ) -> Result[PyMultiTapeProduct, TapeCellState]:
         collected_global_terms: list[D] = []
         position = input_term.get_position()
         global_tape_state = TapeCellState(input_term.get_state())
-        multi_tape_states = self.state_remap.rev_lookup(
+        multi_tape_states_res = self.state_remap.rev_lookup(
             tape_cell_state=global_tape_state
         )
+        if multi_tape_states_res.is_err():
+            halt_state = multi_tape_states_res.unwrap_err()
+            return Err(halt_state)
+
+        multi_tape_states = multi_tape_states_res.unwrap()
         for multi_tape_state in multi_tape_states:
             tape_no = multi_tape_state.tape_no
             tape_cell_state = multi_tape_state.tape_cell_state
@@ -1677,7 +1692,7 @@ class ComposeTapesResult(object):
             collected_global_terms.append(individual_term)
 
         multi_tape_product = PyMultiTapeProduct(collected_global_terms)
-        return multi_tape_product
+        return Ok(multi_tape_product)
 
 
 class MultiTapeBuilder(object):
@@ -1898,28 +1913,42 @@ class MultiTapeBuilder(object):
         return global_overlaps
 
     @classmethod
-    def build_product_writes_map(
+    def build_product_same_writes_map(
         cls, overlaps: TapeOverlaps, current_product_path: list[D],
         start_offset: int, end_offset: int,
         product_exclusions: ProductTrie
     ) -> ProductWritesMap:
         """
-        Generate all possible product combinations
+        Generate a mapping of all possible product combinations
+        to an output state that is the same as previous input state,
         from an offset of start_offset up until a maximum offset of
         end_offset, given information about all the possible
         overlaps that exist in the automata
 
         :param product_exclusions:
+        if a built product is in product_exclusions, we will
+        exclude it from being added to the returned ProductWritesMap
         :param overlaps:
+        information about what tape states can overlap with what
+        other tape states over all relevant position offsets
         :param current_product_path:
+        The current partially built product
         :param start_offset:
+        position offset to start / continue product construction from
         :param end_offset:
+        position offset to terminate product construction at
         :return:
+        A product writes map where the products generated
+        will transition every combination of term states along
+        the write position offset to itself,
+        (so no change from input to output)
         """
         product_writes_map = ProductWritesMap()
 
         if start_offset == end_offset:
-            # TODO: check against existing products as well
+            if product_exclusions.is_end_product:
+                return product_writes_map
+
             current_product = PyMultiTapeProduct(current_product_path)
             product_writes_map.insert_neutral_product(current_product)
             return product_writes_map
@@ -1938,12 +1967,9 @@ class MultiTapeBuilder(object):
         for state in states:
             term = state.to_term(offset=start_offset)
             next_product_exclusions = product_exclusions.next(term)
-            if next_product_exclusions.is_end_product:
-                # product is among the excluded products
-                continue
 
             current_product_path.append(term)
-            sub_products = cls.build_product_writes_map(
+            sub_products = cls.build_product_same_writes_map(
                 overlaps=overlaps,
                 start_offset=start_offset + 1,
                 current_product_path=current_product_path,
@@ -2147,32 +2173,31 @@ class MultiTapeBuilder(object):
 
         """
         Generate rules for all possible term combinations
-        that could exist given the state overlaps passed in.
+        that could exist given the state overlaps passed in,
+        excluding pre-existing products as they already have explicit 
+        output write rule(s).
         
         The products generated here will transition every combination 
         of term states along the write position offset to itself, 
-        with the exception of the term state of the output tape  
-        (so no change from input to output other than the target 
-        tape_no and offset) 
+        (so no change from input to output) 
         """
-        product_writes_map = self.build_product_writes_map(
+        product_same_writes_map = self.build_product_same_writes_map(
             overlaps=overlaps, current_product_path=[],
             start_offset=self.leftmost_extent,
             end_offset=self.rightmost_extent,
             product_exclusions=preexisting_products
         )
+        product_writes_map = ProductWritesMap()
         product_writes_map.merge(preexisting_writes_map)
+        product_writes_map.merge(product_same_writes_map)
+
         # remap individual tape states to a global combined tape state
         global_state_path_remap = self.build_global_state_path_remap(
-            product_writes_map=product_writes_map, overlaps=overlaps
+            product_writes_map=product_same_writes_map, overlaps=overlaps
         )
         # input-output pairs for the final combined automata
         global_transitions_group = AutomataTransitionsGroup(
-            # num_states=len(global_state_path_remap),
-            # TODO: actually calculate number of states to support?
-            # TODO: or just allow inf as a valid value
-            num_states=None,
-            transitions=[]
+            num_states=None, transitions=[]
         )
 
         for multi_tape_product in product_writes_map:
