@@ -1,12 +1,4 @@
-import sys
 import unittest
-
-from pathlib import Path
-
-# Ensure project root is importable when running unittest directly.
-_PROJECT_ROOT_DIR = Path(__file__).resolve().parents[1]
-if str(_PROJECT_ROOT_DIR) not in sys.path:
-    sys.path.append(str(_PROJECT_ROOT_DIR))
 
 from automata_builder.counter_automata import (
     active_counter,
