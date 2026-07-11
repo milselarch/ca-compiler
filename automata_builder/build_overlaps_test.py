@@ -1,10 +1,3 @@
-import sys
-
-from pathlib import Path
-
-_project_root_dir = Path(__file__).resolve().parents[1]
-sys.path.append(str(_project_root_dir))
-
 from automata_builder.rule_generator_multitape import (
     MultiTapeBuilder, MultiTapeState, TapeCellState, TapeNo, TapeOverlaps
 )

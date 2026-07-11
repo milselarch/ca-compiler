@@ -5,9 +5,9 @@ import os
 from typing import Final, Callable
 from py_ca_compiler import D
 
-from rule_generator_multitape import (
+from automata_builder.rule_generator_multitape import (
     MultiTapeAutomataTransitionsGroup, TapeNo, TapeCellState,
-    MultiTapeRuleGenerator, MultiTapeAutomata,
+    MultiTapeRuleGenerator, MultiTapeAutomata, ProcessStepResult,
     MultiTapeState, BLANK_INT, VOID_STATE
 )
 
@@ -88,7 +88,7 @@ def build_st_counter_state(counter_digit: int, paused: bool) -> int:
     assert counter_digit >= 0, "Counter digit must be non-negative"
     # noinspection PyRedundantParentheses
     return (
-        (0b00) |  # bit 0: counter state
+        (0b00) |  # bit 0: equals 0 when in counter state
         (0b10 if paused else 0b00) |  # bit 1: paused or not
         ((counter_digit+1) << 2)  # bits 2...: counter value
     )
@@ -134,9 +134,11 @@ def from_counter_state(state: int) -> tuple[int, bool]:
     :return:
     - paused: whether the counter state is paused or not
     - counter_digit: the value of the counter state (in base self.base)
+    TODO: unittest that this and to_counter_state are inverse operations
     """
     paused = (state & 0b10) != 0
     counter_digit = (state >> 2) - 1
+    assert counter_digit >= 0, state
     return counter_digit, paused
 
 
@@ -325,6 +327,14 @@ class CounterAutomataRunner(object):
         self, base: int = 8, initial_write_start: int = 0,
         initial_write_end: int = 20
     ):
+        """
+        Counter automata instance with initial cells populated
+        from :initial_write_start: to :initial_write_end:
+        (inclusive) with the :DATA: cell value
+        :param base:
+        :param initial_write_start:
+        :param initial_write_end:
+        """
         self.base = base
         self.builder = CounterAutomataBuilder(base=base)
         self.transitions_group = self.builder.build_transitions_group()
@@ -339,9 +349,48 @@ class CounterAutomataRunner(object):
             DATA_TAPE, SIGNALS_TAPE, CARRY_TAPE
         ])
         self.multi_tape_automata.write_region(
-            position=0, end_position=20,
+            position=self.initial_write_start,
+            end_position=self.initial_write_end,
             data=[MultiTapeState(DATA_TAPE, DT_DATA)]
         )
+
+    def read_signals_tape_value(self):
+        """
+        :return:
+        The equivalent n-ary numerical value encoded on the signals tape
+        Note that data is arranged from LSB (left / decreasing position)
+        to MSB (right / increasing position)
+        TODO: add option to flip accumulator direction when building automata?
+        """
+        signals_tape = self.multi_tape_automata[SIGNALS_TAPE]
+        data_region = signals_tape.get_minimal_data_region()
+        if not data_region:
+            return 0
+
+        # The last cell in the signals tape is always an ST_REDUCE_START cell
+        assert data_region[-1] == ST_REDUCE_START
+        relevant_data_region = data_region[:-1]
+
+        while relevant_data_region and relevant_data_region[-1] == VOID_STATE:
+            # there may be trailing VIUDs between ST_REDUCE_START and data
+            relevant_data_region.pop()
+
+        # the remaining relevant_data_region should just encode
+        # the counter value in base {self.base}
+        assert VOID_STATE not in relevant_data_region
+        encoded_number = 0
+
+        for digit_no in range(len(relevant_data_region)):
+            tape_cell_state = relevant_data_region[digit_no]
+            counter_digit, _ = from_counter_state(tape_cell_state)
+            encoded_number += counter_digit * self.base ** digit_no
+
+        assert encoded_number >= 0
+        # TODO: consider unpropagated carry states
+        return encoded_number
+
+    def step(self) -> ProcessStepResult:
+        return self.multi_tape_automata.step()
 
     def run_simulation(
         self, num_timesteps: int = 30, terminal_width: int = BLANK_INT,
@@ -369,7 +418,7 @@ class CounterAutomataRunner(object):
         for timestep in range(num_timesteps):
             # print(f'{terminal_width=}')
             if timestep > 0:
-                self.multi_tape_automata.step()
+                self.step()
 
             render_frame = self.multi_tape_automata.render_tapes(
                 start_position=render_start, length=terminal_width,

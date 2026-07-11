@@ -30,7 +30,14 @@ For testing things related to the Potato CPU:
 3. Install python dependencies - `pip install -r requirements.txt`
 4. Generate pyO3 stubs - `cargo run --bin stub_gen`
 5. build and install the potato CPU - `maturin develop --release`
-6. install this project as an editable package - `pip install -e .`  
+6. install this project as an editable package - `python -m pip install -e .`  
+
+### Automata Builder
+1. Run test scripts for automata builder like as follows
+  - Make sure to run `python -m pip install -e .` to install 
+    `automata_builder` as an editable package first
+  - Run `python -m automata_builder.test_counter_automata` to 
+    execute `automata_builder/test_counter_automata.py` 
 
 ## Examples
 

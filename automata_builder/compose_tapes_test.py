@@ -1,12 +1,7 @@
-import sys
 import argparse
 
-from pathlib import Path
 from py_ca_compiler.py_ca_compiler import PyProduct
 from py_ca_compiler import A
-
-_project_root_dir = Path(__file__).resolve().parents[1]
-sys.path.append(str(_project_root_dir))
 
 from automata_builder.counter_automata import (
     CounterAutomataRunner, DT_DATA, DATA_TAPE

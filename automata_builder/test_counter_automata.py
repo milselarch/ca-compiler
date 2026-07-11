@@ -1,7 +1,7 @@
 import argparse
 
-from automata_builder.counter_automata import CounterAutomataRunner
 from automata_builder.rule_generator_multitape import BLANK_INT
+from automata_builder.counter_automata import CounterAutomataRunner
 
 
 if __name__ == '__main__':
@@ -27,10 +27,16 @@ if __name__ == '__main__':
         help='Ending position to write the initial data (default: 20)'
     )
     parser.add_argument(
+        '--render-start', '-r',
+        type=int,
+        default=-5,
+        help='Starting position for rendering the tapes (default: -5)'
+    )
+    parser.add_argument(
         '--timesteps', '-t',
         type=int,
-        default=30,
-        help='Number of timesteps to simulate (default: 30)'
+        default=BLANK_INT,
+        help='Number of timesteps to run automata forward for'
     )
     parser.add_argument(
         '--terminal-width', '-w',
@@ -38,14 +44,13 @@ if __name__ == '__main__':
         default=BLANK_INT,
         help=f'Terminal width for rendering'
     )
-    parser.add_argument(
-        '--render-start', '-r',
-        type=int,
-        default=-5,
-        help='Starting position for rendering the tapes (default: -5)'
-    )
 
     args = parser.parse_args()
+    timesteps = args.timesteps
+    if timesteps == BLANK_INT:
+        cells_filled = args.write_end - args.write_start + 1
+        timesteps = cells_filled
+
     runner = CounterAutomataRunner(
         base=args.base,
         initial_write_start=args.write_start,
@@ -55,3 +60,7 @@ if __name__ == '__main__':
         num_timesteps=args.timesteps,
         terminal_width=args.terminal_width
     )
+
+    # TODO: add visualize option to show tape states each step
+    encoded_value = runner.read_signals_tape_value()
+    print(f'{encoded_value=}')

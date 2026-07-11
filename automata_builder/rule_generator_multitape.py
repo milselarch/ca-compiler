@@ -13,7 +13,7 @@ from frozendict import frozendict
 
 from automata_builder.renderer import RenderFrame
 from automata_builder.rule_generator import AutomataTransitionsGroup
-from renderer import RenderFrame
+from automata_builder.renderer import RenderFrame
 from py_ca_compiler import (
     D, PyMultiTapeProduct, PyMultiTapeExpression,
     A, PyProduct, PyExpression
@@ -228,7 +228,11 @@ class TapeRenderFrame(RenderFrame):
 
 class BidirectionalTape(object):
     def __init__(self):
+        # automata cell states from position 0 and higher
+        # note that position increases for cells as we go rightwards in data
         self.data: list[TapeCellState] = []
+        # automata cell states from position -1 and lower
+        # note that position decreases for cells as we go rightwards in data
         self.rev_data: list[TapeCellState] = []
 
     def get_range(self) -> tuple[int, int]:
@@ -259,7 +263,21 @@ class BidirectionalTape(object):
         :return:
         """
         self.prune()
-        return self.data + self.rev_data
+        # make a shallow copy to avoid mutable reference
+        data_region = self.rev_data[::-1] + self.data
+        minimal_data_region: list[TapeCellState] = []
+        data_region_started: bool = False
+
+        for tape_cell_state in data_region:
+            if tape_cell_state != VOID_STATE:
+                data_region_started = True
+
+            if not data_region_started:
+                continue
+
+            minimal_data_region.append(tape_cell_state)
+
+        return minimal_data_region
 
     def render_line(
         self, start_position: int, length: int,
@@ -349,6 +367,9 @@ class BiDirectionalMultiTape(object):
 
         return self._tapes[tape_no]
 
+    def __getitem__(self, tape_no: TapeNo) -> BidirectionalTape:
+        return self.get_or_make_tape(tape_no=tape_no)
+
     def init_tapes(self, tape_nos: list[TapeNo], freeze: bool = True):
         for tape_no in tape_nos:
             self.get_or_make_tape(tape_no)
@@ -363,6 +384,14 @@ class BiDirectionalMultiTape(object):
         self, position: int, end_position: int,
         data: list[MultiTapeState]
     ):
+        """
+        Populate the automata cells from :position: to :end_position:
+        (inclusive) using :data: as a full pattern
+        :param position:
+        :param end_position:
+        :param data:
+        :return:
+        """
         for new_position in range(position, end_position+1):
             offset = new_position - position
             value = data[offset % len(data)]
@@ -498,6 +527,9 @@ class MultiTapeAutomata(object):
         self._rightmost_extent: int = rightmost_extent
         self._state_eq_map = state_eq_map
 
+    def __getitem__(self, tape_no: TapeNo) -> BidirectionalTape:
+        return self._multi_tape[tape_no]
+
     def get_tape_nos(self) -> list[TapeNo]:
         return self._multi_tape.get_tape_nos()
 
@@ -539,6 +571,14 @@ class MultiTapeAutomata(object):
         self, position: int, end_position: int,
         data: list[MultiTapeState]
     ):
+        """
+        Populate the automata cells from :position: to :end_position:
+        (inclusive) using :data: as a full pattern
+        :param position:
+        :param end_position:
+        :param data:
+        :return:
+        """
         self._multi_tape.write_region(
             position=position, end_position=end_position,
             data=data
