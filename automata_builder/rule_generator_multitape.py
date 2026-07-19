@@ -175,16 +175,12 @@ class MultiTapeAutomataTransitionsGroup(object):
 
 class MultiTapeRuleGenerator(object):
     @staticmethod
-    def tuple_to_product(terms: tuple[D, ...]) -> PyMultiTapeProduct:
-        product = terms[0].to_py_product()
-        if len(terms) == 1:
-            return product
-
-        for term in terms[1:]:
-            product = product.multiply_by_term(term)
-
-        assert isinstance(product, PyMultiTapeProduct)
-        return product
+    def terms_to_product(
+        terms: tuple[D, ...], annotation: str
+    ) -> PyMultiTapeProduct:
+        return PyMultiTapeProduct(
+            terms=terms, annotation=annotation
+        )
 
     @staticmethod
     def aggregate_bit_or(expr_list: list[
@@ -210,11 +206,12 @@ class MultiTapeRuleGenerator(object):
         for transition in transitions_group.transitions:
             input_states = transition.input_terms
             output_state = transition.output_state
-            # TODO: transfer annotation to the product for debugging
+            annotation = transition.annotation
+
             if output_state not in state_eq_terms_map:
                 state_eq_terms_map[output_state] = []
 
-            product = cls.tuple_to_product(input_states)
+            product = cls.terms_to_product(input_states, annotation)
             state_eq_terms_map[output_state].append(product)
 
         state_eq_map: dict[MultiTapeState, PyMultiTapeExpression] = {
@@ -508,6 +505,8 @@ class WriteRecord(object):
     origin_product: PyMultiTapeProduct
     write_target: tuple[TapeNo, int]  # (tape_no, position)
     tape_cell_state: TapeCellState
+    # for debugging purposes (to trace originating product)
+    annotation: str = ''
 
     def log(self):
         print(
@@ -620,6 +619,7 @@ class MultiTapeAutomata(object):
         :param state_eq_map:
         :return:
         """
+        # TODO: extract out annotations as well for debugging
         prod_to_state_map = ProductWritesMap()
 
         for multi_tape_output, expr in state_eq_map.items():
@@ -686,8 +686,10 @@ class MultiTapeAutomata(object):
         new_multi_tape = copy.deepcopy(self._multi_tape)
         scan_start = min_pos + self._leftmost_extent
         scan_end = max_pos + self._rightmost_extent + 1
-        # record all (tape_no, position) -> tape_cell_state writes
+
+        # record all (tape_no, position) -> (tape_cell_state) writes
         writes_map: dict[tuple[TapeNo, int], TapeCellState] = {}
+        annotations_map: dict[tuple[TapeNo, int], set[str]] = defaultdict(set)
         active_writes: list[WriteRecord] = []
 
         for position in range(scan_start, scan_end):
@@ -699,31 +701,35 @@ class MultiTapeAutomata(object):
                     continue
 
                 product_writes_map = self._prod_to_state_map[matching_product]
+                annotation = matching_product.get_annotation()
 
                 for tape_no in product_writes_map:
                     tape_cell_state = product_writes_map[tape_no]
                     write_target: tuple[TapeNo, int] = (tape_no, position)
-                    prev_write_state = writes_map.get(
-                        write_target, tape_cell_state
-                    )
-                    if prev_write_state != tape_cell_state:
+                    # previously recorded write to this tape cell, if any
+                    prev_write = writes_map.get(write_target, tape_cell_state)
+                    prev_annotations = annotations_map[write_target]
+
+                    if prev_write != tape_cell_state:
                         raise ValueError(
                             f"Conflicting writes to tape {tape_no} "
-                            f"from {matching_product} at "
-                            f"position {position}: {prev_write_state} vs "
-                            f"{tape_cell_state}"
+                            f"from {matching_product=} {annotation=} at "
+                            f"position {position}: {prev_write} vs "
+                            f"{tape_cell_state} ({prev_annotations=})"
                         )
 
                     write_record = WriteRecord(
                         origin_product=matching_product,
                         write_target=(tape_no, position),
-                        tape_cell_state=tape_cell_state
+                        tape_cell_state=tape_cell_state,
+                        annotation=annotation
                     )
                     active_writes.append(write_record)
                     if log_active_writes:
                         write_record.log()
 
                     writes_map[write_target] = tape_cell_state
+                    annotations_map[write_target].add(annotation)
                     output_tape = new_multi_tape.get_or_make_tape(tape_no)
                     output_tape.write(position, tape_cell_state)
                     assert output_tape.read(position) == tape_cell_state

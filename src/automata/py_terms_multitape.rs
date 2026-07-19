@@ -365,6 +365,9 @@ impl PyMultiTapeProduct {
             .to_product();
         Ok(PyMultiTapeProduct { product })
     }
+    pub fn get_annotation(&self) -> PyResult<String> {
+        Ok(self.product._annotation.clone())
+    }
     pub fn to_py_product(&self) -> PyResult<PyMultiTapeProduct> {
         Ok(Self::from_product(self.product.copy()))
     }
