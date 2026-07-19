@@ -136,10 +136,10 @@ impl Mul<MultiTapeProduct> for MultiTapeTerm {
         for term in rhs._terms.iter() {
             new_terms.push(term.copy());
         }
-        MultiTapeProduct {
-            _terms: new_terms,
-            _optimized: self._optimized,
-        }
+        // TODO: concat annotations?
+        MultiTapeProductFactory::new(new_terms)
+            .with_optimized(self._optimized && rhs._optimized)
+            .to_product()
     }
 }
 impl Mul<MultiTapeExpression> for MultiTapeTerm {
@@ -246,17 +246,62 @@ impl AbstractMultiTapeExpression for MultiTapeTerm {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct MultiTapeProductFactory {
+    pub (crate) _terms: Vec<MultiTapeTerm>,
+    pub (crate) _optimized: bool,
+    pub (crate) _annotation: String
+}
+impl MultiTapeProductFactory {
+    pub fn spawn_empty() -> MultiTapeProductFactory {
+        MultiTapeProductFactory {
+            _terms: vec![],
+            _optimized: false,
+            _annotation: String::new()
+        }
+    }
+    pub fn new(terms: Vec<MultiTapeTerm>) -> MultiTapeProductFactory {
+        Self::spawn_empty().with_terms(terms)
+    }
+    pub fn with_terms(
+        self, terms: Vec<MultiTapeTerm>
+    ) -> MultiTapeProductFactory {
+        let mut clone = self.clone();
+        clone._terms = terms;
+        clone
+    }
+    pub fn with_optimized(
+        &mut self, optimized: bool
+    ) -> MultiTapeProductFactory {
+        let mut clone = self.clone();
+        clone._optimized = optimized;
+        clone
+    }
+    pub fn with_annotation(
+        &mut self, annotation: String
+    ) -> MultiTapeProductFactory {
+        let mut clone = self.clone();
+        clone._annotation = annotation;
+        clone
+    }
+    pub fn to_product(self) -> MultiTapeProduct {
+        MultiTapeProduct {
+            _terms: self._terms,
+            _optimized: self._optimized,
+            _annotation: self._annotation.clone()
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct MultiTapeProduct {
     pub (crate) _terms: Vec<MultiTapeTerm>,
-    pub (crate) _optimized: bool
+    pub (crate) _optimized: bool,
+    pub (crate) _annotation: String
 }
 impl MultiTapeProduct {
     pub fn new(terms: Vec<MultiTapeTerm>) -> Self {
-        MultiTapeProduct {
-            _terms: terms, _optimized: false,
-        }
+        MultiTapeProductFactory::new(terms).to_product()
     }
     pub(crate) fn _get_term(&self, index: usize) -> Option<&MultiTapeTerm> {
         self._terms.get(index)
@@ -349,7 +394,9 @@ impl Mul for MultiTapeProduct {
         for term in rhs._terms.iter() {
             new_terms.push(term.clone());
         }
-        MultiTapeProduct { _terms: new_terms, _optimized: self._optimized }
+        MultiTapeProductFactory::new(new_terms)
+            .with_optimized(self._optimized && rhs._optimized)
+            .to_product()
     }
 }
 impl Mul<MultiTapeTerm> for &MultiTapeProduct {
@@ -357,10 +404,11 @@ impl Mul<MultiTapeTerm> for &MultiTapeProduct {
 
     fn mul(self, rhs: MultiTapeTerm) -> MultiTapeProduct {
         let mut new_terms: Vec<MultiTapeTerm> = self._terms.clone();
+        let rhs_optimized = rhs._optimized;
         new_terms.push(rhs);
-        MultiTapeProduct {
-            _terms: new_terms, _optimized: false
-        }
+        MultiTapeProductFactory::new(new_terms)
+            .with_optimized(self._optimized && rhs_optimized)
+            .to_product()
     }
 }
 impl Mul<MultiTapeTerm> for MultiTapeProduct {
@@ -369,10 +417,9 @@ impl Mul<MultiTapeTerm> for MultiTapeProduct {
     fn mul(self, rhs: MultiTapeTerm) -> MultiTapeProduct {
         let mut new_terms = self._terms.clone();
         new_terms.push(rhs.copy());
-        MultiTapeProduct {
-            _terms: new_terms,
-            _optimized: self._optimized,
-        }
+        MultiTapeProductFactory::new(new_terms)
+            .with_optimized(self._optimized && rhs._optimized)
+            .to_product()
     }
 }
 impl Mul<MultiTapeExpression> for MultiTapeProduct {

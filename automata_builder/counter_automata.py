@@ -88,9 +88,9 @@ def build_st_counter_state(counter_digit: int, paused: bool) -> int:
     assert counter_digit >= 0, "Counter digit must be non-negative"
     # noinspection PyRedundantParentheses
     return (
-        (0b00) |  # bit 0: equals 0 when in counter state
-        (0b10 if paused else 0b00) |  # bit 1: paused or not
-        ((counter_digit+1) << 2)  # bits 2...: counter value
+            (0b00) |  # bit 0: equals 0 when in counter state
+            (0b10 if paused else 0b00) |  # bit 1: paused or not
+            ((counter_digit + 1) << 2)  # bits 2...: counter value
     )
 
 
@@ -149,7 +149,7 @@ class CounterAutomataBuilder(object):
 
     def build_transitions_group(self) -> MultiTapeAutomataTransitionsGroup:
         # TODO: actually precompute the number of states beforehand (?)
-        max_counter_digit = self.base-1
+        max_counter_digit = self.base - 1
 
         # noinspection PyTypeChecker
         transitions_group = MultiTapeAutomataTransitionsGroup.spawn_new()
@@ -205,7 +205,7 @@ class CounterAutomataBuilder(object):
                         ST_RIGHT(active_counter(digit)),
                     ),
                     output_tape_no=SIGNALS_TAPE,
-                    output_cell_state=paused_counter(digit+1),
+                    output_cell_state=paused_counter(digit + 1),
                 )
 
         # apply carry cells to counter cells
@@ -233,7 +233,7 @@ class CounterAutomataBuilder(object):
                     transitions_group.add_transition(
                         input_terms=carry_no_overflow_combo,
                         output_tape_no=SIGNALS_TAPE,
-                        output_cell_state=paused_counter(right_digit+1)
+                        output_cell_state=paused_counter(right_digit + 1)
                     )
                     # overflow right_digit to 0 and move left, cancel carry
                     transitions_group.add_transition(
@@ -324,8 +324,8 @@ class CounterAutomataBuilder(object):
 
 class CounterAutomataRunner(object):
     def __init__(
-        self, base: int = 8, initial_write_start: int = 0,
-        initial_write_end: int = 20
+            self, base: int = 8, initial_write_start: int = 0,
+            initial_write_end: int = 20
     ):
         """
         Counter automata instance with initial cells populated
@@ -354,7 +354,17 @@ class CounterAutomataRunner(object):
             data=[MultiTapeState(DATA_TAPE, DT_DATA)]
         )
 
-    def read_signals_tape_value(self):
+    def read_data_tape_value(self) -> int:
+        data_tape = self.multi_tape_automata[DATA_TAPE]
+        data_region = data_tape.get_minimal_data_region()
+        if not data_region:
+            return 0
+
+        assert VOID_STATE not in data_region
+        assert set(data_region) == {DT_DATA}
+        return len(data_region)
+
+    def read_signals_tape_value(self) -> int:
         """
         :return:
         The equivalent n-ary numerical value encoded on the signals tape

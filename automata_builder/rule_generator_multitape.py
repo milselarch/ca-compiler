@@ -8,15 +8,13 @@ from result import Result, Ok, Err
 import utils
 
 from collections import defaultdict
-from typing import Final, Iterator, Sequence, Literal, Union
-from frozendict import frozendict
+from typing import Final, Iterator, Sequence
 
-from automata_builder.renderer import RenderFrame
 from automata_builder.rule_generator import AutomataTransitionsGroup
 from automata_builder.renderer import RenderFrame
 from py_ca_compiler import (
     D, PyMultiTapeProduct, PyMultiTapeExpression,
-    A, PyProduct, PyExpression
+    A, PyProduct
 )
 
 
@@ -102,6 +100,13 @@ class MultiTapeState(object):
         )
 
 
+@dataclasses.dataclass(frozen=True)
+class MultiTapeTransition(object):
+    input_terms: tuple[D, ...]
+    output_state: MultiTapeState
+    annotation: str = ''
+
+
 @dataclasses.dataclass
 class MultiTapeAutomataTransitionsGroup(object):
     """
@@ -109,12 +114,7 @@ class MultiTapeAutomataTransitionsGroup(object):
     defined as a mapping from input states to output state
     map D[] -> (output tape_no, output state)
     """
-    transitions: list[
-        tuple[
-            tuple[D, ...],
-            MultiTapeState
-        ]
-    ]
+    transitions: list[MultiTapeTransition]
 
     @classmethod
     def spawn_new(cls) -> MultiTapeAutomataTransitionsGroup:
@@ -124,7 +124,8 @@ class MultiTapeAutomataTransitionsGroup(object):
         self, input_terms: tuple[D, ...],
         output_tape_no: int, output_cell_state: int,
         validate_void: bool = True,
-        validate_halt: bool = True
+        validate_halt: bool = True,
+        annotation: str = ''
     ):
         """
         :param input_terms:
@@ -134,6 +135,7 @@ class MultiTapeAutomataTransitionsGroup(object):
         If true, check that the input terms do not all have void state
         :param validate_halt:
         If true, check that the halt state is not within input terms
+        :param annotation:
         :return:
         """
         if validate_void:
@@ -159,12 +161,16 @@ class MultiTapeAutomataTransitionsGroup(object):
                     f"allowed since it has predefined behavior"
                 )
 
-        self.transitions.append((
-            input_terms, MultiTapeState(
-                tape_no=TapeNo(output_tape_no),
-                tape_cell_state=TapeCellState(output_cell_state)
-            )
-        ))
+        output_state = MultiTapeState(
+            tape_no=TapeNo(output_tape_no),
+            tape_cell_state=TapeCellState(output_cell_state)
+        )
+        transition = MultiTapeTransition(
+            input_terms=input_terms,
+            output_state=output_state,
+            annotation=annotation
+        )
+        self.transitions.append(transition)
 
 
 class MultiTapeRuleGenerator(object):
@@ -202,7 +208,9 @@ class MultiTapeRuleGenerator(object):
         ] = {}
 
         for transition in transitions_group.transitions:
-            input_states, output_state = transition
+            input_states = transition.input_terms
+            output_state = transition.output_state
+            # TODO: transfer annotation to the product for debugging
             if output_state not in state_eq_terms_map:
                 state_eq_terms_map[output_state] = []
 

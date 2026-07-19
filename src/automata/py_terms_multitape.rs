@@ -10,7 +10,7 @@ use pyo3::types::PyDict;
 use pyo3_stub_gen::define_stub_info_gatherer;
 use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 use crate::automata::terms::{clip_after_space, CellState, ExprDebugInfo};
-use crate::automata::terms_multitape::{validate_debug_info_exists, AbstractMultiTapeExpression, MultiTapeCellState, MultiTapeExpression, MultiTapeProduct, MultiTapeTerm, TapeNo};
+use crate::automata::terms_multitape::{validate_debug_info_exists, AbstractMultiTapeExpression, MultiTapeCellState, MultiTapeExpression, MultiTapeProduct, MultiTapeProductFactory, MultiTapeTerm, TapeNo};
 /*
 Reasons to redo this in rust
 - expansion of terms grows hyper-exponentially with each timestep,
@@ -320,6 +320,7 @@ impl PyMultiTapeProduct {
         PyMultiTapeProduct {
             product: MultiTapeProduct {
                 _terms: rust_terms, _optimized: false,
+                _annotation: String::new()
             },
         }
     }
@@ -350,13 +351,18 @@ impl PartialEq<MultiTapeTerm> for &MultiTapeTerm {
 #[pymethods]
 impl PyMultiTapeProduct {
     #[new]
-    pub fn init(terms: Vec<D>) -> PyResult<PyMultiTapeProduct> {
+    #[pyo3(signature = (terms, annotation = ""))]
+    pub fn init(
+        terms: Vec<D>, annotation: &str
+    ) -> PyResult<PyMultiTapeProduct> {
         if terms.len() == 0 {
             return Err(PyValueError::new_err("terms cannot be empty"));
         }
         let rs_terms: Vec<MultiTapeTerm> =
             terms.into_iter().map(|term| term.term).collect();
-        let product = MultiTapeProduct::new(rs_terms);
+        let product = MultiTapeProductFactory::new(rs_terms)
+            .with_annotation(annotation.parse()?)
+            .to_product();
         Ok(PyMultiTapeProduct { product })
     }
     pub fn to_py_product(&self) -> PyResult<PyMultiTapeProduct> {
