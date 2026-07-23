@@ -114,11 +114,10 @@ class MultiTapeAutomataTransitionsGroup(object):
     defined as a mapping from input states to output state
     map D[] -> (output tape_no, output state)
     """
-    transitions: list[MultiTapeTransition]
-
-    @classmethod
-    def spawn_new(cls) -> MultiTapeAutomataTransitionsGroup:
-        return cls(transitions=[])
+    transitions: list[MultiTapeTransition] = dataclasses.field(
+        default_factory=list
+    )
+    require_annotation: bool = False
 
     def add_transition(
         self, input_terms: tuple[D, ...],
@@ -138,6 +137,9 @@ class MultiTapeAutomataTransitionsGroup(object):
         :param annotation:
         :return:
         """
+        if self.require_annotation and not annotation:
+            raise ValueError(f'Annotation expected')
+
         if validate_void:
             is_all_void = True
 
