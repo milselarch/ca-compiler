@@ -309,12 +309,13 @@ class CounterAutomataBuilder(object):
                 annotation=f'CLEAR_RIGHTMOST_{digit}_ST'
             )
 
-        # bleed counter leftwards past data tape to void
+        # bleed leftmost counter cell leftwards past data tape to void
         # unnecessary if we don't expect to leave data tape range
         for digit in range(self.base):
             transitions_group.add_transition(
                 input_terms=(
                     DT_MID(VOID_STATE),
+                    ST_MID(VOID_STATE),
                     ST_RIGHT(active_counter(digit)),
                     CT_MID(VOID_STATE)
                 ),
@@ -339,8 +340,8 @@ class CounterAutomataBuilder(object):
 
 class CounterAutomataRunner(object):
     def __init__(
-            self, base: int = 8, initial_write_start: int = 0,
-            initial_write_end: int = 20
+        self, base: int = 8, initial_write_start: int = 0,
+        initial_write_end: int = 20
     ):
         """
         Counter automata instance with initial cells populated

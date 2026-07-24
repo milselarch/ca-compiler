@@ -200,6 +200,7 @@ class MultiTapeRuleGenerator(object):
     @classmethod
     def generate_equations(
         cls, transitions_group: MultiTapeAutomataTransitionsGroup,
+        require_annotations: bool = False
     ) -> dict[MultiTapeState, PyMultiTapeExpression]:
         state_eq_terms_map: dict[
             MultiTapeState, list[PyMultiTapeProduct]
@@ -215,11 +216,27 @@ class MultiTapeRuleGenerator(object):
 
             product = cls.terms_to_product(input_states, annotation)
             state_eq_terms_map[output_state].append(product)
+            if require_annotations:
+                assert product.get_annotation()
 
         state_eq_map: dict[MultiTapeState, PyMultiTapeExpression] = {
             next_state: cls.aggregate_bit_or(state_eq_terms_map[next_state])
             for next_state in state_eq_terms_map
         }
+        for next_state in state_eq_map:
+            expr = state_eq_map[next_state]
+            flat_products = expr.get_flat_products()
+
+            if not flat_products:
+                raise ValueError(
+                    f"Output state {next_state} has no products in "
+                    f"its expression {expr}"
+                )
+
+            for product in flat_products:
+                if require_annotations:
+                    assert product.get_annotation()
+
         return state_eq_map
 
 
@@ -529,7 +546,9 @@ class MultiTapeAutomata(object):
         self, state_eq_map: dict[MultiTapeState, PyMultiTapeExpression]
     ):
         self._multi_tape: BiDirectionalMultiTape = BiDirectionalMultiTape()
-        self._prod_to_state_map = self.reverse_state_eq_map(state_eq_map)
+        self._prod_to_state_map = self.reverse_state_eq_map(
+            state_eq_map, require_annotations=True
+        )
 
         leftmost_extent, rightmost_extent = self.get_rule_range()
         self._leftmost_extent: int = leftmost_extent
@@ -604,7 +623,8 @@ class MultiTapeAutomata(object):
 
     @classmethod
     def reverse_state_eq_map(
-        cls, state_eq_map: dict[MultiTapeState, PyMultiTapeExpression]
+        cls, state_eq_map: dict[MultiTapeState, PyMultiTapeExpression],
+        require_annotations: bool = False
     ) -> ProductWritesMap:
         """
         given a mapping from output tape states to expressions
@@ -618,6 +638,7 @@ class MultiTapeAutomata(object):
         (so given the same tape we should expect the product to only
         write a unique cell state, if at all)
 
+        :param require_annotations:
         :param state_eq_map:
         :return:
         """
@@ -649,6 +670,10 @@ class MultiTapeAutomata(object):
                         f"allowed since it would make the simulation range "
                         f"infinite"
                     )
+
+                annotation = product.get_annotation()
+                if require_annotations and not annotation:
+                    raise ValueError(f'EMPTY ANNOTATION {product=}')
 
                 prod_to_state_map.insert(
                     product=product, tape_output=multi_tape_output

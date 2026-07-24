@@ -45,12 +45,12 @@ impl PartialEq<MultiTapeTerm> for MultiTapeTerm {
     }
 }
 impl PartialOrd<MultiTapeTerm> for MultiTapeTerm {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 impl Ord for MultiTapeTerm {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn cmp(&self, other: &Self) -> Ordering {
         self.position.cmp(&other.position)
             .then_with(|| self.state.cmp(&other.state))
     }
@@ -158,7 +158,8 @@ impl BitOr for MultiTapeTerm {
 
     fn bitor(self, rhs: Self) -> Self::Output {
         MultiTapeExpression::new(vec![
-            MultiTapeProduct::new(vec![self]), MultiTapeProduct::new(vec![rhs])
+            MultiTapeProduct::new(vec![self]),
+            MultiTapeProduct::new(vec![rhs])
         ])
     }
 }
@@ -466,14 +467,17 @@ impl PartialOrd<Self> for MultiTapeProduct {
     }
 }
 impl Ord for MultiTapeProduct {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn cmp(&self, other: &Self) -> Ordering {
         self._terms.len().cmp(&other._terms.len())
             .then_with(|| self._terms.cmp(&other._terms))
     }
 }
 impl AbstractMultiTapeExpression for MultiTapeProduct {
     fn copy(&self) -> Self {
-        MultiTapeProduct::new(self._terms.clone())
+        MultiTapeProductFactory::new(self._terms.clone())
+            .with_optimized(self._optimized)
+            .with_annotation(self._annotation.clone())
+            .to_product()
     }
     fn _sub(
         &self, substitutions: &HashMap<i64, MultiTapeCellState>,
