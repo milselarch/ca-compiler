@@ -254,13 +254,13 @@ class CounterAutomataBuilder(object):
                     assert right_digit == max_counter_digit
                     transitions_group.add_transition(
                         input_terms=(
-                            ST_MID(active_counter(right_digit)),
+                            ST_MID(active_counter(mid_digit)),
                             ST_RIGHT(active_counter(max_counter_digit)),
                             CT_MID(CT_DATA)
                         ),
                         output_tape_no=SIGNALS_TAPE,
                         output_cell_state=paused_counter(0),
-                        annotation=f'SHL_{right_digit}_OVERFLOW'
+                        annotation=f'SHL_{mid_digit}_OVERFLOW'
                     )
 
         for digit in range(self.base):
@@ -309,8 +309,8 @@ class CounterAutomataBuilder(object):
                 annotation=f'CLEAR_RIGHTMOST_{digit}_ST'
             )
 
-        # bleed leftmost counter cell leftwards past data tape to void
-        # unnecessary if we don't expect to leave data tape range
+        # Bleed leftmost counter cell leftwards past data tape to void
+        # Unnecessary if we don't expect to leave data tape range
         for digit in range(self.base):
             transitions_group.add_transition(
                 input_terms=(
@@ -404,12 +404,21 @@ class CounterAutomataRunner(object):
         # the remaining relevant_data_region should just encode
         # the counter value in base {self.base}
         assert VOID_STATE not in relevant_data_region
+        counter_paused: bool | None = None
         encoded_number = 0
 
         for digit_no in range(len(relevant_data_region)):
             tape_cell_state = relevant_data_region[digit_no]
-            counter_digit, _ = from_counter_state(tape_cell_state)
+            counter_digit, paused = from_counter_state(tape_cell_state)
             encoded_number += counter_digit * self.base ** digit_no
+
+            if counter_paused is None:
+                counter_paused = paused
+            else:
+                assert counter_paused == paused, (
+                    f'Inconsistent paused state in signals tape: '
+                    f'{paused=} for {tape_cell_state=}'
+                )
 
         assert encoded_number >= 0
         # TODO: consider unpropagated carry states
@@ -439,8 +448,6 @@ class CounterAutomataRunner(object):
                 f'active={active_counter(digit)}'
             )
 
-        print('')
-
         for timestep in range(num_timesteps):
             # print(f'{terminal_width=}')
             if timestep > 0:
@@ -451,6 +458,8 @@ class CounterAutomataRunner(object):
                 cell_width=2
             )
             # print(render_frame.get_dimensions())
-            print(f'TIMESTEP {timestep}')
+            print(f'\nTIMESTEP {timestep}:')
             print(render_frame.render())
+            encoded_value = self.read_signals_tape_value()
+            print(f'{encoded_value=}')
             print('')

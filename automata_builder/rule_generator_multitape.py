@@ -530,7 +530,7 @@ class WriteRecord(object):
     def log(self):
         print(
             f'{self.origin_product} | {self.write_target} '
-            f'-> {self.tape_cell_state}'
+            f'-> {self.tape_cell_state} ({self.annotation})'
         )
 
 

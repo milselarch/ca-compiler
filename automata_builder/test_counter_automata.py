@@ -63,4 +63,4 @@ if __name__ == '__main__':
 
     # TODO: add visualize option to show tape states each step
     encoded_value = runner.read_signals_tape_value()
-    print(f'{encoded_value=}')
+    print(f'end encoded value = {encoded_value}')
