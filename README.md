@@ -74,17 +74,19 @@ Supported stages:
 - codegen
 
 ## TODO
+- design counter automata that operates within data range
+- add unittest for single-tape compiled automata
 - implement tacky + code gen for relational operators
 - support chapter 2 test suit when targeting Potato CPU
 - implement assembly gen for relational operators
 - implement multi-tape cellular automata codegen
 - implement multi-tape cellular automata composition
-- multi-tape to single-tape cellular automata compiler
 - implement web automata visualizer tool
 - implement TUI for automata visualization
 - add annotated blocks for assembly generated
 
 # DONE
+- multi-tape to single-tape cellular automata compiler
 - support chapter 1 test suite when targeting Potato CPU
 - add precedence climbing for expressions
 - implement tacky IR generation
