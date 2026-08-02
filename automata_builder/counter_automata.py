@@ -393,6 +393,7 @@ class CounterAutomataRunner(object):
         if not data_region:
             return 0
 
+        # print("DATA_REGION", data_region)
         # The last cell in the signals tape is always an ST_REDUCE_START cell
         assert data_region[-1] == ST_REDUCE_START
         relevant_data_region = data_region[:-1]
@@ -424,14 +425,13 @@ class CounterAutomataRunner(object):
         # TODO: consider unpropagated carry states
         return encoded_number
 
-    def step(self) -> ProcessStepResult:
-        return self.multi_tape_automata.step()
+    def step(self, verbose: bool = True) -> ProcessStepResult:
+        return self.multi_tape_automata.step(verbose=verbose)
 
     def run_simulation(
         self, num_timesteps: int = 30, terminal_width: int = BLANK_INT,
-        render_start: int = -5
+        render_start: int = -5, render: bool = True
     ):
-        # print(multi_tape.tapes)
         try:
             terminal_size = os.get_terminal_size()
             default_terminal_width = terminal_size.columns - 1
@@ -441,25 +441,27 @@ class CounterAutomataRunner(object):
         if terminal_width == BLANK_INT:
             terminal_width = default_terminal_width
 
-        for digit in range(self.base):
-            print(
-                f'{digit=}: '
-                f'paused={paused_counter(digit)} '
-                f'active={active_counter(digit)}'
-            )
+        if render:
+            for digit in range(self.base):
+                print(
+                    f'{digit=}: '
+                    f'paused={paused_counter(digit)} '
+                    f'active={active_counter(digit)}'
+                )
 
         for timestep in range(num_timesteps):
             # print(f'{terminal_width=}')
             if timestep > 0:
-                self.step()
+                self.step(verbose=render)
 
-            render_frame = self.multi_tape_automata.render_tapes(
-                start_position=render_start, length=terminal_width,
-                cell_width=2
-            )
-            # print(render_frame.get_dimensions())
-            print(f'\nTIMESTEP {timestep}:')
-            print(render_frame.render())
-            encoded_value = self.read_signals_tape_value()
-            print(f'{encoded_value=}')
-            print('')
+            if render:
+                render_frame = self.multi_tape_automata.render_tapes(
+                    start_position=render_start, length=terminal_width,
+                    cell_width=2
+                )
+                # print(render_frame.get_dimensions())
+                print(f'\nTIMESTEP {timestep}:')
+                print(render_frame.render())
+                encoded_value = self.read_signals_tape_value()
+                print(f'{encoded_value=}')
+                print('')

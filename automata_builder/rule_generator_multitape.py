@@ -301,6 +301,11 @@ class BidirectionalTape(object):
 
             minimal_data_region.append(tape_cell_state)
 
+        # remove trailing void state cells
+        # this can happen if all data cells are from the rev_data region
+        while minimal_data_region and minimal_data_region[-1] == VOID_STATE:
+            minimal_data_region.pop()
+
         return minimal_data_region
 
     def render_line(
@@ -779,14 +784,14 @@ class MultiTapeAutomata(object):
             active_writes=active_writes
         )
 
-    def step(self) -> ProcessStepResult:
+    def step(self, verbose: bool = False) -> ProcessStepResult:
         """
         Set the new state of the multi-tape after going forward
         a single step.
         :return:
         The previous multi-tape state before the step
         """
-        process_result = self.process_step()
+        process_result = self.process_step(log_active_writes=verbose)
         self._multi_tape = process_result.new_multi_tape
         return process_result
 

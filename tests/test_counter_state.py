@@ -34,5 +34,6 @@ parser.add_argument(
     help='Max number to test (default: 10)'
 )
 
-args = parser.parse_args()
-test_counter_digit_encoding(args.max_num)
+if __name__ == '__main__':
+    args = parser.parse_args()
+    test_counter_digit_encoding(args.max_num)
