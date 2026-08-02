@@ -6,11 +6,11 @@ use std::collections::hash_map::DefaultHasher;
 use pyo3::{pyclass, pymethods, PyResult};
 use pyo3::exceptions::{PyIndexError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
+use pyo3::types::PyDict;
 use pyo3_stub_gen::define_stub_info_gatherer;
 use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
-use crate::automata::py_terms_multitape::{PyMultiTapeProduct, D};
-use crate::automata::terms::{clip_after_space, validate_debug_info_exists, AbstractExpression, CellState, ExprDebugInfo, Expression, Product, Term};
-use crate::automata::terms_multitape::{MultiTapeProduct, MultiTapeTerm};
+use crate::automata::terms::{clip_after_space, CellState, ExprDebugInfo};
+use crate::automata::terms_multitape::{validate_debug_info_exists, AbstractMultiTapeExpression, MultiTapeCellState, MultiTapeExpression, MultiTapeProduct, MultiTapeProductFactory, MultiTapeTerm, TapeNo};
 /*
 Reasons to redo this in rust
 - expansion of terms grows hyper-exponentially with each timestep,
@@ -20,8 +20,8 @@ Reasons to redo this in rust
 */
 
 fn to_internal_expr_mapping(
-    expansion_mapping: HashMap<CellState, PyExpression>
-) -> HashMap<CellState, Expression> {
+    expansion_mapping: HashMap<MultiTapeCellState, PyMultiTapeExpression>
+) -> HashMap<MultiTapeCellState, MultiTapeExpression> {
     expansion_mapping
         .into_iter()
         .map(|(key, expr)| {
@@ -31,40 +31,40 @@ fn to_internal_expr_mapping(
         }).collect()
 }
 
-impl Term {
-    fn to_py_term(&self) -> A {
-        A::from_term(&self.clone())
+impl MultiTapeTerm {
+    fn to_py_term(&self) -> D {
+        D::from_term(self.clone())
     }
 }
-impl Product {
-    fn to_py_product(&self) -> PyProduct {
-        PyProduct {
+impl MultiTapeProduct {
+    fn to_py_product(&self) -> PyMultiTapeProduct {
+        PyMultiTapeProduct {
             product: self.clone(),
         }
     }
 }
-impl Expression {
-    fn to_py_expr(&self) -> PyExpression {
-        PyExpression::new(self.clone())
+impl MultiTapeExpression {
+    fn to_py_expr(&self) -> PyMultiTapeExpression {
+        PyMultiTapeExpression::new(self.clone())
     }
 }
 
-trait ToPyExpression {
-    fn to_pyexpr(&self) -> PyExpression;
+trait ToPyMultiTapeExpression {
+    fn to_pyexpr(&self) -> PyMultiTapeExpression;
 }
-impl ToPyExpression for Expression {
-    fn to_pyexpr(&self) -> PyExpression {
-        PyExpression::new(self.clone())
+impl ToPyMultiTapeExpression for MultiTapeExpression {
+    fn to_pyexpr(&self) -> PyMultiTapeExpression {
+        PyMultiTapeExpression::new(self.clone())
     }
 }
-impl ToPyExpression for Product {
-    fn to_pyexpr(&self) -> PyExpression {
-        PyExpression::new(self.to_expression())
+impl ToPyMultiTapeExpression for MultiTapeProduct {
+    fn to_pyexpr(&self) -> PyMultiTapeExpression {
+        PyMultiTapeExpression::new(self.to_expression())
     }
 }
-impl ToPyExpression for Term {
-    fn to_pyexpr(&self) -> PyExpression {
-        PyExpression::new(self.to_expression())
+impl ToPyMultiTapeExpression for MultiTapeTerm {
+    fn to_pyexpr(&self) -> PyMultiTapeExpression {
+        PyMultiTapeExpression::new(self.to_expression())
     }
 }
 
@@ -105,15 +105,15 @@ impl PyDebugInfo {
 #[pyclass]
 #[derive(struct_macro_eq::CustomEq, Clone, Debug, Hash)]
 #[ignore_regex="^_"]
-pub struct A {
-    term: Term
+pub struct D {
+    term: MultiTapeTerm
 }
-impl A {
-    pub fn copy(&self) -> A {
-        A { term: self.term.clone() }
+impl D {
+    pub fn copy(&self) -> D {
+        D { term: self.term.clone() }
     }
-    pub fn from_term(term: &Term) -> A {
-        A { term: term.clone() }
+    pub fn from_term(term: MultiTapeTerm) -> D {
+        D { term }
     }
     pub fn _assign_expr_position(
         &mut self, product_idx: u64, term_idx: u64
@@ -122,12 +122,12 @@ impl A {
             product_idx, term_idx
         );
     }
-    pub fn _to_product(&self) -> PyProduct {
-        PyProduct::new(vec![self.copy()])
+    pub fn _to_product(&self) -> PyMultiTapeProduct {
+        PyMultiTapeProduct::new(vec![self.copy()])
     }
     pub fn _get_name() -> String {
-        const TERM_EXAMPLE: A = A {term: Term {
-            position: 0, state: 0, _optimized: false,
+        const TERM_EXAMPLE: D = D {term: MultiTapeTerm {
+            position: 0, state: (0, 0), _optimized: false,
             _debug_info: ExprDebugInfo {
                 position_info: None,
                 parent_position_info: None,
@@ -136,34 +136,41 @@ impl A {
         }};
         clip_after_space(format!("{:?}", TERM_EXAMPLE))
     }
-    pub fn get_term(&self) -> &Term {
+    pub fn get_term(&self) -> &MultiTapeTerm {
         &self.term
     }
 }
-impl PartialEq<A> for &A {
-    fn eq(&self, other: &A) -> bool {
+impl PartialEq<D> for &D {
+    fn eq(&self, other: &D) -> bool {
         self.term.position == other.term.position &&
             self.term.state == other.term.state
     }
 }
 #[gen_stub_pymethods]
 #[pymethods]
-impl A {
+impl D {
     #[new]
-    #[pyo3(signature = (position, state, optimized=false))]
-    pub fn new(position: i64, state: CellState, optimized: bool) -> Self {
-        A { term: Term::new(position, state, optimized) }
+    #[pyo3(signature = (position, tape_no, state, optimized=false))]
+    pub fn new(
+        position: i64, tape_no: TapeNo, state: CellState,
+        optimized: bool
+    ) -> Self {
+        let tape_and_cell_state = (tape_no, state);
+        D { term: MultiTapeTerm::new(position, tape_and_cell_state, optimized) }
     }
     fn __hash__(&self) -> isize {
         let mut hasher = DefaultHasher::new();
         self.term.hash(&mut hasher);
         hasher.finish() as isize
     }
-    pub fn to_py_product(&self) -> PyResult<PyProduct> {
+    pub fn __deepcopy__(&self, _memo: &Bound<PyDict>) -> Self {
+        self.clone()
+    }
+    pub fn to_py_product(&self) -> PyResult<PyMultiTapeProduct> {
         Ok(self._to_product())
     }
-    pub fn to_py_expression(&self) -> PyResult<PyExpression> {
-        Ok(PyExpression::from(
+    pub fn to_py_expression(&self) -> PyResult<PyMultiTapeExpression> {
+        Ok(PyMultiTapeExpression::from(
             self.term.to_expression()
         ))
     }
@@ -194,28 +201,28 @@ impl A {
             debug_info: self.term._debug_info.clone()
         })
     }
-    fn __or__(&self, other: &Bound<PyAny>) -> PyResult<PyExpression> {
-        if let Ok(other_term) = other.extract::<A>() {
-            Ok(PyExpression::from(self.term.copy() | other_term.term))
-        } else if let Ok(other_product) = other.extract::<PyProduct>() {
-            Ok(PyExpression::from(self.term.copy() | other_product.product))
-        } else if let Ok(other_expression) = other.extract::<PyExpression>() {
-            Ok(PyExpression::from(self.term.copy() | other_expression.expression))
+    fn __or__(&self, other: &Bound<PyAny>) -> PyResult<PyMultiTapeExpression> {
+        if let Ok(other_term) = other.extract::<D>() {
+            Ok(PyMultiTapeExpression::from(self.term.copy() | other_term.term))
+        } else if let Ok(other_product) = other.extract::<PyMultiTapeProduct>() {
+            Ok(PyMultiTapeExpression::from(self.term.copy() | other_product.product))
+        } else if let Ok(other_expression) = other.extract::<PyMultiTapeExpression>() {
+            Ok(PyMultiTapeExpression::from(self.term.copy() | other_expression.expression))
         } else {
             Err(PyTypeError::new_err("Unsupported operand type(s)"))
         }
     }
-    fn __mul__(&self, other: &Bound<PyAny>) -> PyResult<PyExpression> {
-        if let Ok(other_term) = other.extract::<A>() {
-            Ok(PyExpression::from(
+    fn __mul__(&self, other: &Bound<PyAny>) -> PyResult<PyMultiTapeExpression> {
+        if let Ok(other_term) = other.extract::<D>() {
+            Ok(PyMultiTapeExpression::from(
                 (self.term.copy() * other_term.term).to_expression()
             ))
-        } else if let Ok(other_product) = other.extract::<PyProduct>() {
-            Ok(PyExpression::from(
+        } else if let Ok(other_product) = other.extract::<PyMultiTapeProduct>() {
+            Ok(PyMultiTapeExpression::from(
                 (self.term.copy() * other_product.product).to_expression()
             ))
-        } else if let Ok(other_expression) = other.extract::<PyExpression>() {
-            Ok(PyExpression::from(
+        } else if let Ok(other_expression) = other.extract::<PyMultiTapeExpression>() {
+            Ok(PyMultiTapeExpression::from(
                 self.term.copy() * other_expression.expression
             ))
         } else {
@@ -223,16 +230,16 @@ impl A {
         }
     }
     fn __eq__(&self, other: &Bound<PyAny>) -> PyResult<bool> {
-        if let Ok(other_term) = other.extract::<A>() {
+        if let Ok(other_term) = other.extract::<D>() {
             Ok(self == other_term)
-        } else if let Ok(other_product) = other.extract::<PyProduct>() {
+        } else if let Ok(other_product) = other.extract::<PyMultiTapeProduct>() {
             if other_product._get_num_terms() > 1 { return Ok(false) }
             let term = match other_product._get_term(0) {
                 Some(term) => term,
                 None => return Ok(false)
             };
             Ok(self.term == *term)
-        } else if let Ok(other_expression) = other.extract::<PyExpression>() {
+        } else if let Ok(other_expression) = other.extract::<PyMultiTapeExpression>() {
             if other_expression._get_num_products() > 1 { return Ok(false) }
             let product = match other_expression._get_product(0) {
                 Some(product) => product,
@@ -248,7 +255,7 @@ impl A {
         }
     }
     fn __repr__(&self) -> PyResult<String> {
-        Ok(self.term._to_string(&A::_get_name()))
+        Ok(self.term._to_string(&D::_get_name()))
     }
     fn to_py_string(&self, name: String) -> PyResult<String> {
         Ok(self.term._to_string(&name))
@@ -256,33 +263,33 @@ impl A {
     fn get_position(&self) -> PyResult<i64> {
         Ok(self.term.position)
     }
-    fn get_state(&self) -> PyResult<CellState> {
+    fn get_state(&self) -> PyResult<MultiTapeCellState> {
         Ok(self.term.state)
     }
-    fn sub(&self, substitutions: HashMap<i64, CellState>, default: CellState) -> PyResult<bool> {
+    fn sub(&self, substitutions: HashMap<i64, MultiTapeCellState>, default: MultiTapeCellState) -> PyResult<bool> {
         Ok(self.term._sub(&substitutions, default))
     }
     #[pyo3(signature=(expansion_mapping, debug=true, fold=false))]
     fn expand(
-        &self, expansion_mapping: HashMap<CellState, PyExpression>,
+        &self, expansion_mapping: HashMap<MultiTapeCellState, PyMultiTapeExpression>,
         debug: bool, fold: bool
-    ) -> PyResult<PyExpression> {
+    ) -> PyResult<PyMultiTapeExpression> {
         let internal_expr_mapping = to_internal_expr_mapping(expansion_mapping);
-        Ok(PyExpression::from(
+        Ok(PyMultiTapeExpression::from(
             self.term._expand(&internal_expr_mapping, debug, fold))
         )
     }
     #[pyo3(signature=(expansion_mapping, steps, debug=true, fold=false))]
     fn expand_steps(
-        &self, expansion_mapping: HashMap<CellState, PyExpression>,
+        &self, expansion_mapping: HashMap<MultiTapeCellState, PyMultiTapeExpression>,
         steps: u64, debug: bool, fold: bool
-    ) -> PyResult<PyExpression> {
+    ) -> PyResult<PyMultiTapeExpression> {
         let internal_expr_mapping = to_internal_expr_mapping(expansion_mapping);
         let expansion = self.term._expand_steps(
             &internal_expr_mapping, steps, debug, fold
         );
         // validate_debug_info_exists(&expansion);
-        Ok(PyExpression::from(expansion))
+        Ok(PyMultiTapeExpression::from(expansion))
     }
     pub fn validate_debug_info(&self) {
         assert!(
@@ -297,11 +304,11 @@ impl A {
 #[pyclass]
 #[derive(struct_macro_eq::CustomEq, Clone, Debug, Hash)]
 #[ignore_regex="^_"]
-pub struct PyProduct {
-    product: Product
+pub struct PyMultiTapeProduct {
+    product: MultiTapeProduct
 }
-impl PyProduct {
-    pub fn new(terms: Vec<A>) -> Self {
+impl PyMultiTapeProduct {
+    pub fn new(terms: Vec<D>) -> Self {
         let mut terms_set = HashSet::new();
         let mut rust_terms = Vec::new();
 
@@ -310,30 +317,31 @@ impl PyProduct {
             rust_terms.push(term.term.copy());
         }
 
-        PyProduct {
-            product: Product {
+        PyMultiTapeProduct {
+            product: MultiTapeProduct {
                 _terms: rust_terms, _optimized: false,
+                _annotation: String::new()
             },
         }
     }
-    fn _get_term(&self, index: usize) -> Option<&Term> {
+    fn _get_term(&self, index: usize) -> Option<&MultiTapeTerm> {
         self.product._terms.get(index)
     }
     fn _get_num_terms(&self) -> usize {
         self.product._get_num_terms()
     }
-    fn from_product(product: Product) -> Self {
-        PyProduct { product }
+    fn from_product(product: MultiTapeProduct) -> Self {
+        PyMultiTapeProduct { product }
     }
 }
-impl PartialEq<PyProduct> for &PyProduct {
-    fn eq(&self, other: &PyProduct) -> bool {
+impl PartialEq<PyMultiTapeProduct> for &PyMultiTapeProduct {
+    fn eq(&self, other: &PyMultiTapeProduct) -> bool {
         self.product == other.product
     }
 }
 
-impl PartialEq<Term> for &Term {
-    fn eq(&self, other: &Term) -> bool {
+impl PartialEq<MultiTapeTerm> for &MultiTapeTerm {
+    fn eq(&self, other: &MultiTapeTerm) -> bool {
         self.position == other.position &&
             self.state == other.state
     }
@@ -341,22 +349,30 @@ impl PartialEq<Term> for &Term {
 
 #[gen_stub_pymethods]
 #[pymethods]
-impl PyProduct {
+impl PyMultiTapeProduct {
     #[new]
-    pub fn init(terms: Vec<A>) -> PyResult<PyProduct> {
+    #[pyo3(signature = (terms, annotation = ""))]
+    pub fn init(
+        terms: Vec<D>, annotation: &str
+    ) -> PyResult<PyMultiTapeProduct> {
         if terms.len() == 0 {
             return Err(PyValueError::new_err("terms cannot be empty"));
         }
-        let rs_terms: Vec<Term> =
+        let rs_terms: Vec<MultiTapeTerm> =
             terms.into_iter().map(|term| term.term).collect();
-        let product = Product::new(rs_terms);
-        Ok(PyProduct { product })
+        let product = MultiTapeProductFactory::new(rs_terms)
+            .with_annotation(annotation.parse()?)
+            .to_product();
+        Ok(PyMultiTapeProduct { product })
     }
-    pub fn to_py_product(&self) -> PyResult<PyProduct> {
+    pub fn get_annotation(&self) -> PyResult<String> {
+        Ok(self.product._annotation.clone())
+    }
+    pub fn to_py_product(&self) -> PyResult<PyMultiTapeProduct> {
         Ok(Self::from_product(self.product.copy()))
     }
-    pub fn to_py_expression(&self) -> PyResult<PyExpression> {
-        Ok(PyExpression::from(
+    pub fn to_py_expression(&self) -> PyResult<PyMultiTapeExpression> {
+        Ok(PyMultiTapeExpression::from(
             self.product.to_expression()
         ))
     }
@@ -365,48 +381,51 @@ impl PyProduct {
         self.product.hash(&mut hasher);
         hasher.finish() as isize
     }
-    fn __or__(&self, other: &Bound<PyAny>) -> PyResult<PyExpression> {
-        if let Ok(other_term) = other.extract::<A>() {
+    pub fn __deepcopy__(&self, _memo: &Bound<PyDict>) -> Self {
+        self.clone()
+    }
+    fn __or__(&self, other: &Bound<PyAny>) -> PyResult<PyMultiTapeExpression> {
+        if let Ok(other_term) = other.extract::<D>() {
             Ok((self.product.copy() | other_term.term).to_pyexpr())
-        } else if let Ok(other_product) = other.extract::<PyProduct>() {
+        } else if let Ok(other_product) = other.extract::<PyMultiTapeProduct>() {
             Ok((self.product.copy() | other_product.product).to_pyexpr())
-        } else if let Ok(other_expression) = other.extract::<PyExpression>() {
+        } else if let Ok(other_expression) = other.extract::<PyMultiTapeExpression>() {
             Ok((self.product.copy() | other_expression.expression).to_pyexpr())
         } else {
             Err(PyTypeError::new_err("Unsupported operand type(s)"))
         }
     }
-    fn __mul__(&self, other: &Bound<PyAny>) -> PyResult<PyExpression> {
-        if let Ok(other_term) = other.extract::<A>() {
+    fn __mul__(&self, other: &Bound<PyAny>) -> PyResult<PyMultiTapeExpression> {
+        if let Ok(other_term) = other.extract::<D>() {
             Ok((self.product.copy() * other_term.term).to_pyexpr())
-        } else if let Ok(other_product) = other.extract::<PyProduct>() {
+        } else if let Ok(other_product) = other.extract::<PyMultiTapeProduct>() {
             Ok((self.product.copy() * other_product.product).to_pyexpr())
-        } else if let Ok(other_expression) = other.extract::<PyExpression>() {
+        } else if let Ok(other_expression) = other.extract::<PyMultiTapeExpression>() {
             Ok((self.product.copy() * other_expression.expression).to_pyexpr())
         } else {
             Err(PyTypeError::new_err("Unsupported operand type(s)"))
         }
     }
-    fn multiply_by_term(&self, term: A) -> PyResult<PyProduct> {
+    fn multiply_by_term(&self, term: D) -> PyResult<PyMultiTapeProduct> {
         Ok(Self::from_product(self.product.copy() * term.term))
     }
-    fn multiply_by_product(&self, product: PyProduct) -> PyResult<PyProduct> {
+    fn multiply_by_product(&self, product: PyMultiTapeProduct) -> PyResult<PyMultiTapeProduct> {
         Ok(Self::from_product(self.product.copy() * product.product))
     }
-    fn make_copy(&self) -> PyResult<PyProduct> {
+    fn make_copy(&self) -> PyResult<PyMultiTapeProduct> {
         Ok(Self::from_product(self.product.copy()))
     }
     fn __eq__(&self, other: &Bound<PyAny>) -> PyResult<bool> {
-        if let Ok(other_term) = other.extract::<A>() {
+        if let Ok(other_term) = other.extract::<D>() {
             if self.product._terms.len() > 1 { return Ok(false) }
             let term = match self.product._terms.get(0) {
                 Some(term) => term,
                 None => return Ok(false)
             };
             Ok(term == other_term.term)
-        } else if let Ok(other_product) = other.extract::<PyProduct>() {
+        } else if let Ok(other_product) = other.extract::<PyMultiTapeProduct>() {
             Ok(self == other_product)
-        } else if let Ok(other_expression) = other.extract::<PyExpression>() {
+        } else if let Ok(other_expression) = other.extract::<PyMultiTapeExpression>() {
             if other_expression._get_num_products() > 1 { return Ok(false) }
             let product = match other_expression._get_product(0) {
                 Some(product) => product,
@@ -418,12 +437,12 @@ impl PyProduct {
         }
     }
     fn __repr__(&self) -> PyResult<String> {
-        Ok(self.product._to_string(&A::_get_name()))
+        Ok(self.product._to_string(&D::_get_name()))
     }
     fn __len__(&self) -> PyResult<usize> {
         Ok(self._get_num_terms())
     }
-    fn __getitem__(&self, index: usize) -> PyResult<A> {
+    fn __getitem__(&self, index: usize) -> PyResult<D> {
         let term_option = self.product._terms.get(index);
         match term_option {
             Some(term) => {
@@ -436,14 +455,14 @@ impl PyProduct {
     fn to_py_string(&self, name: String) -> PyResult<String> {
         Ok(self.product._to_string(&name))
     }
-    fn sub(&self, substitutions: HashMap<i64, CellState>, default: CellState) -> PyResult<bool> {
+    fn sub(&self, substitutions: HashMap<i64, MultiTapeCellState>, default: MultiTapeCellState) -> PyResult<bool> {
         Ok(self.product._sub(&substitutions, default))
     }
     #[pyo3(signature=(expansion_mapping, debug=true, fold=false))]
     fn expand(
-        &self, expansion_mapping: HashMap<CellState, PyExpression>,
+        &self, expansion_mapping: HashMap<MultiTapeCellState, PyMultiTapeExpression>,
         debug: bool, fold: bool
-    ) -> PyResult<PyExpression> {
+    ) -> PyResult<PyMultiTapeExpression> {
         let internal_expr_mapping = to_internal_expr_mapping(expansion_mapping);
         Ok(self.product._expand(
             &internal_expr_mapping, debug, fold
@@ -451,9 +470,9 @@ impl PyProduct {
     }
     #[pyo3(signature=(expansion_mapping, steps, debug=true, fold=false))]
     fn expand_steps(
-        &self, expansion_mapping: HashMap<CellState, PyExpression>,
+        &self, expansion_mapping: HashMap<MultiTapeCellState, PyMultiTapeExpression>,
         steps: u64, debug: bool, fold: bool
-    ) -> PyResult<PyExpression> {
+    ) -> PyResult<PyMultiTapeExpression> {
         let internal_expr_mapping = to_internal_expr_mapping(expansion_mapping);
         Ok(self.product._expand_steps(
             &internal_expr_mapping, steps, debug, fold
@@ -462,21 +481,19 @@ impl PyProduct {
     fn get_num_terms(&self) -> PyResult<usize> {
         Ok(self._get_num_terms())
     }
+    fn get_flat_terms(&self) -> PyResult<Vec<D>> {
+        let terms = self.product._terms.iter().map(
+            |term| term.to_py_term()
+        ).collect();
+        Ok(terms)
+    }
     pub fn validate_debug_info(&self) {
         for term in &self.product._terms {
             assert!(
                 term._debug_info.position_info.is_some(),
-                "Term debug info is missing for term: {:?}", term
+                "MultiTapeTerm debug info is missing for term: {:?}", term
             );
         }
-    }
-    pub fn to_flat_terms(&self) -> PyResult<Vec<A>> {
-        let terms = self.product.to_flat_terms();
-        let mut flat_py_terms = Vec::new();
-        for term in terms {
-            flat_py_terms.push(term.to_py_term());
-        }
-        Ok(flat_py_terms)
     }
 }
 
@@ -484,40 +501,40 @@ impl PyProduct {
 #[pyclass]
 #[derive(struct_macro_eq::CustomEq, Clone, Debug, Hash)]
 #[ignore_regex="^_"]
-pub struct PyExpression {
-    expression: Expression
+pub struct PyMultiTapeExpression {
+    expression: MultiTapeExpression
 }
-impl PyExpression {
-    pub fn new(expression: Expression) -> Self {
-        PyExpression { expression }
+impl PyMultiTapeExpression {
+    pub fn new(expression: MultiTapeExpression) -> Self {
+        PyMultiTapeExpression { expression }
     }
     pub fn _get_num_products(&self) -> usize {
         self.expression.products.len()
     }
-    pub fn _get_product(&self, index: usize) -> Option<&Product> {
+    pub fn _get_product(&self, index: usize) -> Option<&MultiTapeProduct> {
         self.expression.products.get(index)
     }
-    pub fn from(expression: Expression) -> Self {
-        PyExpression::new(expression)
+    pub fn from(expression: MultiTapeExpression) -> Self {
+        PyMultiTapeExpression::new(expression)
     }
 }
-impl PartialEq<PyExpression> for &PyExpression {
-    fn eq(&self, other: &PyExpression) -> bool {
+impl PartialEq<PyMultiTapeExpression> for &PyMultiTapeExpression {
+    fn eq(&self, other: &PyMultiTapeExpression) -> bool {
         self.expression == other.expression
     }
 }
 #[gen_stub_pymethods]
 #[pymethods]
-impl PyExpression {
-    pub fn to_py_product(&self) -> PyResult<PyProduct> {
+impl PyMultiTapeExpression {
+    pub fn to_py_product(&self) -> PyResult<PyMultiTapeProduct> {
         if self._get_num_products() != 1 {
             return Err(PyValueError::new_err(
-                "Expression does not have exactly one product"
+                "MultiTapeExpression does not have exactly one product"
             ));
         }
         Ok(self.expression.products[0].to_py_product())
     }
-    pub fn to_py_expression(&self) -> PyResult<PyExpression> {
+    pub fn to_py_expression(&self) -> PyResult<PyMultiTapeExpression> {
         Ok(self.expression.to_pyexpr())
     }
     fn __hash__(&self) -> isize {
@@ -525,30 +542,33 @@ impl PyExpression {
         self.expression.hash(&mut hasher);
         hasher.finish() as isize
     }
-    fn __or__(&self, other: &Bound<PyAny>) -> PyResult<PyExpression> {
-        if let Ok(other_term) = other.extract::<A>() {
+    pub fn __deepcopy__(&self, _memo: &Bound<PyDict>) -> Self {
+        self.clone()
+    }
+    fn __or__(&self, other: &Bound<PyAny>) -> PyResult<PyMultiTapeExpression> {
+        if let Ok(other_term) = other.extract::<D>() {
             Ok((self.expression.copy() | other_term.term).to_pyexpr())
-        } else if let Ok(other_product) = other.extract::<PyProduct>() {
+        } else if let Ok(other_product) = other.extract::<PyMultiTapeProduct>() {
             Ok((self.expression.copy() | other_product.product).to_pyexpr())
-        } else if let Ok(other_expression) = other.extract::<PyExpression>() {
+        } else if let Ok(other_expression) = other.extract::<PyMultiTapeExpression>() {
             Ok((self.expression.copy() | other_expression.expression).to_pyexpr())
         } else {
             Err(PyTypeError::new_err("Unsupported operand type(s)"))
         }
     }
-    fn __mul__(&self, other: &Bound<PyAny>) -> PyResult<PyExpression> {
-        if let Ok(other_term) = other.extract::<A>() {
+    fn __mul__(&self, other: &Bound<PyAny>) -> PyResult<PyMultiTapeExpression> {
+        if let Ok(other_term) = other.extract::<D>() {
             Ok((self.expression.copy() * other_term.term).to_pyexpr())
-        } else if let Ok(other_product) = other.extract::<PyProduct>() {
+        } else if let Ok(other_product) = other.extract::<PyMultiTapeProduct>() {
             Ok((self.expression.copy() * other_product.product).to_pyexpr())
-        } else if let Ok(other_expression) = other.extract::<PyExpression>() {
+        } else if let Ok(other_expression) = other.extract::<PyMultiTapeExpression>() {
             Ok((self.expression.copy() * other_expression.expression).to_pyexpr())
         } else {
             Err(PyTypeError::new_err("Unsupported operand type(s)"))
         }
     }
     fn __eq__(&self, other: &Bound<PyAny>) -> PyResult<bool> {
-        if let Ok(other_term) = other.extract::<A>() {
+        if let Ok(other_term) = other.extract::<D>() {
             if self._get_num_products() > 1 { return Ok(false) }
             let product = match self._get_product(0) {
                 Some(product) => product,
@@ -560,26 +580,26 @@ impl PyExpression {
                 None => return Ok(false)
             };
             Ok(term == other_term.term)
-        } else if let Ok(other_product) = other.extract::<PyProduct>() {
+        } else if let Ok(other_product) = other.extract::<PyMultiTapeProduct>() {
             if self._get_num_products() > 1 { return Ok(false) }
             let product = match self._get_product(0) {
                 Some(product) => product,
                 None => return Ok(false)
             };
             Ok(product == other_product.product)
-        } else if let Ok(other_expression) = other.extract::<PyExpression>() {
+        } else if let Ok(other_expression) = other.extract::<PyMultiTapeExpression>() {
             Ok(self == other_expression)
         } else {
             Ok(false)
         }
     }
     fn __repr__(&self) -> PyResult<String> {
-        Ok(self.expression._to_string(&A::_get_name()))
+        Ok(self.expression._to_string(&D::_get_name()))
     }
     fn __len__(&self) -> PyResult<usize> {
         Ok(self._get_num_products())
     }
-    fn __getitem__(&self, index: usize) -> PyResult<PyProduct> {
+    fn __getitem__(&self, index: usize) -> PyResult<PyMultiTapeProduct> {
         let product_option = self.expression.products.get(index);
         match product_option {
             Some(product) => { Ok(product.to_py_product()) }
@@ -589,14 +609,14 @@ impl PyExpression {
     fn to_py_string(&self, name: String) -> PyResult<String> {
         Ok(self.expression._to_string(&name))
     }
-    fn sub(&self, substitutions: HashMap<i64, CellState>, default: CellState) -> PyResult<bool> {
+    fn sub(&self, substitutions: HashMap<i64, MultiTapeCellState>, default: MultiTapeCellState) -> PyResult<bool> {
         Ok(self.expression._sub(&substitutions, default))
     }
     #[pyo3(signature=(expansion_mapping, debug=true, fold=false))]
     fn expand(
-        &self, expansion_mapping: HashMap<CellState, PyExpression>, debug: bool,
+        &self, expansion_mapping: HashMap<MultiTapeCellState, PyMultiTapeExpression>, debug: bool,
         fold: bool
-    ) -> PyResult<PyExpression> {
+    ) -> PyResult<PyMultiTapeExpression> {
         let internal_expr_mapping = to_internal_expr_mapping(expansion_mapping);
         let expanded = self.expression._expand(
             &internal_expr_mapping, debug, fold
@@ -605,22 +625,22 @@ impl PyExpression {
     }
     #[pyo3(signature=(expansion_mapping, steps, debug=true, fold=false))]
     fn expand_steps(
-        &self, expansion_mapping: HashMap<CellState, PyExpression>,
+        &self, expansion_mapping: HashMap<MultiTapeCellState, PyMultiTapeExpression>,
         steps: u64, debug: bool, fold: bool
-    ) -> PyResult<PyExpression> {
+    ) -> PyResult<PyMultiTapeExpression> {
         let internal_expr_mapping = to_internal_expr_mapping(expansion_mapping);
         let expanded = self.expression._expand_steps(
             &internal_expr_mapping, steps, debug, fold
         );
         Ok(expanded.to_pyexpr())
     }
-    fn get_product(&self, index: usize) -> PyResult<PyProduct> {
+    fn get_product(&self, index: usize) -> PyResult<PyMultiTapeProduct> {
         Ok(self.expression.products.get(index).unwrap().to_py_product())
     }
     fn get_num_terms(&self) -> PyResult<usize> {
         Ok(self.expression._get_num_terms())
     }
-    fn get_flat_terms(&self) -> PyResult<Vec<A>> {
+    fn get_flat_terms(&self) -> PyResult<Vec<D>> {
         let mut terms = Vec::new();
         for product in &self.expression.products {
             for term in &product._terms {
@@ -629,7 +649,14 @@ impl PyExpression {
         }
         Ok(terms)
     }
-    fn pad_products(&self, length: usize) -> PyResult<PyExpression> {
+    fn get_flat_products(&self) -> PyResult<Vec<PyMultiTapeProduct>> {
+        let mut products = Vec::new();
+        for product in &self.expression.products {
+            products.push(product.to_py_product());
+        }
+        Ok(products)
+    }
+    fn pad_products(&self, length: usize) -> PyResult<PyMultiTapeExpression> {
         let new_expr = self.expression.pad_products(length);
         match new_expr {
             Some(new_expr) => { Ok(new_expr.to_py_expr()) }
@@ -642,4 +669,3 @@ impl PyExpression {
 }
 
 define_stub_info_gatherer!(stub_info);
-

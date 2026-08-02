@@ -15,3 +15,10 @@ dynamic = ["version"]
 features = ["pyo3/extension-module"]
 [tool.maturin.package]
 include = ["*.pyi"]
+
+[tool.setuptools]
+package-dir = {"" = "."}
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["automata_builder", "automata_builder.*"]
