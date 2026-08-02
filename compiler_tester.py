@@ -54,7 +54,7 @@ class CompilerTester(object):
         test_path = self.get_test_path(test_name, chapter_no)
         # build the C test file to assembly using the compiler
         run_result = subprocess.run([
-            "./target/release/ca-compiler", test_path
+            "./target/release/ca_compiler", test_path
         ], capture_output=True, text=True)
         assert run_result.returncode == 0
 

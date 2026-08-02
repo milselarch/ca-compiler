@@ -5,6 +5,7 @@ use std::hash::{Hash, Hasher};
 use std::ops::{BitOr, Mul};
 use indexmap::IndexSet;
 use rayon::iter::IntoParallelRefIterator;
+use serde::{Deserialize, Serialize};
 
 pub type CellState = u32;
 pub fn clip_after_space(s: String) -> String {
@@ -29,13 +30,13 @@ pub trait AbstractExpression: Mul + BitOr + Eq + Sized {
     fn _assign_indexes_as_base(&mut self);
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExprPosition {
     pub (crate) product_idx: u64,
     pub (crate) term_idx: u64
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ExprDebugInfo {
     pub (crate) expansion_index: u16,
     pub (crate) position_info: Option<ExprPosition>,
@@ -51,10 +52,10 @@ impl ExprDebugInfo {
     }
 }
 
-#[derive(Clone, Debug, Eq)]
+#[derive(Clone, Debug, Eq, Serialize, Deserialize)]
 pub struct Term {
     // position within the cellular automata tape
-    pub (crate) position: i64,
+    pub position: i64,
     pub state: CellState,
     // TODO: implement optimization
     pub (crate) _optimized: bool,
@@ -68,12 +69,12 @@ impl PartialEq<Term> for Term {
     }
 }
 impl PartialOrd<Term> for Term {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 impl Ord for Term {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn cmp(&self, other: &Self) -> Ordering {
         self.position.cmp(&other.position)
             .then_with(|| self.state.cmp(&other.state))
     }
@@ -266,7 +267,7 @@ impl AbstractExpression for Term {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Product {
     pub (crate) _terms: Vec<Term>,
     pub (crate) _optimized: bool
@@ -283,7 +284,7 @@ impl Product {
     pub(crate) fn _get_term(&self, index: usize) -> Option<&Term> {
         self._terms.get(index)
     }
-    pub(crate) fn pad_terms(&self, length: usize) -> Option<Product> {
+    pub fn pad_terms(&self, length: usize) -> Option<Product> {
         let mut new_terms = self._terms.clone();
         let current_length = self._terms.len();
 
@@ -441,7 +442,7 @@ impl PartialOrd<Self> for Product {
     }
 }
 impl Ord for Product {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn cmp(&self, other: &Self) -> Ordering {
         self._terms.len().cmp(&other._terms.len())
             .then_with(|| self._terms.cmp(&other._terms))
     }
@@ -523,9 +524,9 @@ impl AbstractExpression for Product {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Expression {
-    pub (crate) products: Vec<Product>,
+    pub products: Vec<Product>,
     pub (crate) _optimized: bool
 }
 impl Expression {

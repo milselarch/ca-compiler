@@ -37,10 +37,10 @@ jobs:
 
       - name: Test recent chapter
         run: |
-          python writing-a-c-compiler-tests/test_compiler ./target/release/ca-compiler --chapter 4 --stage lex; 
-          python writing-a-c-compiler-tests/test_compiler ./target/release/ca-compiler --chapter 4 --stage parse; 
-          python writing-a-c-compiler-tests/test_compiler ./target/release/ca-compiler --chapter 4 --stage tacky; 
-          python writing-a-c-compiler-tests/test_compiler ./target/release/ca-compiler --chapter 4 --stage codegen; 
+          python writing-a-c-compiler-tests/test_compiler ./target/release/ca_compiler --chapter 4 --stage lex; 
+          python writing-a-c-compiler-tests/test_compiler ./target/release/ca_compiler --chapter 4 --stage parse; 
+          python writing-a-c-compiler-tests/test_compiler ./target/release/ca_compiler --chapter 4 --stage tacky; 
+          python writing-a-c-compiler-tests/test_compiler ./target/release/ca_compiler --chapter 4 --stage codegen; 
 
       - name: Test full chapters
         run: |
@@ -52,9 +52,9 @@ jobs:
             for stage in "${STAGES[@]}"; do
               echo "Testing chapter $chapter, stage ${stage:-all}"
               if [ -z "$stage" ]; then
-                python writing-a-c-compiler-tests/test_compiler ./target/release/ca-compiler --chapter "$chapter"
+                python writing-a-c-compiler-tests/test_compiler ./target/release/ca_compiler --chapter "$chapter"
               else
-                python writing-a-c-compiler-tests/test_compiler ./target/release/ca-compiler --chapter "$chapter" --stage "$stage"
+                python writing-a-c-compiler-tests/test_compiler ./target/release/ca_compiler --chapter "$chapter" --stage "$stage"
               fi
             done
           done

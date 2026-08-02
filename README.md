@@ -22,7 +22,7 @@ Goals of this programming language:
 Rust is required to build the compiler.  
 Pull the C compiler tests submodule with `git submodule update --init --recursive`
 1. `cargo build --release`
-2. `./target/release/ca-compiler <YOUR_C_FILE.c>`
+2. `./target/release/ca_compiler <YOUR_C_FILE.c>`
 
 For testing things related to the Potato CPU:
 1. Create a python3.12 virtual environment - `python3.12 -m venv venv`
@@ -46,25 +46,25 @@ For testing things related to the Potato CPU:
 Test compilation on all test cases in chapter 2:
 ```bash
 cargo build && \
-writing-a-c-compiler-tests/test_compiler ./target/debug/ca-compiler --chapter 2
+writing-a-c-compiler-tests/test_compiler ./target/debug/ca_compiler --chapter 2
 ```
 
 Test asm gen on all test cases in chapter 2:
 ```bash
 cargo build && \
-writing-a-c-compiler-tests/test_compiler ./target/debug/ca-compiler --chapter 2 --stage codegen
+writing-a-c-compiler-tests/test_compiler ./target/debug/ca_compiler --chapter 2 --stage codegen
 ```
 
 Run code generation for a single file:
 ```bash
 cargo build && \
-./target/debug/ca-compiler writing-a-c-compiler-tests/tests/chapter_3/valid/unop_parens.c --stage codegen
+./target/debug/ca_compiler writing-a-c-compiler-tests/tests/chapter_3/valid/unop_parens.c --stage codegen
 ```
 
 Run assembly code emission for a single file:
 ```bash
 cargo build && \
-./target/debug/ca-compiler ./writing-a-c-compiler-tests/tests/chapter_4/valid/precedence_2.c
+./target/debug/ca_compiler ./writing-a-c-compiler-tests/tests/chapter_4/valid/precedence_2.c
 ```
 
 Supported stages:
