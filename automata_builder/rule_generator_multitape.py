@@ -108,7 +108,7 @@ class MultiTapeTransition(object):
 
 
 @dataclasses.dataclass
-class MultiTapeAutomataTransitionsGroup(object):
+class MultiTapeTransitionsGroup(object):
     """
     contains a set of transitions for a multi-tape cellular automaton
     defined as a mapping from input states to output state
@@ -174,6 +174,10 @@ class MultiTapeAutomataTransitionsGroup(object):
         )
         self.transitions.append(transition)
 
+    def __or__(self):
+        # TODO: go implement this
+        raise NotImplementedError
+
 
 class MultiTapeRuleGenerator(object):
     @staticmethod
@@ -199,7 +203,7 @@ class MultiTapeRuleGenerator(object):
 
     @classmethod
     def generate_equations(
-        cls, transitions_group: MultiTapeAutomataTransitionsGroup,
+        cls, transitions_group: MultiTapeTransitionsGroup,
         require_annotations: bool = False
     ) -> dict[MultiTapeState, PyMultiTapeExpression]:
         state_eq_terms_map: dict[
