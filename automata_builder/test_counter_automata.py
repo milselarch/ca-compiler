@@ -54,15 +54,19 @@ if __name__ == '__main__':
     Examples:
     python -m automata_builder.test_counter_automata --base 8 \
         --write-start -78 --write-end -3 --timesteps 304
+    >>> end encoded value = 76
+    ==========================================
     python -m automata_builder.test_counter_automata --base 8 \
         --write-start -78 --write-end -3 --timesteps 304 -a
+    >>> end encoded value = 26
     """
     args = parser.parse_args()
     timesteps = args.timesteps
 
     if timesteps == BLANK_INT:
-        cells_filled = args.write_end - args.write_start + 1
+        cells_filled = args.write_end - args.write_start + 2
         timesteps = cells_filled
+        print(f'using default {timesteps=}')
 
     runner = CounterAutomataRunner(
         base=args.base,
@@ -71,7 +75,7 @@ if __name__ == '__main__':
         apply_reduction=args.apply_reduction
     )
     runner.run_simulation(
-        num_timesteps=args.timesteps,
+        num_timesteps=timesteps,
         terminal_width=args.terminal_width
     )
 

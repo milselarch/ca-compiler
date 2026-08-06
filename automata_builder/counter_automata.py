@@ -414,23 +414,23 @@ class CounterAutomataBuilder(object):
                 require_annotation=True
             )
 
-        # spawn data one position to the left of the
+        # spawn data at the left of the
         # left end of initial data of the data tape
         _transitions_group.add_transition(
             input_terms=(
-                DT_MID(VOID_STATE),
-                DT_RIGHT(DT_DATA),
-                REDUCER_MID(VOID_STATE),
-                REDUCER_RIGHT(VOID_STATE)
+                DT_LEFT(VOID_STATE),
+                DT_MID(DT_DATA),
+                REDUCER_LEFT(VOID_STATE),
+                REDUCER_MID(VOID_STATE)
             ),
             output_tape_no=REDUCER_TAPE,
-            output_cell_state=REDUCER_PAUSED_DATA,
+            output_cell_state=REDUCER_DATA,
             annotation='REDUCER_SPAWN_LEFT_END'
         )
         # spread the data state rightwards while overlapping with input data
         _transitions_group.add_transition(
             input_terms=(
-                REDUCER_LEFT(DT_DATA),
+                REDUCER_LEFT(REDUCER_DATA),
                 DT_MID(DT_DATA),
                 REDUCER_MID(VOID_STATE)
             ),
@@ -441,7 +441,7 @@ class CounterAutomataBuilder(object):
         # spread the data state leftwards (regardless of input data overlap)
         _transitions_group.add_transition(
             input_terms=(
-                REDUCER_RIGHT(DT_DATA),
+                REDUCER_RIGHT(REDUCER_DATA),
                 REDUCER_MID(VOID_STATE)
             ),
             output_tape_no=REDUCER_TAPE,
