@@ -420,6 +420,7 @@ class CounterAutomataBuilder(object):
             input_terms=(
                 DT_MID(VOID_STATE),
                 DT_RIGHT(DT_DATA),
+                REDUCER_MID(VOID_STATE),
                 REDUCER_RIGHT(VOID_STATE)
             ),
             output_tape_no=REDUCER_TAPE,
@@ -465,7 +466,7 @@ class CounterAutomataBuilder(object):
         )
         return transitions_group
 
-    def build_half_transitions_group(self) -> MultiTapeTransitionsGroup:
+    def build_reduced_transitions_group(self) -> MultiTapeTransitionsGroup:
         """
         The rules built here are designed to produce an automaton
         that generates the n-nary representation of n/2, where n is
@@ -502,7 +503,8 @@ class CounterAutomataBuilder(object):
 class CounterAutomataRunner(object):
     def __init__(
         self, base: int = 8, initial_write_start: int = 0,
-        initial_write_end: int = 20
+        initial_write_end: int = 20,
+        apply_reduction: bool = False
     ):
         """
         Counter-automata instance with initial cells populated
@@ -513,8 +515,15 @@ class CounterAutomataRunner(object):
         :param initial_write_end:
         """
         self.base = base
+        self.apply_reduction = apply_reduction
         self.builder = CounterAutomataBuilder(base=base)
-        self.transitions_group = self.builder.build_transitions_group()
+
+        if apply_reduction:
+            transitions_group = self.builder.build_reduced_transitions_group()
+        else:
+            transitions_group = self.builder.build_transitions_group()
+
+        self.transitions_group = transitions_group
         self.state_eq_map = MultiTapeRuleGenerator.generate_equations(
             self.transitions_group
         )
@@ -522,9 +531,12 @@ class CounterAutomataRunner(object):
         self.initial_write_start = initial_write_start
         self.initial_write_end = initial_write_end
         self.multi_tape_automata = MultiTapeAutomata(self.state_eq_map)
-        self.multi_tape_automata.init_tapes([
-            DATA_TAPE, SIGNALS_TAPE, CARRY_TAPE
-        ])
+
+        init_tapes = [DATA_TAPE, SIGNALS_TAPE, CARRY_TAPE]
+        if apply_reduction:
+            init_tapes.append(REDUCER_TAPE)
+
+        self.multi_tape_automata.init_tapes(tape_nos=init_tapes)
         self.multi_tape_automata.write_region(
             position=self.initial_write_start,
             end_position=self.initial_write_end,
