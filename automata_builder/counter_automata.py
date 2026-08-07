@@ -424,7 +424,7 @@ class CounterAutomataBuilder(object):
                 REDUCER_MID(VOID_STATE)
             ),
             output_tape_no=REDUCER_TAPE,
-            output_cell_state=REDUCER_DATA,
+            output_cell_state=REDUCER_PAUSED_DATA,
             annotation='REDUCER_SPAWN_LEFT_END'
         )
         # spread the data state rightwards while overlapping with input data

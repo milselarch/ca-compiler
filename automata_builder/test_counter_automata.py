@@ -36,11 +36,17 @@ parser.add_argument(
     help='Use a automata ruleset with '
 )
 parser.add_argument(
+    '--no-render', '-n',
+    action='store_true',
+    help='Set to not render automata states to terminal'
+)
+parser.add_argument(
     '--timesteps', '-t',
     type=int,
     default=BLANK_INT,
     help='Number of timesteps to run automata forward for'
 )
+
 parser.add_argument(
     '--terminal-width', '-w',
     type=int,
@@ -51,6 +57,7 @@ parser.add_argument(
 if __name__ == '__main__':
     """
     Run the counter automata simulation with specified parameters.
+    
     Examples:
     python -m automata_builder.test_counter_automata --base 8 \
         --write-start -78 --write-end -3 --timesteps 304
@@ -58,14 +65,24 @@ if __name__ == '__main__':
     ==========================================
     python -m automata_builder.test_counter_automata --base 8 \
         --write-start -78 --write-end -3 --timesteps 304 -a
-    >>> end encoded value = 26
+    >>> end encoded value = 38
+    
+    The half-reducer automata is designed to transform t unary data cells 
+    into (1+x//2) n-ary (base n that is) encoded cells in 2*t time and such 
+    that the encoded n-ary is contained with the same position range as 
+    the original data cells 
+    
+    (and in fact the left end of the encoded n-ary is at the same 
+    position as the left end of the original unary data cell range)
     """
     args = parser.parse_args()
     timesteps = args.timesteps
+    render = not args.no_render
 
     if timesteps == BLANK_INT:
-        cells_filled = args.write_end - args.write_start + 2
-        timesteps = cells_filled
+        # write range is inclusive, hence the +1
+        cells_filled = args.write_end - args.write_start + 1
+        timesteps = cells_filled * 2
         print(f'using default {timesteps=}')
 
     runner = CounterAutomataRunner(
@@ -76,7 +93,8 @@ if __name__ == '__main__':
     )
     runner.run_simulation(
         num_timesteps=timesteps,
-        terminal_width=args.terminal_width
+        terminal_width=args.terminal_width,
+        render=render
     )
 
     # TODO: add visualize option to show tape states each step
