@@ -66,11 +66,15 @@ if __name__ == '__main__':
     python -m automata_builder.test_counter_automata --base 8 \
         --write-start -78 --write-end -3 --timesteps 304 -a
     >>> end encoded value = 38
+    ==========================================
+    python -m automata_builder.test_counter_automata --base 2 \
+        --write-start 0 -a -n --write-end 0
+    >>> end encoded value = 1
     
     The half-reducer automata is designed to transform t unary data cells 
-    into (1+x//2) n-ary (base n that is) encoded cells in 2*t time and such 
-    that the encoded n-ary is contained with the same position range as 
-    the original data cells 
+    into encoded cells with a value of (x+1)//2 in base n and in 2*t time, 
+    and such that the encoded n-ary is contained with the same 
+    position range as the original data cells 
     
     (and in fact the left end of the encoded n-ary is at the same 
     position as the left end of the original unary data cell range)
