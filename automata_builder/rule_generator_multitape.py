@@ -108,7 +108,7 @@ class MultiTapeTransition(object):
 
 
 @dataclasses.dataclass
-class MultiTapeAutomataTransitionsGroup(object):
+class MultiTapeTransitionsGroup(object):
     """
     contains a set of transitions for a multi-tape cellular automaton
     defined as a mapping from input states to output state
@@ -174,6 +174,32 @@ class MultiTapeAutomataTransitionsGroup(object):
         )
         self.transitions.append(transition)
 
+    def __or__(
+        self, other: MultiTapeTransitionsGroup
+    ) -> MultiTapeTransitionsGroup:
+        if not isinstance(other, MultiTapeTransitionsGroup):
+            raise TypeError(f'unexpected type {type(other)}')
+
+        require_annotation = (
+            self.require_annotation or other.require_annotation
+        )
+        if require_annotation:
+            if not self.require_annotation:
+                raise ValueError(
+                    "Cannot combine transitions while other group "
+                    "does not require annotation"
+                )
+            elif not other.require_annotation:
+                raise ValueError(
+                    "Cannot combine transitions while own group "
+                    "requires annotation"
+                )
+
+        combined = self.__class__(require_annotation=require_annotation)
+        combined.transitions.extend(copy.deepcopy(self.transitions))
+        combined.transitions.extend(copy.deepcopy(other.transitions))
+        return combined
+
 
 class MultiTapeRuleGenerator(object):
     @staticmethod
@@ -199,7 +225,7 @@ class MultiTapeRuleGenerator(object):
 
     @classmethod
     def generate_equations(
-        cls, transitions_group: MultiTapeAutomataTransitionsGroup,
+        cls, transitions_group: MultiTapeTransitionsGroup,
         require_annotations: bool = False
     ) -> dict[MultiTapeState, PyMultiTapeExpression]:
         state_eq_terms_map: dict[

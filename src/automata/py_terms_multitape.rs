@@ -266,6 +266,12 @@ impl D {
     fn get_state(&self) -> PyResult<MultiTapeCellState> {
         Ok(self.term.state)
     }
+    fn get_tape_no(&self) -> PyResult<TapeNo> {
+        Ok(self.term.state.0)
+    }
+    fn get_cell_state(&self) -> PyResult<CellState> {
+        Ok(self.term.state.1)
+    }
     fn sub(&self, substitutions: HashMap<i64, MultiTapeCellState>, default: MultiTapeCellState) -> PyResult<bool> {
         Ok(self.term._sub(&substitutions, default))
     }

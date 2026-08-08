@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import os
 
-from typing import Final, Callable
+from typing import Final, Callable, Sequence
 from py_ca_compiler import D
 
 from automata_builder.rule_generator_multitape import (
-    MultiTapeAutomataTransitionsGroup, TapeNo, TapeCellState,
+    MultiTapeTransitionsGroup, TapeNo, TapeCellState,
     MultiTapeRuleGenerator, MultiTapeAutomata, ProcessStepResult,
     MultiTapeState, BLANK_INT, VOID_STATE
 )
@@ -14,6 +14,8 @@ from automata_builder.rule_generator_multitape import (
 DATA_TAPE: Final[TapeNo] = TapeNo(0)
 SIGNALS_TAPE: Final[TapeNo] = TapeNo(1)
 CARRY_TAPE: Final[TapeNo] = TapeNo(2)
+# TODO: rename to reducer tape(?)
+REDUCER_TAPE: Final[TapeNo] = TapeNo(3)
 
 """
 For the signals tape (LSB first to MSB last):
@@ -34,6 +36,9 @@ DT_DATA: Final[TapeCellState] = TapeCellState(0b10)
 """
 ST_REDUCE_START: Final[TapeCellState] = TapeCellState(0b11)
 CT_DATA: Final[TapeCellState] = TapeCellState(0b10)
+
+REDUCER_DATA: Final[TapeCellState] = TapeCellState(0b01)
+REDUCER_PAUSED_DATA: Final[TapeCellState] = TapeCellState(0b10)
 
 
 def prefill_tape(position: int, tape_no: int) -> Callable[[int], D]:
@@ -69,6 +74,10 @@ DT_RIGHT: Final[Callable[[int], D]] = prefill_tape(RIGHT, DATA_TAPE)
 CT_LEFT: Final[Callable[[int], D]] = prefill_tape(LEFT, CARRY_TAPE)
 CT_MID: Final[Callable[[int], D]] = prefill_tape(MID, CARRY_TAPE)
 CT_RIGHT: Final[Callable[[int], D]] = prefill_tape(RIGHT, CARRY_TAPE)
+
+REDUCER_LEFT: Final[Callable[[int], D]] = prefill_tape(LEFT, REDUCER_TAPE)
+REDUCER_MID: Final[Callable[[int], D]] = prefill_tape(MID, REDUCER_TAPE)
+REDUCER_RIGHT: Final[Callable[[int], D]] = prefill_tape(RIGHT, REDUCER_TAPE)
 
 
 def build_st_counter_state(counter_digit: int, paused: bool) -> int:
@@ -147,15 +156,24 @@ class CounterAutomataBuilder(object):
         assert base >= 2, "Base must be at least 2"
         self.base = base
 
-    def build_transitions_group(self) -> MultiTapeAutomataTransitionsGroup:
+    def build_base_transitions_group(
+        self, transitions_group: MultiTapeTransitionsGroup | None = None
+    ) -> MultiTapeTransitionsGroup:
+        if transitions_group is not None:
+            _transitions_group = transitions_group
+        else:
+            _transitions_group = MultiTapeTransitionsGroup(
+                require_annotation=True
+            )
+
         # TODO: actually precompute the number of states beforehand (?)
         max_counter_digit = self.base - 1
-        transitions_group = MultiTapeAutomataTransitionsGroup(
+        _transitions_group = MultiTapeTransitionsGroup(
             require_annotation=True
         )
 
         # mark exponential bit reduction start
-        transitions_group.add_transition(
+        _transitions_group.add_transition(
             input_terms=(
                 ST_LEFT(VOID_STATE), DT_LEFT(DT_DATA),
                 DT_MID(VOID_STATE), ST_MID(VOID_STATE)
@@ -164,7 +182,7 @@ class CounterAutomataBuilder(object):
             annotation='EXP_REDUCE_START'
         )
         # begin the counter accumulator on the right side
-        transitions_group.add_transition(
+        _transitions_group.add_transition(
             input_terms=(
                 ST_MID(VOID_STATE), DT_MID(DT_DATA),
                 DT_RIGHT(VOID_STATE), ST_RIGHT(VOID_STATE)
@@ -173,52 +191,13 @@ class CounterAutomataBuilder(object):
             output_cell_state=paused_counter(1),
             annotation=f'COUNTER_ACC_START'
         )
-        # shift leftmost counter value cell and increment
-        for digit in range(self.base):
-            if digit == max_counter_digit:
-                # overflow digit from max_counter_digit to 0 and add new
-                # max_counter_digit at the end
-                transitions_group.add_transition(
-                    input_terms=(
-                        DT_MID(DT_DATA),
-                        ST_MID(VOID_STATE),
-                        ST_RIGHT(active_counter(max_counter_digit))
-                    ),
-                    output_tape_no=SIGNALS_TAPE,
-                    output_cell_state=paused_counter(0),
-                    annotation=f'LM_OVERFLOW_{max_counter_digit}'
-                )
-                # spawn a carry cell state to propagate to digits to the right
-                transitions_group.add_transition(
-                    input_terms=(
-                        DT_MID(DT_DATA),
-                        ST_MID(VOID_STATE),
-                        ST_RIGHT(active_counter(max_counter_digit))
-                    ),
-                    output_tape_no=CARRY_TAPE,
-                    output_cell_state=CT_DATA,
-                    annotation=f'LM_SPAWN_CARRY'
-                )
-            else:
-                # move digit leftwards and increment by 1
-                assert digit < max_counter_digit
-                transitions_group.add_transition(
-                    input_terms=(
-                        DT_MID(DT_DATA),
-                        ST_MID(VOID_STATE),
-                        ST_RIGHT(active_counter(digit)),
-                    ),
-                    output_tape_no=SIGNALS_TAPE,
-                    output_cell_state=paused_counter(digit + 1),
-                    annotation=f'LM_LEFT_{digit}_AND_INC'
-                )
 
         # apply carry cells to counter cells
         # carry cells stay stationary while counter cells move left
         for mid_digit in range(self.base):
             for right_digit in range(self.base):
                 # when there is no carry state to apply, shift left
-                transitions_group.add_transition(
+                _transitions_group.add_transition(
                     input_terms=(
                         ST_MID(active_counter(mid_digit)),
                         ST_RIGHT(active_counter(right_digit)),
@@ -236,14 +215,14 @@ class CounterAutomataBuilder(object):
                         CT_MID(CT_DATA)
                     )
                     # move right_digit left and increment
-                    transitions_group.add_transition(
+                    _transitions_group.add_transition(
                         input_terms=carry_no_overflow_combo,
                         output_tape_no=SIGNALS_TAPE,
                         output_cell_state=paused_counter(right_digit + 1),
                         annotation=f'SHL_{right_digit}_INC'
                     )
                     # overflow right_digit to 0 and move left, cancel carry
-                    transitions_group.add_transition(
+                    _transitions_group.add_transition(
                         input_terms=carry_no_overflow_combo,
                         output_tape_no=CARRY_TAPE,
                         output_cell_state=VOID_STATE,
@@ -252,7 +231,7 @@ class CounterAutomataBuilder(object):
                 else:
                     # overflow to 0 and move left, carry stays for next digit
                     assert right_digit == max_counter_digit
-                    transitions_group.add_transition(
+                    _transitions_group.add_transition(
                         input_terms=(
                             ST_MID(active_counter(mid_digit)),
                             ST_RIGHT(active_counter(max_counter_digit)),
@@ -271,13 +250,13 @@ class CounterAutomataBuilder(object):
                 ST_RIGHT(VOID_STATE),
                 CT_MID(CT_DATA)
             )
-            transitions_group.add_transition(
+            _transitions_group.add_transition(
                 input_terms=right_overflow_combo,
                 output_tape_no=SIGNALS_TAPE,
                 output_cell_state=paused_counter(1),
                 annotation=f'RIGHT_OVERFLOW_INC'
             )
-            transitions_group.add_transition(
+            _transitions_group.add_transition(
                 input_terms=right_overflow_combo,
                 output_tape_no=CARRY_TAPE,
                 output_cell_state=VOID_STATE,
@@ -287,7 +266,7 @@ class CounterAutomataBuilder(object):
         # clear rightmost counter cell if no carry
         for digit in range(self.base):
             # if right (signals tape) cell is any void cell
-            transitions_group.add_transition(
+            _transitions_group.add_transition(
                 input_terms=(
                     ST_MID(active_counter(digit)),
                     ST_RIGHT(VOID_STATE),
@@ -298,7 +277,7 @@ class CounterAutomataBuilder(object):
                 annotation=f'CLEAR_RIGHTMOST_{digit}'
             )
             # if right signals tape cell is reduction start marker
-            transitions_group.add_transition(
+            _transitions_group.add_transition(
                 input_terms=(
                     ST_MID(active_counter(digit)),
                     ST_RIGHT(ST_REDUCE_START),
@@ -309,51 +288,242 @@ class CounterAutomataBuilder(object):
                 annotation=f'CLEAR_RIGHTMOST_{digit}_ST'
             )
 
-        # Bleed leftmost counter cell leftwards past data tape to void
-        # Unnecessary if we don't expect to leave data tape range
-        for digit in range(self.base):
-            transitions_group.add_transition(
-                input_terms=(
-                    DT_MID(VOID_STATE),
-                    ST_MID(VOID_STATE),
-                    ST_RIGHT(active_counter(digit)),
-                    CT_MID(VOID_STATE)
-                ),
-                output_tape_no=SIGNALS_TAPE,
-                output_cell_state=paused_counter(digit),
-                annotation=f'BLEED_{digit}'
-            )
-
         # paused counter states will transition to unpause
-        # this should be the one place where paused counter states occur in
+        # this should be the only place where paused counter states occur in
         # the inputs of transition rules
         for digit in range(self.base):
-            transitions_group.add_transition(
+            _transitions_group.add_transition(
                 input_terms=(ST_MID(paused_counter(digit)),),
                 output_tape_no=SIGNALS_TAPE,
                 output_cell_state=active_counter(digit),
                 annotation=f'PAUSE_TO_UNPAUSE_{digit}'
             )
 
+        return _transitions_group
+
+    def build_increment_transitions_group(
+        self, transitions_group: MultiTapeTransitionsGroup | None = None,
+        increment_trigger_term: D = DT_MID(DT_DATA),
+        no_increment_states: Sequence[D] = (DT_MID(VOID_STATE),)
+    ) -> MultiTapeTransitionsGroup:
+        """
+        builds transitions group rules for shifting the
+        leftmost counter-tape cell left wards and
+        incrementing when going over a cell that
+        signals to do so (increment_trigger_state)
+
+        :param no_increment_states:
+        :param increment_trigger_term:
+        :param transitions_group:
+        :return:
+        """
+        if transitions_group is not None:
+            _transitions_group = transitions_group
+        else:
+            _transitions_group = MultiTapeTransitionsGroup(
+                require_annotation=True
+            )
+
+        increment_tape_no = increment_trigger_term.get_tape_no()
+        for no_increment_state in no_increment_states:
+            no_increment_state_tape_no = no_increment_state.get_tape_no()
+            if no_increment_state_tape_no != increment_tape_no:
+                raise ValueError(
+                    f'no_increment_state tape no '
+                    f'{no_increment_state_tape_no} '
+                    f'does not match increment_trigger_state tape no '
+                    f'{increment_tape_no}'
+                )
+
+        max_counter_digit = self.base - 1
+        # shift counter-tape cell leftwards and increment if needed
+        for digit in range(self.base):
+            if digit == max_counter_digit:
+                # overflow digit from max_counter_digit to 0 and add new
+                # max_counter_digit at the end
+                _transitions_group.add_transition(
+                    input_terms=(
+                        increment_trigger_term,
+                        ST_MID(VOID_STATE),
+                        ST_RIGHT(active_counter(max_counter_digit))
+                    ),
+                    output_tape_no=SIGNALS_TAPE,
+                    output_cell_state=paused_counter(0),
+                    annotation=f'LM_OVERFLOW_{max_counter_digit}'
+                )
+                # spawn a carry cell state to propagate to digits to the right
+                _transitions_group.add_transition(
+                    input_terms=(
+                        increment_trigger_term,
+                        ST_MID(VOID_STATE),
+                        ST_RIGHT(active_counter(max_counter_digit))
+                    ),
+                    output_tape_no=CARRY_TAPE,
+                    output_cell_state=CT_DATA,
+                    annotation=f'LM_SPAWN_CARRY'
+                )
+            else:
+                # move digit leftwards and increment by 1
+                assert digit < max_counter_digit
+                _transitions_group.add_transition(
+                    input_terms=(
+                        increment_trigger_term,
+                        ST_MID(VOID_STATE),
+                        ST_RIGHT(active_counter(digit)),
+                    ),
+                    output_tape_no=SIGNALS_TAPE,
+                    output_cell_state=paused_counter(digit + 1),
+                    annotation=f'LM_LEFT_{digit}_AND_INC'
+                )
+
+        for no_increment_state in no_increment_states:
+            # Bleed leftmost counter cell leftwards past data tape to void
+            # Unnecessary if we don't expect to leave data tape range
+            for digit in range(self.base):
+                _transitions_group.add_transition(
+                    input_terms=(
+                        no_increment_state,
+                        ST_MID(VOID_STATE),
+                        ST_RIGHT(active_counter(digit)),
+                        CT_MID(VOID_STATE)
+                    ),
+                    output_tape_no=SIGNALS_TAPE,
+                    output_cell_state=paused_counter(digit),
+                    annotation=f'BLEED_{digit}_OVER_{no_increment_state}'
+                )
+
+        return _transitions_group
+
+    @classmethod
+    def build_reducer_transitions_group(
+        cls, transitions_group: MultiTapeTransitionsGroup | None = None
+    ) -> MultiTapeTransitionsGroup:
+        """
+        On the reducer tape, we will build rules to
+        1. Spawn a data state cell on the leftwards end of the data tape
+        2. Spread the date state cells in both directions
+           at a speed of 1 cell every 2 timesteps.
+
+        :param transitions_group:
+        :return:
+        """
+        if transitions_group is not None:
+            _transitions_group = transitions_group
+        else:
+            _transitions_group = MultiTapeTransitionsGroup(
+                require_annotation=True
+            )
+
+        # spawn data at the left of the
+        # left end of initial data of the data tape
+        _transitions_group.add_transition(
+            input_terms=(
+                DT_LEFT(VOID_STATE),
+                DT_MID(DT_DATA),
+                REDUCER_LEFT(VOID_STATE),
+                REDUCER_MID(VOID_STATE)
+            ),
+            output_tape_no=REDUCER_TAPE,
+            output_cell_state=REDUCER_PAUSED_DATA,
+            annotation='REDUCER_SPAWN_LEFT_END'
+        )
+        # spread the data state rightwards while overlapping with input data
+        _transitions_group.add_transition(
+            input_terms=(
+                REDUCER_LEFT(REDUCER_DATA),
+                DT_MID(DT_DATA),
+                REDUCER_MID(VOID_STATE)
+            ),
+            output_tape_no=REDUCER_TAPE,
+            output_cell_state=REDUCER_PAUSED_DATA,
+            annotation='REDUCER_DATA_SPREAD_RIGHT'
+        )
+        # spread the data state leftwards (regardless of input data overlap)
+        _transitions_group.add_transition(
+            input_terms=(
+                REDUCER_RIGHT(REDUCER_DATA),
+                REDUCER_MID(VOID_STATE)
+            ),
+            output_tape_no=REDUCER_TAPE,
+            output_cell_state=REDUCER_PAUSED_DATA,
+            annotation='REDUCER_DATA_SPREAD_LEFT'
+        )
+        # convert paused half-data tape state to active state
+        _transitions_group.add_transition(
+            input_terms=(REDUCER_MID(REDUCER_PAUSED_DATA),),
+            output_tape_no=REDUCER_TAPE,
+            output_cell_state=REDUCER_DATA,
+            annotation=f'REDUCER_PAUSE_TO_UNPAUSE'
+        )
+        return _transitions_group
+
+    def build_transitions_group(self) -> MultiTapeTransitionsGroup:
+        transitions_group = self.build_base_transitions_group()
+        transitions_group = self.build_increment_transitions_group(
+            transitions_group=transitions_group,
+            increment_trigger_term=DT_MID(DT_DATA),
+            no_increment_states=(DT_MID(VOID_STATE),)
+        )
+        return transitions_group
+
+    def build_reduced_transitions_group(self) -> MultiTapeTransitionsGroup:
+        """
+        The rules built here are designed to produce an automaton
+        that generates the n-nary representation of n/2, where n is
+        the number of data cells on the data tape, within n timesteps,
+        and where the encoded number is fully contained within the range of
+        the data tape at time n without leftover carry states
+        on the carry tape.
+        :return:
+        """
+        transitions_group = self.build_base_transitions_group()
+        transitions_group = self.build_reducer_transitions_group(
+            transitions_group=transitions_group
+        )
+        """
+        The presence of a data cell on the 
+        reducer tape is a signal to not increment the counter.
+        
+        Since reduction signal and counter are on opposite ends of 
+        the data tape positionally, and they move at half speed, we 
+        should expect that only half of the data tape cells will 
+        contribute to counter increments.
+        """
+        transitions_group = self.build_increment_transitions_group(
+            transitions_group=transitions_group,
+            increment_trigger_term=REDUCER_MID(VOID_STATE),
+            no_increment_states=(
+                REDUCER_MID(REDUCER_DATA),
+                REDUCER_MID(REDUCER_PAUSED_DATA),
+            )
+        )
         return transitions_group
 
 
 class CounterAutomataRunner(object):
     def __init__(
         self, base: int = 8, initial_write_start: int = 0,
-        initial_write_end: int = 20
+        initial_write_end: int = 20,
+        apply_reduction: bool = False
     ):
         """
-        Counter automata instance with initial cells populated
+        Counter-automata instance with initial cells populated
         from :initial_write_start: to :initial_write_end:
-        (inclusive) with the :DATA: cell value
+        (inclusive) with the [DATA] cell value
         :param base:
         :param initial_write_start:
         :param initial_write_end:
         """
         self.base = base
+        self.apply_reduction = apply_reduction
         self.builder = CounterAutomataBuilder(base=base)
-        self.transitions_group = self.builder.build_transitions_group()
+
+        if apply_reduction:
+            transitions_group = self.builder.build_reduced_transitions_group()
+        else:
+            transitions_group = self.builder.build_transitions_group()
+
+        self.transitions_group = transitions_group
         self.state_eq_map = MultiTapeRuleGenerator.generate_equations(
             self.transitions_group
         )
@@ -361,9 +531,12 @@ class CounterAutomataRunner(object):
         self.initial_write_start = initial_write_start
         self.initial_write_end = initial_write_end
         self.multi_tape_automata = MultiTapeAutomata(self.state_eq_map)
-        self.multi_tape_automata.init_tapes([
-            DATA_TAPE, SIGNALS_TAPE, CARRY_TAPE
-        ])
+
+        init_tapes = [DATA_TAPE, SIGNALS_TAPE, CARRY_TAPE]
+        if apply_reduction:
+            init_tapes.append(REDUCER_TAPE)
+
+        self.multi_tape_automata.init_tapes(tape_nos=init_tapes)
         self.multi_tape_automata.write_region(
             position=self.initial_write_start,
             end_position=self.initial_write_end,
