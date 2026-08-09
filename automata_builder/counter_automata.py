@@ -14,7 +14,6 @@ from automata_builder.rule_generator_multitape import (
 DATA_TAPE: Final[TapeNo] = TapeNo(0)
 SIGNALS_TAPE: Final[TapeNo] = TapeNo(1)
 CARRY_TAPE: Final[TapeNo] = TapeNo(2)
-# TODO: rename to reducer tape(?)
 REDUCER_TAPE: Final[TapeNo] = TapeNo(3)
 
 """
