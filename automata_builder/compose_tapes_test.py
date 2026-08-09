@@ -10,31 +10,34 @@ from automata_builder.rule_generator_multitape import (
     MultiTapeBuilder, MultiTapeState
 )
 
+"""
+Generates a single-tape counter cellular automata 
+from its multi-tape variant 
+"""
+
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    '--base',
+    '-b', '--base',
     nargs='?', type=int, default=2, const=2,
     help='reduction base'
-)
-parser.add_argument(
-    '--write-end',
-    nargs='?', type=int, default=20, const=20,
-    help='number of initially populated unary cells'
 )
 parser.add_argument(
     '-d', '--display-transitions',
     nargs='?', type=int, default=10, const=10,
     help='number of transitions to display from composed transition group'
 )
+parser.add_argument(
+    '--apply-reduction', '-a',
+    action='store_true',
+    help='Use a automata ruleset with half-reduction'
+)
 
 args = parser.parse_args()
 
 runner = CounterAutomataRunner(
     base=args.base,
-    initial_write_start=0,
-    initial_write_end=args.write_end,
+    apply_reduction=args.apply_reduction
 )
-
 multi_tape_builder = MultiTapeBuilder(
     multi_tape_automata=runner.multi_tape_automata
 )

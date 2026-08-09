@@ -4,7 +4,33 @@ import dataclasses
 import typing
 import numpy as np
 
+from typing import Final
 from py_ca_compiler import A, PyExpression, PyProduct
+
+
+class TapeNo(int):
+    def __eq__(self, other: int):
+        return int(self) == int(other)
+
+    def __hash__(self):
+        return hash(int(self))
+
+
+class TapeCellState(int):
+    def __eq__(self, other: int):
+        return int(self) == int(other)
+
+    def __hash__(self):
+        return hash(int(self))
+
+
+BLANK_INT: Final[int] = -1
+VOID_STATE: Final[TapeCellState] = TapeCellState(0b0)
+HALT_STATE: Final[TapeCellState] = TapeCellState(0b1)
+
+
+def is_halt_state(term: A) -> bool:
+    return term.get_state() == HALT_STATE
 
 
 @dataclasses.dataclass
@@ -42,7 +68,8 @@ class AutomataTransitionsGroup(object):
         return cls(num_states=num_states, transitions=[])
 
     def add_transition(
-        self, input_terms: tuple[A, ...], output_state: int
+        self, input_terms: tuple[A, ...], output_state: int,
+        ban_halt_state: bool = False
     ) -> bool:
         transition_entry = (input_terms, output_state)
         if transition_entry in self.transitions_set:
@@ -58,6 +85,11 @@ class AutomataTransitionsGroup(object):
             assert isinstance(term, A)
             state = term.get_state()
             assert 0 <= state < _num_states
+
+            if ban_halt_state and is_halt_state(term):
+                raise ValueError(
+                    f'Cannot add transition with halt state term: {term}'
+                )
 
         self.transitions.append(transition_entry)
         self.transitions_set.add(transition_entry)

@@ -33,7 +33,7 @@ parser.add_argument(
 parser.add_argument(
     '--apply-reduction', '-a',
     action='store_true',
-    help='Use a automata ruleset with '
+    help='Use a automata ruleset with half-reduction'
 )
 parser.add_argument(
     '--no-render', '-n',

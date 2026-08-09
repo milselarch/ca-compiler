@@ -10,33 +10,15 @@ import utils
 from collections import defaultdict
 from typing import Final, Iterator, Sequence
 
-from automata_builder.rule_generator import AutomataTransitionsGroup
+from automata_builder.rule_generator import (
+    AutomataTransitionsGroup, TapeCellState, TapeNo,
+    VOID_STATE, HALT_STATE, BLANK_INT
+)
 from automata_builder.renderer import RenderFrame
 from py_ca_compiler import (
     D, PyMultiTapeProduct, PyMultiTapeExpression,
     A, PyProduct
 )
-
-
-class TapeNo(int):
-    def __eq__(self, other: int):
-        return int(self) == int(other)
-
-    def __hash__(self):
-        return hash(int(self))
-
-
-class TapeCellState(int):
-    def __eq__(self, other: int):
-        return int(self) == int(other)
-
-    def __hash__(self):
-        return hash(int(self))
-
-
-BLANK_INT: Final[int] = -1
-VOID_STATE: Final[TapeCellState] = TapeCellState(0b0)
-HALT_STATE: Final[TapeCellState] = TapeCellState(0b1)
 
 
 @dataclasses.dataclass
@@ -2479,7 +2461,8 @@ class MultiTapeBuilder(object):
                 for remapped_output_state in all_remap_outputs:
                     global_transitions_group.add_transition(
                         input_terms=tuple(remapped_product_input_terms),
-                        output_state=remapped_output_state
+                        output_state=remapped_output_state,
+                        ban_halt_state=True
                     )
 
         return ComposeTapesResult(

@@ -37,8 +37,8 @@ DT_DATA: Final[TapeCellState] = TapeCellState(0b10)
 ST_REDUCE_START: Final[TapeCellState] = TapeCellState(0b11)
 CT_DATA: Final[TapeCellState] = TapeCellState(0b10)
 
-REDUCER_DATA: Final[TapeCellState] = TapeCellState(0b01)
-REDUCER_PAUSED_DATA: Final[TapeCellState] = TapeCellState(0b10)
+REDUCER_DATA: Final[TapeCellState] = TapeCellState(0b10)
+REDUCER_PAUSED_DATA: Final[TapeCellState] = TapeCellState(0b11)
 
 
 def prefill_tape(position: int, tape_no: int) -> Callable[[int], D]:
