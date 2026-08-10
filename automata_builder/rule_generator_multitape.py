@@ -20,66 +20,7 @@ from py_ca_compiler import (
     A, PyProduct
 )
 
-
-@dataclasses.dataclass
-class MultiTapeState(object):
-    """
-    This represents the state of a cell in a specific tape of
-    a multi-tape automaton
-    Also this is technically the same as D, but without term position
-    """
-    tape_no: TapeNo
-    tape_cell_state: TapeCellState
-
-    def __hash__(self):
-        return hash((self.tape_no, self.tape_cell_state))
-
-    def __eq__(self, other: MultiTapeState) -> bool:
-        return (
-            self.tape_no == other.tape_no and
-            self.tape_cell_state == other.tape_cell_state
-        )
-
-    def __gt__(self, other: MultiTapeState):
-        if self.tape_no != other.tape_no:
-            return self.tape_no > other.tape_no
-
-        return self.tape_cell_state > other.tape_cell_state
-
-    def to_tuple(self) -> tuple[int, int]:
-        return int(self.tape_no), int(self.tape_cell_state)
-
-    def to_str(self) -> str:
-        tape_no = int(self.tape_no)
-        tape_cell_state = int(self.tape_cell_state)
-        str_state = f'T{tape_no}:{tape_cell_state}'
-        return str_state
-
-    def to_term(self, offset: int = 0) -> D:
-        return D(
-            position=offset,
-            tape_no=self.tape_no, state=self.tape_cell_state
-        )
-
-    def has_tape_mutual_exclusion(self, other: MultiTapeState) -> bool:
-        """
-        Check if this state has tape mutual exclusion with the other state
-        i.e. they are on the same tape but have different cell states
-        :param other:
-        :return:
-        """
-        return (
-            self.tape_no == other.tape_no and
-            self.tape_cell_state != other.tape_cell_state
-        )
-
-    @classmethod
-    def from_term(cls, term: D):
-        tape_no, tape_cell_state = term.get_state()
-        return cls(
-            tape_no=TapeNo(tape_no),
-            tape_cell_state=TapeCellState(tape_cell_state)
-        )
+from automata_builder.tape_overlaps import MultiTapeState
 
 
 @dataclasses.dataclass(frozen=True)
@@ -809,12 +750,16 @@ class MultiTapeAutomata(object):
 
 class TapeOverlaps(object):
     """
-    we say that a tape state A can overlap with tape state B at offset k if
+    We say that a tape state A can overlap with tape state B at offset k if
     in the history of the automata it is possible that:
     1. A is present at some position p on the tape and
     2. B to be present at position p + k.
 
     This structure stores all possible state overlaps
+
+    Note that all overlaps are symmetrical, since if tape state A
+    can overlap with tape state B at offset k,
+    then tape state B can overlap with tape state A at offset -k
     """
     def __init__(self):
         """
@@ -824,9 +769,78 @@ class TapeOverlaps(object):
         the mapping gives all target states B that can
         be present at offset k from A, for all possible offsets k.
         """
+        self._frozen: bool = False
         self._overlaps: defaultdict[
             MultiTapeState, defaultdict[int, set[MultiTapeState]]
         ] = defaultdict(lambda: defaultdict(set))
+
+    def freeze(self):
+        self._frozen = True
+
+    def encode(self) -> tuple[tuple[
+        MultiTapeState,
+        tuple[tuple[int, tuple[MultiTapeState, ...]], ...]
+    ], ...]:
+        source_states = tuple(sorted(list(self._overlaps.keys())))
+        overlap_items: list[tuple[
+            MultiTapeState,
+            tuple[tuple[int, tuple[MultiTapeState, ...]], ...]
+        ]] = []
+
+        for source_state in source_states:
+            offset_overlaps = self._overlaps[source_state]
+            offsets = tuple(sorted(list(offset_overlaps.keys())))
+            offset_overlap_items: list[
+                tuple[int, tuple[MultiTapeState, ...]]
+            ] = []
+
+            for offset in offsets:
+                overlap_states = offset_overlaps[offset]
+                overlap_state_items = tuple(sorted(list(overlap_states)))
+                offset_overlap_items.append((
+                    offset, overlap_state_items
+                ))
+
+            overlap_items.append((
+                source_state, tuple(offset_overlap_items)
+            ))
+
+        return tuple(sorted(overlap_items))
+
+    def __hash__(self):
+        if not self._frozen:
+            raise ValueError("Can't compare overlaps before freezing")
+
+        return hash(self.encode())
+
+    def __eq__(self, other: TapeOverlaps):
+        if not isinstance(other, TapeOverlaps):
+            return False
+
+        if not self._frozen or not other._frozen:
+            raise ValueError(
+                "Can't compare overlaps before freezing"
+            )
+
+        if self._overlaps.keys() != other._overlaps.keys():
+            return False
+
+        return self.encode() == other.encode()
+
+    def get_cell_states_for_tape(self, tape_no: TapeNo) -> set[TapeCellState]:
+        return set([
+            state.tape_cell_state for state in
+            self.get_all_for_tape(tape_no=tape_no)
+        ])
+
+    def get_all_for_tape(self, tape_no: TapeNo) -> set[MultiTapeState]:
+        tape_states: set[MultiTapeState] = set()
+
+        for source_state in self._overlaps:
+            if source_state.tape_no == tape_no:
+                tape_states.add(source_state)
+
+        return tape_states
 
     def visualize_for_states(
         self, source_states: set[MultiTapeState]
@@ -2107,7 +2121,9 @@ class MultiTapeBuilder(object):
         for each individual tape with tape no TapeNo,
         contains what tape cell states exist for that particular tape
         :param overlap_state_path:
-        The currently built combination of tape states
+        The currently built combination of tape states, or None
+        None is used as a stand-in for every possible state for the
+        particular tape at tape_no_index
         :param remap_counter_start:
         :return:
         MultiTapeStatePathRemap instance,
@@ -2141,16 +2157,16 @@ class MultiTapeBuilder(object):
         else:
             _overlap_state_path = overlap_state_path
 
-        if _overlap_state_path:
+        if not _overlap_state_path:
+            # Use all available states fur the current tape
+            # as the overlap path is empty / just started
+            next_state_overlaps = tape_overlaps.get_all_for_tape(tape_no)
+        else:
+            # get the overlapping states for prev_tape_state
             prev_tape_state = _overlap_state_path[-1]
             next_state_overlaps: set[MultiTapeState] = (
                 tape_overlaps.get_overlaps(prev_tape_state)[0]
             )
-        else:
-            next_state_overlaps: set[MultiTapeState] = set([
-                MultiTapeState(tape_no=tape_no, tape_cell_state=cell_state)
-                for cell_state in next_tape_cell_states_set
-            ])
 
         for next_tape_cell_state in next_tape_cell_states:
             next_tape_state = MultiTapeState(
@@ -2223,10 +2239,12 @@ class MultiTapeBuilder(object):
         TODO: reorder existing products for comparison with generated ones
         :return:
         """
-        overlaps = self.build_overlaps()
+        global_overlaps = self.build_overlaps()
         # TODO assert that void state can overlap with itself at any offset
         # get all tape states that can exist in each tape
-        all_tape_states_per_tape = overlaps.create_whitelist_for_offset()
+        all_tape_states_per_tape = (
+            global_overlaps.create_whitelist_for_offset()
+        )
         preexisting_products = ProductTrie()
         preexisting_writes_map = self._get_prod_to_state_map()
         all_tape_nos = sorted(self.get_tape_nos())
@@ -2245,7 +2263,7 @@ class MultiTapeBuilder(object):
         (so no change from input to output) 
         """
         product_same_writes_map = self.build_product_same_writes_map(
-            overlaps=overlaps, current_product_path=[],
+            overlaps=global_overlaps, current_product_path=[],
             start_offset=self.leftmost_extent,
             end_offset=self.rightmost_extent,
             product_exclusions=preexisting_products
@@ -2256,7 +2274,8 @@ class MultiTapeBuilder(object):
 
         # remap individual tape states to a global combined tape state
         global_state_path_remap = self.build_global_state_path_remap(
-            product_writes_map=product_same_writes_map, overlaps=overlaps
+            product_writes_map=product_same_writes_map,
+            overlaps=global_overlaps
         )
         # input-output pairs for the final combined automata
         global_transitions_group = AutomataTransitionsGroup(
@@ -2266,8 +2285,8 @@ class MultiTapeBuilder(object):
         for multi_tape_product in product_writes_map:
             """
             For every position that is covered by the current product, 
-            we want to know which states could be present in the product terms 
-            at that position across all individual tapes, 
+            we want to know which states could be present in the product 
+            terms at that position across all individual tapes, 
             and then determine all fully formed term combinations that 
             could satisfy the multi_tape_product
             """
@@ -2385,7 +2404,7 @@ class MultiTapeBuilder(object):
                 offset_input_combos = self.build_remap_states(
                     tape_nos=all_tape_nos,
                     multi_tape_states_map=offset_states_whitelist,
-                    tape_overlaps=overlaps,
+                    tape_overlaps=global_overlaps,
                     remap_counter_start=remap_counter_start
                 )
                 remap_counter_start = offset_input_combos.next_free_counter
@@ -2396,7 +2415,7 @@ class MultiTapeBuilder(object):
                 output_combos := self.build_remap_states(
                     tape_nos=all_tape_nos,
                     multi_tape_states_map=post_output_whitelist,
-                    tape_overlaps=overlaps
+                    tape_overlaps=global_overlaps
                 )
             )
 
