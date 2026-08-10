@@ -41,13 +41,8 @@ class AutomataTransitionsGroup(object):
     map A[] -> output state
     """
     num_states: int | None = None
-    transitions_set: set[
-        tuple[
-            tuple[A, ...],
-            int
-        ]
-    ] = dataclasses.field(
-        default_factory=set
+    transitions_map: dict[tuple[A, ...], int] = dataclasses.field(
+        default_factory=dict
     )
     transitions: list[
         tuple[
@@ -72,8 +67,14 @@ class AutomataTransitionsGroup(object):
         ban_halt_state: bool = False
     ) -> bool:
         transition_entry = (input_terms, output_state)
-        if transition_entry in self.transitions_set:
-            return False
+        if input_terms in self.transitions_map:
+            if self.transitions_map[input_terms] == output_state:
+                return False
+
+            raise ValueError(
+                f'Conflicting transition for input terms {input_terms}: '
+                f'{output_state} vs {self.transitions_map[input_terms]}'
+            )
 
         _num_states: int | float = float('inf')
         if self.num_states is not None:
@@ -92,7 +93,7 @@ class AutomataTransitionsGroup(object):
                 )
 
         self.transitions.append(transition_entry)
-        self.transitions_set.add(transition_entry)
+        self.transitions_map[input_terms] = output_state
         return True
 
 

@@ -15,7 +15,7 @@ from automata_builder.rule_generator import (
 )
 from automata_builder.renderer import RenderFrame
 from automata_builder.tape_overlaps import (
-    MultiTapeState, TapeOverlaps, MultiTapeStatesMap
+    MultiTapeState, TapeOverlaps, MultiTapeStatesMap, ProductWritesMap
 )
 from py_ca_compiler import (
     D, PyMultiTapeProduct, PyMultiTapeExpression,
@@ -798,199 +798,6 @@ class ProductTrie(object):
 
 
 @dataclasses.dataclass
-class ProductWritesMap(object):
-    """
-    map product -> tape_no -> output tape cell state
-    """
-    prod_to_state_map: defaultdict[
-        PyMultiTapeProduct, dict[TapeNo, TapeCellState]
-    ] = dataclasses.field(
-        default_factory=lambda: defaultdict(lambda: dict())
-    )
-
-    def __iter__(self) -> Iterator[PyMultiTapeProduct]:
-        return iter(self.prod_to_state_map.keys())
-
-    def items(self):
-        return self.prod_to_state_map.items()
-
-    def get_state_writes_for(
-        self, product: PyMultiTapeProduct
-    ) -> list[MultiTapeState]:
-        writes_map = self.prod_to_state_map[product]
-        tape_state_writes: list[MultiTapeState] = []
-
-        for tape_no in writes_map:
-            tape_cell_state = writes_map[tape_no]
-            tape_state = MultiTapeState(
-                tape_no=tape_no, tape_cell_state=tape_cell_state
-            )
-            tape_state_writes.append(tape_state)
-
-        return tape_state_writes
-
-    def build_state_to_products_map(
-        self, verbose: bool = False
-    ) -> defaultdict[MultiTapeState, set[PyMultiTapeProduct]]:
-        """
-        maps states -> products that produce them in their output terms
-        :param verbose:
-        :return:
-        """
-        state_to_products_map: defaultdict[
-            MultiTapeState, set[PyMultiTapeProduct]
-        ] = defaultdict(set)
-
-        for product in self.prod_to_state_map:
-            writes_map = self.prod_to_state_map[product]
-
-            for tape_no in writes_map:
-                tape_cell_state = writes_map[tape_no]
-                tape_state = MultiTapeState(
-                    tape_no=tape_no, tape_cell_state=tape_cell_state
-                )
-                state_to_products_map[tape_state].add(product)
-
-        if verbose:
-            states = sorted(state_to_products_map.keys())
-
-            for state in states:
-                print(f'Products that produce {state=}')
-
-                production_products = state_to_products_map[state]
-                for product in production_products:
-                    print(f'- {product}')
-
-        return state_to_products_map
-
-    def build_input_state_to_prod_map(
-        self, verbose: bool = False
-    ) -> defaultdict[
-        MultiTapeState, set[PyMultiTapeProduct]
-    ]:
-        """
-        maps state -> products that contain it in their input terms
-        :param verbose:
-        :return:
-        """
-        # map state -> products that contain it in their input terms
-        input_state_to_prod_map: defaultdict[
-            MultiTapeState, set[PyMultiTapeProduct]
-        ] = defaultdict(set)
-
-        for product in self.prod_to_state_map:
-            input_terms = product.get_flat_terms()
-
-            for input_term in input_terms:
-                input_state = MultiTapeState.from_term(input_term)
-                input_state_to_prod_map[input_state].add(product)
-
-        if verbose:
-            for input_state in input_state_to_prod_map:
-                print(f'Input products for {input_state}')
-
-                products = input_state_to_prod_map[input_state]
-                for product in products:
-                    print(f'- {product}')
-
-            print('')
-
-        return input_state_to_prod_map
-
-    def get_states_set(self) -> set[MultiTapeState]:
-        states_set: set[MultiTapeState] = set()
-
-        for tape_product in self.prod_to_state_map:
-            product_terms = tape_product.get_flat_terms()
-
-            for term in product_terms:
-                tape_no, tape_cell_state = term.get_state()
-                states_set.add(MultiTapeState(
-                    tape_no=TapeNo(tape_no),
-                    tape_cell_state=TapeCellState(tape_cell_state)
-                ))
-
-        return states_set
-
-    def keys(self):
-        return self.prod_to_state_map.keys()
-
-    def values(self):
-        return self.prod_to_state_map.values()
-
-    def __getitem__(self, item: PyMultiTapeProduct):
-        return copy.copy(self.prod_to_state_map[item])
-
-    @classmethod
-    def get_zero_terms_from_path(cls, product_path: list[D]) -> list[D]:
-        zero_terms = []
-
-        for term in product_path:
-            if term.get_position() == 0:
-                zero_terms.append(term)
-
-        return zero_terms
-
-    @classmethod
-    def get_zero_terms_from_product(
-        cls, product: PyMultiTapeProduct
-    ) -> list[D]:
-        return cls.get_zero_terms_from_path(
-            product_path=product.get_flat_terms()
-        )
-
-    def insert_neutral_product(self, product: PyMultiTapeProduct):
-        """
-        Insert a product whose outputs rewrite the input terms
-        that have an offset = 0 to have the same state
-        :param product:
-        :return:
-        """
-        zero_terms = self.get_zero_terms_from_product(product)
-
-        for zero_term in zero_terms:
-            zero_state = MultiTapeState.from_term(zero_term)
-            self.insert(product=product, tape_output=zero_state)
-
-    def merge(self, other_writes_map: ProductWritesMap):
-        for other_product in other_writes_map:
-            other_product_writes = other_writes_map[other_product]
-
-            for tape_no in other_product_writes:
-                tape_cell_state = other_product_writes[tape_no]
-                tape_output = MultiTapeState(tape_no, tape_cell_state)
-                self.insert(product=other_product, tape_output=tape_output)
-
-    def insert(
-        self, product: PyMultiTapeProduct, tape_output: MultiTapeState
-    ):
-        write_tape_no = tape_output.tape_no
-        write_tape_cell_state = tape_output.tape_cell_state
-        self._insert(
-            product=product, write_tape_no=write_tape_no,
-            write_tape_cell_state=write_tape_cell_state
-        )
-
-    def _insert(
-        self, product: PyMultiTapeProduct, write_tape_no: TapeNo,
-        write_tape_cell_state: TapeCellState
-    ):
-        writes_map = self.prod_to_state_map[product]
-        existing_tape_write_state = writes_map.get(
-            write_tape_no, write_tape_cell_state
-        )
-        if existing_tape_write_state != write_tape_cell_state:
-            raise ValueError(
-                f"Conflicting output states for {product=} "
-                f"on tape {write_tape_no}: "
-                f"{existing_tape_write_state} vs "
-                f"{write_tape_cell_state}"
-            )
-
-        writes_map[write_tape_no] = write_tape_cell_state
-
-
-@dataclasses.dataclass
 class MultiTapeStateRemap(object):
     _global_tape_state_remap: dict[MultiTapeState, TapeCellState]
     _rev_global_tape_state_remap: dict[TapeCellState, MultiTapeState]
@@ -1399,6 +1206,8 @@ class MultiTapeBuilder(object):
         """
         Builds a mapping of which tape states can overlap with
         which other tape states at what relative offsets
+
+        TODO: build overlaps FSM
         :return:
         """
         # TODO: infer existing overlaps from the automata as well
@@ -1456,19 +1265,13 @@ class MultiTapeBuilder(object):
                             min_offset=self.leftmost_extent,
                             max_offset=self.rightmost_extent
                         )
-                        """
-                        overlaps_updated |= global_overlaps.insert_direct_overlap(
-                            source_state=input_state,
-                            target_state=output_state,
-                            offset=term_offset_from_input
-                        )
-                        """
 
+                    write_pair = (write_tape_no, output_tape_cell_state)
                     if not overlaps_updated:
-                        print("SKIP_WRITE", (write_tape_no, output_tape_cell_state))
+                        print("SKIP_WRITE", write_pair)
                         continue
 
-                    print("DO_WRITE", (write_tape_no, output_tape_cell_state))
+                    print("DO_WRITE", write_pair)
                     # Get the other products that use the current products'
                     # output state as one of their input states, and add it
                     # to list of products to check for satisfiability later
@@ -1873,6 +1676,7 @@ class MultiTapeBuilder(object):
                 global_combos_remap.merge(offset_input_combos)
                 offset_combos_map[term_offset] = offset_input_combos
 
+            # TODO: does this actually introduce any new combos
             global_combos_remap.merge(
                 output_combos := self.build_remap_states(
                     tape_nos=all_tape_nos,
@@ -1903,6 +1707,10 @@ class MultiTapeBuilder(object):
 
                 product_pos_combos.append(tuple(set(position_remapped_terms)))
 
+            """
+            Get every specific combination of term states that could satisfy 
+            the current product's input terms
+            """
             specific_combos = utils.cartesian_product(product_pos_combos)
             for remapped_product_input_terms in specific_combos:
                 all_remap_outputs = output_combos.get_all_remap_states()
