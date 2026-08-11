@@ -615,6 +615,17 @@ class TapeOverlaps(object):
 
 
 @dataclasses.dataclass
+class MultiTapeStateAttributes(object):
+    # whether the rules allow the creation of the target state
+    writable: bool
+    # whether the rules allow for the transition away from the target state
+    deletable: bool
+    # whether all instances of the target state are immediately deleted
+    # this happens if there is a rule target_state -> other_state
+    instant_delete: bool
+
+
+@dataclasses.dataclass
 class ProductWritesMap(object):
     """
     map product -> tape_no -> output tape cell state
@@ -645,6 +656,73 @@ class ProductWritesMap(object):
             tape_state_writes.append(tape_state)
 
         return tape_state_writes
+
+    def get_state_attributes(
+        self, target_state: MultiTapeState
+    ) -> MultiTapeStateAttributes:
+        target_tape_no = target_state.tape_no
+        target_tape_cell_state = target_state.tape_cell_state
+        writable, deletable = False, False
+        # whether all instances of target_state are immediately deleted
+        # this happens if there is a rule target_state -> other_state
+        instant_delete = False
+
+        for product in self.prod_to_state_map:
+            writes_map = self.prod_to_state_map[product]
+            target_state_written = False
+
+            for tape_no in writes_map:
+                tape_cell_state = writes_map[tape_no]
+                write_state = MultiTapeState(
+                    tape_no=tape_no, tape_cell_state=tape_cell_state
+                )
+                if write_state == target_state:
+                    """
+                    output writes to the same tape and same state as
+                    target_state, so it is being "created" per-se
+                    """
+                    target_state_written = True
+
+            # whether product writes to same tape as target_state
+            # and the written TapeCellState is different from target_state
+            writes_away_from_target_state = False
+            # whether the product transitions cells
+            # with input target_state to output target_state
+            # (idempotency is relative to target_state only)
+            is_idempotent_transition = False
+
+            for input_term in product.get_flat_terms():
+                if input_term.get_position() != 0:
+                    continue
+                if input_term.get_tape_no() != target_state.tape_no:
+                    continue
+
+                tape_cell_state = input_term.get_cell_state()
+                if tape_cell_state != target_state.tape_cell_state:
+                    """
+                    Our input product contains target_state
+                    along that output position (offset 0) and the
+                    output writes to the same tape to a different state,
+                    so the original target_state is deleted
+                    """
+                    writes_away_from_target_state = True
+                else:
+                    is_idempotent_transition = True
+
+            if len(product) == 1:
+                input_term = product.get_flat_terms()[0]
+                instant_delete |= (
+                    input_term.get_tape_no() == target_tape_no and
+                    input_term.get_cell_state() != target_tape_cell_state
+                )
+
+            writable |= target_state_written and not is_idempotent_transition
+            deletable |= writes_away_from_target_state
+
+        return MultiTapeStateAttributes(
+            writable=writable, deletable=deletable,
+            instant_delete=instant_delete
+        )
 
     def build_state_to_products_map(
         self, verbose: bool = False

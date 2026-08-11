@@ -9,19 +9,11 @@ from py_ca_compiler import A, PyExpression, PyProduct
 
 
 class TapeNo(int):
-    def __eq__(self, other: int):
-        return int(self) == int(other)
-
-    def __hash__(self):
-        return hash(int(self))
+    pass
 
 
 class TapeCellState(int):
-    def __eq__(self, other: int):
-        return int(self) == int(other)
-
-    def __hash__(self):
-        return hash(int(self))
+    pass
 
 
 BLANK_INT: Final[int] = -1
