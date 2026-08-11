@@ -4,7 +4,7 @@ import dataclasses
 import typing
 import numpy as np
 
-from typing import Final
+from typing import Final, Self
 from py_ca_compiler import A, PyExpression, PyProduct
 
 
@@ -59,7 +59,7 @@ class AutomataTransitionsGroup(object):
         return input_product, output_state
 
     @classmethod
-    def spawn_new(cls, num_states: int) -> AutomataTransitionsGroup:
+    def spawn_new(cls, num_states: int | None) -> AutomataTransitionsGroup:
         return cls(num_states=num_states, transitions=[])
 
     def add_transition(
@@ -95,6 +95,16 @@ class AutomataTransitionsGroup(object):
         self.transitions.append(transition_entry)
         self.transitions_map[input_terms] = output_state
         return True
+
+    def merge(
+        self, other: AutomataTransitionsGroup
+    ) -> Self:
+        for input_terms, output_state in other.transitions:
+            self.add_transition(
+                input_terms=input_terms, output_state=output_state
+            )
+
+        return self
 
 
 @dataclasses.dataclass

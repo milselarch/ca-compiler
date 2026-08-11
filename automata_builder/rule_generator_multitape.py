@@ -873,6 +873,7 @@ class MultiTapeStatePathRemap(object):
         if tape_cell_state == HALT_STATE:
             return Err(tape_cell_state)
         elif tape_cell_state == VOID_STATE:
+            assert len(self.void_state_paths) == 1
             return Ok(list(self.void_state_paths)[0])
 
         return Ok(self.rev_state_path_remap[tape_cell_state])
@@ -1498,6 +1499,214 @@ class MultiTapeBuilder(object):
         )
         return global_tape_state_remap
 
+    @classmethod
+    def get_terms_at_output_pos(
+        cls, terms: Sequence[A]
+    ) -> Sequence[A]:
+        terms_at_output_pos: list[A] = []
+
+        for term in terms:
+            if term.get_position() == 0:
+                terms_at_output_pos.append(term)
+
+        return terms_at_output_pos
+
+    def build_transitions_for_product(
+        self, multi_tape_product: PyMultiTapeProduct,
+        product_writes_map: ProductWritesMap,
+        all_tape_states_per_tape: MultiTapeStatesMap,
+        global_overlaps: TapeOverlaps,
+        global_state_path_remap: MultiTapeStatePathRemap
+    ) -> AutomataTransitionsGroup:
+        """
+        For every position that is covered by the current product,
+        we want to know which states could be present in the product
+        terms at that position across all individual tapes,
+        and then determine all fully formed term combinations that
+        could satisfy the multi_tape_product
+        """
+        transitions_group = AutomataTransitionsGroup.spawn_new(None)
+        all_tape_nos = sorted(self.get_tape_nos())
+        product_terms = multi_tape_product.get_flat_terms()
+        # tape writes that the multi_tape_product produces as output
+        product_outputs = product_writes_map[multi_tape_product]
+        product_term_positions_set: set[int] = set()
+        """
+        map position_offset -> tape_no -> choice of possible tape states 
+        that are required to be present at the aforementioned 
+        (offset, tape_no) in order for the current product input 
+        terms to be satisfied
+        
+        if for a given (position_offset, tape_no) there is no 
+        entry in product_state_whitelists, then that means that any 
+        tape state of tape tape_no can be assigned at 
+        output position offset position_offset while still satisfying 
+        the product's input terms
+        """
+        # TODO: ^ wow this is a mouthful
+        product_state_whitelists: defaultdict[
+            int, MultiTapeStatesMap
+        ] = defaultdict(MultiTapeStatesMap)
+
+        for product_term in product_terms:
+            term_offset = product_term.get_position()
+            product_term_positions_set.add(term_offset)
+            term_state = MultiTapeState.from_term(product_term)
+            # tape_no -> set of possible tape cell states at current pos
+            product_state_whitelists[term_offset].insert(
+                tape_no=term_state.tape_no, state=term_state
+            )
+
+        """
+        maps offset (from output) to possible tape states 
+        that can exist at said offset such that the product 
+        inputs are satisfied.
+        
+        This (offset_tape_states_map) is different from 
+        product_state_whitelists in that:
+        
+        product_state_whitelists only contains tape states that are 
+        explicitly present in the product terms, whereas
+        offset_tape_states_map contains all tape states that can
+        exist at the given offset so long that the product's
+        input terms still remain satisfied
+        """
+        offset_tape_states_map: defaultdict[
+            int, MultiTapeStatesMap
+        ] = defaultdict(MultiTapeStatesMap)
+
+        for term_offset in product_state_whitelists:
+            # what product term states can occur at each tape
+            # for terms at the current term_offset (from product write)
+            offset_states_whitelist: MultiTapeStatesMap = (
+                product_state_whitelists[term_offset]
+            )
+            for tape_no in all_tape_states_per_tape:
+                if tape_no in offset_states_whitelist:
+                    continue
+
+                """
+                If there aren't any constraints on the tape cell states 
+                that can exist on a particular tape_no imposed by the 
+                product terms at the current term_offset, then the set 
+                of states that can exist on that tape_no at the 
+                current term_offset is just the set of all tape cell 
+                states that can exist on that tape in general
+                """
+                assert tape_no not in offset_states_whitelist
+                offset_states_whitelist[tape_no] = (
+                    all_tape_states_per_tape[tape_no]
+                )
+
+            offset_tape_states_map[term_offset] = (
+                offset_states_whitelist
+            )
+
+        # get input state combinations at offset 0
+        # (relative to output position)
+        input_zero_whitelist = product_state_whitelists[0]
+        # remapped_global_state_set: set[TapeCellState] = set()
+        """
+        possible tape states that can exist for each tape 
+        that exists, along the output write position for the 
+        current product, right *after* output has been written 
+        """
+        post_output_whitelist = copy.deepcopy(input_zero_whitelist)
+
+        for output_tape_no in product_outputs:
+            """
+            When we spit out output tape_cell_states, we have to 
+            consider the possible tape cell state values for tapes 
+            that weren't explicitly written to, and remap all 
+            possible combinations of unwritten tape states and 
+            output tape states to a global tape state 
+            """
+            output_tape_cell_state = product_outputs[output_tape_no]
+            """
+            Immediately after writing, the current tape state
+            would only have the output tape state
+            """
+            post_output_whitelist[output_tape_no] = {
+                output_tape_cell_state
+            }
+
+        remap_counter_start = TapeCellState(2)
+        offset_combos_map: dict[int, MultiTapeStatePathRemap] = {}
+        for term_offset in product_state_whitelists:
+            offset_states_whitelist = offset_tape_states_map[term_offset]
+            offset_input_combos = self.build_remap_states(
+                tape_nos=all_tape_nos,
+                multi_tape_states_map=offset_states_whitelist,
+                tape_overlaps=global_overlaps,
+                remap_counter_start=remap_counter_start
+            )
+            remap_counter_start = offset_input_combos.next_free_counter
+            offset_combos_map[term_offset] = offset_input_combos
+
+        product_term_positions = sorted(list(product_term_positions_set))
+        assert 0 in product_term_positions
+        """
+        Each list item contains the set of possible remapped terms 
+        that the corresponding term offset could contain
+        """
+        product_pos_combos: list[tuple[A, ...]] = []
+
+        for product_term_position in product_term_positions:
+            offset_input_combos = offset_combos_map[product_term_position]
+            position_combos = offset_input_combos.get_all_state_paths()
+            position_remapped_terms: list[A] = []
+
+            for state_path in position_combos:
+                remapped_cell_state = global_state_path_remap[state_path]
+                remapped_term = A(
+                    position=product_term_position,
+                    state=remapped_cell_state
+                )
+                if remapped_term in position_remapped_terms:
+                    continue
+
+                position_remapped_terms.append(remapped_term)
+
+            product_pos_combos.append(tuple(position_remapped_terms))
+
+        """
+        Get every specific combination of term states that could satisfy 
+        the current product's input terms
+        """
+        specific_combos = utils.cartesian_product(product_pos_combos)
+        for remapped_product_input_terms in specific_combos:
+            input_terms_at_output_pos = self.get_terms_at_output_pos(
+                remapped_product_input_terms
+            )
+            if len(input_terms_at_output_pos) != 1:
+                raise ValueError(
+                    f'There should only be one term at output position '
+                    f'within {remapped_product_input_terms}'
+                )
+
+            input_term_at_output_pos = input_terms_at_output_pos[0]
+            input_tape_cell_state_at_output_pos = TapeCellState(
+                input_term_at_output_pos.get_state()
+            )
+            input_path_at_output_pos_res = global_state_path_remap.rev_lookup(
+                tape_cell_state=input_tape_cell_state_at_output_pos
+            )
+
+            remapped_output_state: TapeCellState = HALT_STATE
+            if input_path_at_output_pos_res.is_ok():
+                output_state_path = input_path_at_output_pos_res.unwrap()
+                remapped_output_state = global_state_path_remap[
+                    output_state_path
+                ]
+
+            transitions_group.add_transition(
+                input_terms=tuple(remapped_product_input_terms),
+                output_state=remapped_output_state,
+                ban_halt_state=True
+            )
+
+        return transitions_group
+
     def compose_tapes(self) -> ComposeTapesResult:
         """
         Combine a multi-tape automata into a single tape automata
@@ -1507,13 +1716,11 @@ class MultiTapeBuilder(object):
         global_overlaps = self.build_overlaps()
         # TODO assert that void state can overlap with itself at any offset
         # get all tape states that can exist in each tape
-        all_tape_states_per_tape = (
+        all_tape_states_per_tape: MultiTapeStatesMap = (
             global_overlaps.create_whitelist_for_offset()
         )
         preexisting_products = ProductTrie()
         preexisting_writes_map = self._get_prod_to_state_map()
-        all_tape_nos = sorted(self.get_tape_nos())
-
         for multi_tape_product in preexisting_writes_map:
             preexisting_products.insert_product(multi_tape_product)
 
@@ -1548,179 +1755,14 @@ class MultiTapeBuilder(object):
         )
 
         for multi_tape_product in product_writes_map:
-            """
-            For every position that is covered by the current product, 
-            we want to know which states could be present in the product 
-            terms at that position across all individual tapes, 
-            and then determine all fully formed term combinations that 
-            could satisfy the multi_tape_product
-            """
-            product_terms = multi_tape_product.get_flat_terms()
-            # tape writes that the multi_tape_product produces as output
-            product_outputs = product_writes_map[multi_tape_product]
-            product_term_positions_set: set[int] = set()
-            """
-            map position_offset -> tape_no -> choice of possible tape states 
-            that are required to be present at the aforementioned 
-            (offset, tape_no) in order for the current product input 
-            terms to be satisfied
-            
-            if for a given (position_offset, tape_no) there is no 
-            entry in product_state_whitelists, then that means that any 
-            tape state of tape tape_no can be assigned at 
-            output position offset position_offset while still satisfying 
-            the product's input terms
-            """
-            # TODO: ^ wow this is a mouthful
-            product_state_whitelists: defaultdict[
-                int, MultiTapeStatesMap
-            ] = defaultdict(MultiTapeStatesMap)
-
-            for product_term in product_terms:
-                term_offset = product_term.get_position()
-                product_term_positions_set.add(term_offset)
-                term_state = MultiTapeState.from_term(product_term)
-                # tape_no -> set of possible tape cell states at current pos
-                product_state_whitelists[term_offset].insert(
-                    tape_no=term_state.tape_no, state=term_state
-                )
-
-            """
-            maps offset (from output) to possible tape states 
-            that can exist at said offset such that the product 
-            inputs are satisfied.
-            
-            This (offset_tape_states_map) is different from 
-            product_state_whitelists in that:
-            
-            product_state_whitelists only contains tape states that are 
-            explicitly present in the product terms, whereas
-            offset_tape_states_map contains all tape states that can
-            exist at the given offset so long that the product's
-            input terms still remain satisfied
-            """
-            offset_tape_states_map: defaultdict[
-                int, MultiTapeStatesMap
-            ] = defaultdict(MultiTapeStatesMap)
-
-            for term_offset in product_state_whitelists:
-                # what product term states can occur at each tape
-                # for terms at the current term_offset (from product write)
-                offset_states_whitelist: MultiTapeStatesMap = (
-                    product_state_whitelists[term_offset]
-                )
-                for tape_no in all_tape_states_per_tape:
-                    if tape_no in offset_states_whitelist:
-                        continue
-
-                    """
-                    If there aren't any constraints on the tape cell states 
-                    that can exist on a particular tape_no imposed by the 
-                    product terms at the current term_offset, then the set 
-                    of states that can exist on that tape_no at the 
-                    current term_offset is just the set of all tape cell 
-                    states that can exist on that tape in general
-                    """
-                    assert tape_no not in offset_states_whitelist
-                    offset_states_whitelist[tape_no] = (
-                        all_tape_states_per_tape[tape_no]
-                    )
-
-                offset_tape_states_map[term_offset] = (
-                    offset_states_whitelist
-                )
-
-            # get input state combinations at offset 0
-            # (relative to output position)
-            input_zero_whitelist = product_state_whitelists[0]
-            # remapped_global_state_set: set[TapeCellState] = set()
-            """
-            possible tape states that can exist for each tape 
-            that exists, along the output write position for the 
-            current product, right *after* output has been written 
-            """
-            post_output_whitelist = copy.deepcopy(input_zero_whitelist)
-
-            for output_tape_no in product_outputs:
-                """
-                When we spit out output tape_cell_states, we have to 
-                consider the possible tape cell state values for tapes 
-                that weren't explicitly written to, and remap all 
-                possible combinations of unwritten tape states and 
-                output tape states to a global tape state 
-                """
-                output_tape_cell_state = product_outputs[output_tape_no]
-                """
-                Immediately after writing, the current tape state
-                would only have the output tape state
-                """
-                post_output_whitelist[output_tape_no] = {
-                    output_tape_cell_state
-                }
-
-            remap_counter_start = TapeCellState(2)
-            offset_combos_map: dict[int, MultiTapeStatePathRemap] = {}
-            global_combos_remap = MultiTapeStatePathRemap(
-                remap_counter_start=remap_counter_start
+            product_transitions_group = self.build_transitions_for_product(
+                multi_tape_product=multi_tape_product,
+                product_writes_map=product_writes_map,
+                all_tape_states_per_tape=all_tape_states_per_tape,
+                global_overlaps=global_overlaps,
+                global_state_path_remap=global_state_path_remap
             )
-
-            for term_offset in product_state_whitelists:
-                offset_states_whitelist = offset_tape_states_map[term_offset]
-                offset_input_combos = self.build_remap_states(
-                    tape_nos=all_tape_nos,
-                    multi_tape_states_map=offset_states_whitelist,
-                    tape_overlaps=global_overlaps,
-                    remap_counter_start=remap_counter_start
-                )
-                remap_counter_start = offset_input_combos.next_free_counter
-                global_combos_remap.merge(offset_input_combos)
-                offset_combos_map[term_offset] = offset_input_combos
-
-            # TODO: does this actually introduce any new combos
-            global_combos_remap.merge(
-                output_combos := self.build_remap_states(
-                    tape_nos=all_tape_nos,
-                    multi_tape_states_map=post_output_whitelist,
-                    tape_overlaps=global_overlaps
-                )
-            )
-
-            product_term_positions = sorted(list(product_term_positions_set))
-            """
-            Each list item contains the set of possible remapped terms 
-            that the corresponding term offset could contain
-            """
-            product_pos_combos: list[tuple[A, ...]] = []
-
-            for product_term_position in product_term_positions:
-                offset_input_combos = offset_combos_map[product_term_position]
-                position_combos = offset_input_combos.get_all_state_paths()
-                position_remapped_terms: list[A] = []
-
-                for state_path in position_combos:
-                    remapped_cell_state = global_state_path_remap[state_path]
-                    remapped_term = A(
-                        position=product_term_position,
-                        state=remapped_cell_state
-                    )
-                    position_remapped_terms.append(remapped_term)
-
-                product_pos_combos.append(tuple(set(position_remapped_terms)))
-
-            """
-            Get every specific combination of term states that could satisfy 
-            the current product's input terms
-            """
-            specific_combos = utils.cartesian_product(product_pos_combos)
-            for remapped_product_input_terms in specific_combos:
-                all_remap_outputs = output_combos.get_all_remap_states()
-
-                for remapped_output_state in all_remap_outputs:
-                    global_transitions_group.add_transition(
-                        input_terms=tuple(remapped_product_input_terms),
-                        output_state=remapped_output_state,
-                        ban_halt_state=True
-                    )
+            global_transitions_group.merge(product_transitions_group)
 
         return ComposeTapesResult(
             transitions_group=global_transitions_group,
