@@ -15,7 +15,7 @@ from automata_builder.rule_generator import (
 )
 from automata_builder.renderer import RenderFrame
 from automata_builder.tape_overlaps import (
-    MultiTapeState, TapeOverlaps, MultiTapeStatesMap, ProductWritesMap
+    MultiTapeState, TapeOverlaps, MultiTapeStatesMap, ProductWritesMap, TapeOverlapsFSM
 )
 from py_ca_compiler import (
     D, PyMultiTapeProduct, PyMultiTapeExpression,
@@ -1212,7 +1212,9 @@ class MultiTapeBuilder(object):
         :return:
         """
         # TODO: infer existing overlaps from the automata as well
+        overlaps_fsm = TapeOverlapsFSM(self._initial_overlaps)
         global_overlaps = copy.deepcopy(self._initial_overlaps)
+
         # map input products to output tape writes
         prod_to_state_map = self._get_prod_to_state_map()
         # map state -> products that contain it in their input terms
@@ -1226,6 +1228,8 @@ class MultiTapeBuilder(object):
         round_no: int = 0
 
         while overlaps_updated:
+            new_overlaps = copy.deepcopy(global_overlaps)
+
             overlaps_updated = False
             new_relevant_input_products: set[PyMultiTapeProduct] = set()
             # print(f'{relevant_input_products=}')

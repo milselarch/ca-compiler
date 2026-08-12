@@ -4,7 +4,7 @@ import copy
 import dataclasses
 
 from collections import defaultdict
-from typing import Iterator
+from typing import Iterator, Self
 
 from py_ca_compiler import D, PyMultiTapeProduct
 
@@ -140,8 +140,12 @@ class TapeOverlaps(object):
             MultiTapeState, defaultdict[int, set[MultiTapeState]]
         ] = defaultdict(lambda: defaultdict(set))
 
-    def freeze(self):
+    def freeze(self) -> Self:
         self._frozen = True
+        return self
+
+    def freeze_copy(self) -> Self:
+        return copy.deepcopy(self).freeze()
 
     def encode(self) -> tuple[tuple[
         MultiTapeState,
@@ -549,6 +553,9 @@ class TapeOverlaps(object):
         one has to conscientious about direction
         :return:
         """
+        if self._frozen:
+            raise ValueError("Can't insert direct overlap when frozen")
+
         has_tape_mutual_exclusion = (
             source_state.tape_no == target_state.tape_no and
             source_state.tape_cell_state != target_state.tape_cell_state and
@@ -572,8 +579,8 @@ class TapeOverlaps(object):
         return True
 
     def can_overlap_exist(
-            self, source_state: MultiTapeState,
-            target_state: MultiTapeState, offset: int
+        self, source_state: MultiTapeState,
+        target_state: MultiTapeState, offset: int
     ) -> bool:
         """
         :param source_state:
@@ -885,6 +892,7 @@ class ProductWritesMap(object):
         writes_map[write_tape_no] = write_tape_cell_state
 
 
+"""
 @dataclasses.dataclass
 class TapeOverlapsFSMState(object):
     overlaps: TapeOverlaps  # TODO: enforce that its frozen
@@ -892,3 +900,32 @@ class TapeOverlapsFSMState(object):
     undeletable_states: set[MultiTapeState]
     unwritable_states: set[MultiTapeState]
     product_writes_map: ProductWritesMap
+"""
+
+
+class TapeOverlapsFSM(object):
+    def __init__(self, initial_overlaps: TapeOverlaps):
+        self._initial_overlaps = initial_overlaps.freeze_copy()
+        self._existing_overlaps: set[TapeOverlaps] = {initial_overlaps}
+        self._next_overlaps: dict[TapeOverlaps, TapeOverlaps] = {}
+
+    def insert(
+        self, overlaps: TapeOverlaps, next_overlaps: TapeOverlaps
+    ) -> TapeOverlaps:
+        if overlaps not in self._existing_overlaps:
+            raise ValueError(
+                f'Overlaps FSM state "{overlaps}" does not exist'
+            )
+
+        if overlaps not in self._next_overlaps:
+            self._next_overlaps[overlaps] = next_overlaps.freeze_copy()
+            return next_overlaps
+        else:
+            existing_next_overlaps = self._next_overlaps[overlaps]
+
+            if existing_next_overlaps != next_overlaps:
+                raise ValueError(
+                    f"Conflicting next overlaps for {overlaps=}: "
+                    f"{existing_next_overlaps=} vs {next_overlaps=}"
+                )
+            return existing_next_overlaps
