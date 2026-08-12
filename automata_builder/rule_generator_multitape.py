@@ -1212,8 +1212,9 @@ class MultiTapeBuilder(object):
         :return:
         """
         # TODO: infer existing overlaps from the automata as well
-        overlaps_fsm = TapeOverlapsFSM(self._initial_overlaps)
-        global_overlaps = copy.deepcopy(self._initial_overlaps)
+        overlaps = copy.deepcopy(self._initial_overlaps)
+        prev_overlaps = overlaps.freeze_copy()
+        overlaps_fsm = TapeOverlapsFSM(prev_overlaps)
 
         # map input products to output tape writes
         prod_to_state_map = self._get_prod_to_state_map()
@@ -1228,20 +1229,18 @@ class MultiTapeBuilder(object):
         round_no: int = 0
 
         while overlaps_updated:
-            new_overlaps = copy.deepcopy(global_overlaps)
-
             overlaps_updated = False
             new_relevant_input_products: set[PyMultiTapeProduct] = set()
             # print(f'{relevant_input_products=}')
             print(f'NEXT_ROUND: {round_no}\n')
             round_no += 1
 
-            tape_overlap_states = global_overlaps.get_all_states()
-            lines = global_overlaps.visualize_for_states(tape_overlap_states)
+            tape_overlap_states = prev_overlaps.get_all_states()
+            lines = prev_overlaps.visualize_for_states(tape_overlap_states)
             print('\n'.join(lines))
 
             for product in relevant_input_products:
-                if not self.is_product_satisfiable(product, global_overlaps):
+                if not self.is_product_satisfiable(product, prev_overlaps):
                     continue
 
                 product_writes = prod_to_state_map[product]
@@ -1263,7 +1262,7 @@ class MultiTapeBuilder(object):
                         term_offset_from_output = input_term.get_position()
                         term_offset_from_input = -term_offset_from_output
 
-                        overlaps_updated |= global_overlaps.propagate_overlap(
+                        overlaps_updated |= overlaps.propagate_overlap(
                             source_state=input_state,
                             target_state=output_state,
                             offset=term_offset_from_input,
@@ -1289,9 +1288,11 @@ class MultiTapeBuilder(object):
                 # print('SATISFIABLE PRODUCT:', product, product_writes)
                 print('>>>')
 
+            frozen_overlaps = overlaps_fsm.insert(prev_overlaps, overlaps)
+            prev_overlaps = frozen_overlaps
             relevant_input_products = new_relevant_input_products
 
-        return global_overlaps
+        return overlaps
 
     @classmethod
     def build_product_same_writes_map(

@@ -84,6 +84,7 @@ Supported stages:
 - implement web automata visualizer tool
 - implement TUI for automata visualization
 - add annotated blocks for assembly generated
+- port cellular automata simulator to rust
 
 # DONE
 - multi-tape to single-tape cellular automata compiler

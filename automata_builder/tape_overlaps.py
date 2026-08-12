@@ -26,7 +26,10 @@ class MultiTapeState(object):
     def __hash__(self):
         return hash((self.tape_no, self.tape_cell_state))
 
-    def __eq__(self, other: MultiTapeState) -> bool:
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, MultiTapeState):
+            return False
+
         return (
             self.tape_no == other.tape_no and
             self.tape_cell_state == other.tape_cell_state
@@ -183,7 +186,7 @@ class TapeOverlaps(object):
 
         return hash(self.encode())
 
-    def __eq__(self, other: TapeOverlaps):
+    def __eq__(self, other: object) -> bool:
         if not isinstance(other, TapeOverlaps):
             return False
 
@@ -905,9 +908,12 @@ class TapeOverlapsFSMState(object):
 
 class TapeOverlapsFSM(object):
     def __init__(self, initial_overlaps: TapeOverlaps):
-        self._initial_overlaps = initial_overlaps.freeze_copy()
+        self._initial_overlaps = initial_overlaps
         self._existing_overlaps: set[TapeOverlaps] = {initial_overlaps}
         self._next_overlaps: dict[TapeOverlaps, TapeOverlaps] = {}
+
+    def __len__(self):
+        return len(self._next_overlaps)
 
     def insert(
         self, overlaps: TapeOverlaps, next_overlaps: TapeOverlaps
