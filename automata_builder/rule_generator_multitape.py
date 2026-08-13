@@ -1215,6 +1215,7 @@ class MultiTapeBuilder(object):
         overlaps = copy.deepcopy(self._initial_overlaps)
         prev_overlaps = overlaps.freeze_copy()
         overlaps_fsm = TapeOverlapsFSM(prev_overlaps)
+        assert prev_overlaps in overlaps_fsm
 
         # map input products to output tape writes
         prod_to_state_map = self._get_prod_to_state_map()
@@ -1269,6 +1270,7 @@ class MultiTapeBuilder(object):
                             min_offset=self.leftmost_extent,
                             max_offset=self.rightmost_extent
                         )
+                        assert prev_overlaps in overlaps_fsm
 
                     write_pair = (write_tape_no, output_tape_cell_state)
                     if not overlaps_updated:
@@ -1288,8 +1290,10 @@ class MultiTapeBuilder(object):
                 # print('SATISFIABLE PRODUCT:', product, product_writes)
                 print('>>>')
 
+            # print(len(overlaps_fsm._existing_overlaps))
             frozen_overlaps = overlaps_fsm.insert(prev_overlaps, overlaps)
             prev_overlaps = frozen_overlaps
+            assert prev_overlaps in overlaps_fsm
             relevant_input_products = new_relevant_input_products
 
         return overlaps

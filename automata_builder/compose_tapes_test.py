@@ -1,4 +1,5 @@
 import argparse
+import time
 
 from py_ca_compiler import A, PyProduct
 
@@ -48,7 +49,13 @@ if __name__ == '__main__':
             MultiTapeState(tape_no=DATA_TAPE, tape_cell_state=DT_DATA)
         }
     )
+
+    start_stamp = time.time()
     compose_result = multi_tape_builder.compose_tapes()
+    end_stamp = time.time()
+    duration = end_stamp - start_stamp
+    print(f'Completed in {duration:.02f} seconds')
+
     transitions = compose_result.transitions_group.transitions
     print(f'num transitions = {len(transitions)}')
 

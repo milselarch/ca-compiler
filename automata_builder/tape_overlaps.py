@@ -908,12 +908,18 @@ class TapeOverlapsFSMState(object):
 
 class TapeOverlapsFSM(object):
     def __init__(self, initial_overlaps: TapeOverlaps):
-        self._initial_overlaps = initial_overlaps
-        self._existing_overlaps: set[TapeOverlaps] = {initial_overlaps}
+        self._initial_overlaps = initial_overlaps.freeze_copy()
+        self._existing_overlaps: set[TapeOverlaps] = {self._initial_overlaps}
         self._next_overlaps: dict[TapeOverlaps, TapeOverlaps] = {}
 
     def __len__(self):
         return len(self._next_overlaps)
+
+    def __contains__(self, other):
+        if not isinstance(other, TapeOverlaps):
+            return False
+
+        return other in self._existing_overlaps
 
     def insert(
         self, overlaps: TapeOverlaps, next_overlaps: TapeOverlaps
@@ -923,9 +929,12 @@ class TapeOverlapsFSM(object):
                 f'Overlaps FSM state "{overlaps}" does not exist'
             )
 
+        frozen_next_overlaps = next_overlaps.freeze_copy()
         if overlaps not in self._next_overlaps:
-            self._next_overlaps[overlaps] = next_overlaps.freeze_copy()
-            return next_overlaps
+            self._next_overlaps[overlaps] = frozen_next_overlaps
+            self._existing_overlaps.add(frozen_next_overlaps)
+            assert frozen_next_overlaps in self
+            return frozen_next_overlaps
         else:
             existing_next_overlaps = self._next_overlaps[overlaps]
 
