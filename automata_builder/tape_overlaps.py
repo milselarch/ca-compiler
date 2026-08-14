@@ -159,6 +159,7 @@ class TapeOverlaps(object):
         MultiTapeState,
         tuple[tuple[int, tuple[MultiTapeState, ...]], ...]
     ], ...]:
+        # TODO: refactor to FreezableDefaultDict's responsibility
         source_states = tuple(sorted(list(self._overlaps.keys())))
         overlap_items: list[tuple[
             MultiTapeState,
@@ -208,10 +209,10 @@ class TapeOverlaps(object):
     def get_cell_states_for_tape(self, tape_no: TapeNo) -> set[TapeCellState]:
         return set([
             state.tape_cell_state for state in
-            self.get_all_for_tape(tape_no=tape_no)
+            self.get_states_for_tape(tape_no=tape_no)
         ])
 
-    def get_all_for_tape(self, tape_no: TapeNo) -> set[MultiTapeState]:
+    def get_states_for_tape(self, tape_no: TapeNo) -> set[MultiTapeState]:
         tape_states: set[MultiTapeState] = set()
 
         for source_state in self._overlaps:
@@ -219,6 +220,9 @@ class TapeOverlaps(object):
                 tape_states.add(source_state)
 
         return tape_states
+
+    def get_all_states(self) -> set[MultiTapeState]:
+        return set(self._overlaps.keys())
 
     def visualize_for_states(
         self, source_states: set[MultiTapeState]

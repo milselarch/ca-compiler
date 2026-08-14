@@ -8,6 +8,7 @@ from result import Result, Ok, Err
 from collections import defaultdict
 from typing import Sequence
 
+from utils import FreezableSet
 from automata_builder.rule_generator import (
     AutomataTransitionsGroup, TapeCellState, TapeNo,
     VOID_STATE, HALT_STATE, BLANK_INT
@@ -1232,29 +1233,30 @@ class MultiTapeBuilder(object):
         while overlaps_updated:
             overlaps_updated = False
             new_relevant_input_products: set[PyMultiTapeProduct] = set()
+            new_output_states_written: set[MultiTapeState] = set()
             # print(f'{relevant_input_products=}')
             print(f'NEXT_ROUND: {round_no}\n')
             round_no += 1
 
-            tape_overlap_states = prev_overlaps.get_all_states()
-            lines = prev_overlaps.visualize_for_states(tape_overlap_states)
-            print('\n'.join(lines))
+            # tape_overlap_states = prev_overlaps.get_all_states()
+            # lines = prev_overlaps.visualize_for_states(tape_overlap_states)
+            # print('\n'.join(lines))
 
             for product in relevant_input_products:
                 if not self.is_product_satisfiable(product, prev_overlaps):
                     continue
 
                 product_writes = prod_to_state_map[product]
-                print('SATISFIABLE PRODUCT PRE:', product, product_writes)
+                # print('SATISFIABLE PRODUCT PRE:', product, product_writes)
                 input_terms = product.get_flat_terms()
 
                 for write_tape_no in product_writes:
                     output_tape_cell_state = product_writes[write_tape_no]
-
                     output_state = MultiTapeState(
                         tape_no=write_tape_no,
                         tape_cell_state=output_tape_cell_state
                     )
+                    new_output_states_written.add(output_state)
 
                     for input_term in input_terms:
                         # Insert overlaps between the products' constituent
@@ -1272,12 +1274,12 @@ class MultiTapeBuilder(object):
                         )
                         assert prev_overlaps in overlaps_fsm
 
-                    write_pair = (write_tape_no, output_tape_cell_state)
+                    # write_pair = (write_tape_no, output_tape_cell_state)
                     if not overlaps_updated:
-                        print("SKIP_WRITE", write_pair)
+                        # print("SKIP_WRITE", write_pair)
                         continue
 
-                    print("DO_WRITE", write_pair)
+                    # print("DO_WRITE", write_pair)
                     # Get the other products that use the current products'
                     # output state as one of their input states, and add it
                     # to list of products to check for satisfiability later
@@ -1288,7 +1290,11 @@ class MultiTapeBuilder(object):
                     # """
 
                 # print('SATISFIABLE PRODUCT:', product, product_writes)
-                print('>>>')
+                # print('>>>')
+
+            # TODO: clear instant delete states
+            #  if current round does not spawn and rules are instant-delete
+            all_prev_overlap_states = prev_overlaps.get_all_states()
 
             # print(len(overlaps_fsm._existing_overlaps))
             frozen_overlaps = overlaps_fsm.insert(prev_overlaps, overlaps)
@@ -1296,6 +1302,8 @@ class MultiTapeBuilder(object):
             assert prev_overlaps in overlaps_fsm
             relevant_input_products = new_relevant_input_products
 
+        # TODO: merge all overlaps from FSM before returning
+        print(f'overlaps FSM has {len(overlaps_fsm)} states')
         return overlaps
 
     @classmethod
@@ -1435,11 +1443,11 @@ class MultiTapeBuilder(object):
         if not _overlap_state_path:
             # Use all available states fur the current tape
             # as the overlap path is empty / just started
-            next_state_overlaps = tape_overlaps.get_all_for_tape(tape_no)
+            next_state_overlaps = tape_overlaps.get_states_for_tape(tape_no)
         else:
             # get the overlapping states for prev_tape_state
             prev_tape_state = _overlap_state_path[-1]
-            next_state_overlaps: set[MultiTapeState] = (
+            next_state_overlaps: FreezableSet[MultiTapeState] = (
                 tape_overlaps.get_overlaps(prev_tape_state)[0]
             )
 
