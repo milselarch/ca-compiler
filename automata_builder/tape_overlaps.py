@@ -11,9 +11,10 @@ from py_ca_compiler import D, PyMultiTapeProduct
 from automata_builder.rule_generator import (
     TapeCellState, TapeNo
 )
+from utils import FreezableDefaultDict, FreezableSet
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class MultiTapeState(object):
     """
     This represents the state of a cell in a specific tape of
@@ -139,12 +140,16 @@ class TapeOverlaps(object):
         be present at offset k from A, for all possible offsets k.
         """
         self._frozen: bool = False
-        self._overlaps: defaultdict[
-            MultiTapeState, defaultdict[int, set[MultiTapeState]]
-        ] = defaultdict(lambda: defaultdict(set))
+        self._overlaps: FreezableDefaultDict[
+            MultiTapeState,
+            FreezableDefaultDict[int, FreezableSet[MultiTapeState]]
+        ] = FreezableDefaultDict(
+            lambda: FreezableDefaultDict(FreezableSet)
+        )
 
     def freeze(self) -> Self:
         self._frozen = True
+        self._overlaps.freeze()
         return self
 
     def freeze_copy(self) -> Self:
@@ -302,7 +307,9 @@ class TapeOverlaps(object):
             else:
                 pre_line = " " * len(mid_pre_line)
 
-            target_states_set: set[MultiTapeState] = overlap_map[offset]
+            target_states_set: set[MultiTapeState] = (
+                overlap_map[offset].clone_data()
+            )
             if (offset != 0) and not target_states_set:
                 # we want to not skip if offset=0 because
                 # the offset=0 is also the one showing the tape state
@@ -341,12 +348,12 @@ class TapeOverlaps(object):
 
     def get_overlaps_for_offset(
         self, source_state: MultiTapeState, offset: int
-    ) -> set[MultiTapeState]:
-        return copy.copy(self._overlaps[source_state][offset])
+    ) -> FreezableSet[MultiTapeState]:
+        return self._overlaps[source_state][offset]
 
     def get_overlaps(
         self, source_state: MultiTapeState
-    ) -> defaultdict[int, set[MultiTapeState]]:
+    ) -> FreezableDefaultDict[int, FreezableSet[MultiTapeState]]:
         return copy.deepcopy(self._overlaps[source_state])
 
     def propagate_overlap(
@@ -592,7 +599,15 @@ class TapeOverlaps(object):
         offset of term with target_state FROM term with source_state
         :return:
         """
-        return target_state in self._overlaps[source_state][offset]
+        if source_state not in self._overlaps:
+            return False
+
+        source_overlaps = self._overlaps[source_state]
+        if offset not in source_overlaps:
+            return False
+
+        offset_overlaps = source_overlaps[offset]
+        return target_state in offset_overlaps
 
     def create_whitelist_for_offset(
         self, offset: int = 0

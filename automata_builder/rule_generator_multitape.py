@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import copy
 import dataclasses
-
 import utils
 
 from result import Result, Ok, Err
 from collections import defaultdict
-from typing import Iterator, Sequence
+from typing import Sequence
 
 from automata_builder.rule_generator import (
     AutomataTransitionsGroup, TapeCellState, TapeNo,
@@ -15,7 +14,8 @@ from automata_builder.rule_generator import (
 )
 from automata_builder.renderer import RenderFrame
 from automata_builder.tape_overlaps import (
-    MultiTapeState, TapeOverlaps, MultiTapeStatesMap, ProductWritesMap, TapeOverlapsFSM
+    MultiTapeState, TapeOverlaps, MultiTapeStatesMap,
+    ProductWritesMap, TapeOverlapsFSM
 )
 from py_ca_compiler import (
     D, PyMultiTapeProduct, PyMultiTapeExpression,
