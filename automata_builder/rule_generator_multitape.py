@@ -1204,7 +1204,7 @@ class MultiTapeBuilder(object):
 
         return True
 
-    def build_overlaps(self) -> TapeOverlaps:
+    def build_overlaps(self, verbose: bool = True) -> TapeOverlaps:
         """
         Builds a mapping of which tape states can overlap with
         which other tape states at what relative offsets
@@ -1212,6 +1212,10 @@ class MultiTapeBuilder(object):
         TODO: build overlaps FSM
         :return:
         """
+        def log(*args, **kwargs):
+            if verbose:
+                print(*args, **kwargs)
+
         # TODO: infer existing overlaps from the automata as well
         overlaps = copy.deepcopy(self._initial_overlaps)
         prev_overlaps = overlaps.freeze_copy()
@@ -1227,25 +1231,23 @@ class MultiTapeBuilder(object):
         prod_to_state_map.build_state_to_products_map(verbose=True)
         # input products that can effect a new state overlap
         relevant_input_products = list(prod_to_state_map.keys())
-        overlaps_updated = True
+        overlaps_fsm_updated = True
         round_no: int = 0
 
-        while overlaps_updated:
-            overlaps_updated = False
+        while overlaps_fsm_updated:
+            overlaps.print_for_states()
             new_relevant_input_products: set[PyMultiTapeProduct] = set()
             new_output_states_written: set[MultiTapeState] = set()
             # print(f'{relevant_input_products=}')
-            print(f'NEXT_ROUND: {round_no}\n')
+            log(f'NEXT_ROUND: {round_no}\n')
             round_no += 1
-
-            # tape_overlap_states = prev_overlaps.get_all_states()
-            # lines = prev_overlaps.visualize_for_states(tape_overlap_states)
-            # print('\n'.join(lines))
 
             for product in relevant_input_products:
                 if not self.is_product_satisfiable(product, prev_overlaps):
+                    log('UNSATISFIABLE', product, product.get_annotation())
                     continue
 
+                log('SATISFIABLE', product, product.get_annotation())
                 product_writes = prod_to_state_map[product]
                 # print('SATISFIABLE PRODUCT PRE:', product, product_writes)
                 input_terms = product.get_flat_terms()
@@ -1257,6 +1259,7 @@ class MultiTapeBuilder(object):
                         tape_cell_state=output_tape_cell_state
                     )
                     new_output_states_written.add(output_state)
+                    overlaps_updated = False
 
                     for input_term in input_terms:
                         # Insert overlaps between the products' constituent
@@ -1294,17 +1297,37 @@ class MultiTapeBuilder(object):
 
             # TODO: clear instant delete states
             #  if current round does not spawn and rules are instant-delete
+            # all states that could exist at the start of current time step
             all_prev_overlap_states = prev_overlaps.get_all_states()
+            log(f'{new_output_states_written=}')
+            # states that cease to exist in tapes after current time step
+            # extinct_states: set[MultiTapeState] = set()
+
+            for prev_overlap_state in all_prev_overlap_states:
+                state_attrs = prod_to_state_map.get_state_attributes(
+                    prev_overlap_state
+                )
+                is_state_extinct = (
+                    state_attrs.instant_delete and
+                    prev_overlap_state not in new_output_states_written
+                )
+                if is_state_extinct:
+                    # extinct_states.add(prev_overlap_state)
+                    overlaps.delete_state(prev_overlap_state)
 
             # print(len(overlaps_fsm._existing_overlaps))
-            frozen_overlaps = overlaps_fsm.insert(prev_overlaps, overlaps)
+            frozen_overlaps, overlaps_fsm_updated = overlaps_fsm.insert(
+                prev_overlaps, overlaps
+            )
             prev_overlaps = frozen_overlaps
             assert prev_overlaps in overlaps_fsm
             relevant_input_products = new_relevant_input_products
 
-        # TODO: merge all overlaps from FSM before returning
-        print(f'overlaps FSM has {len(overlaps_fsm)} states')
-        return overlaps
+        if verbose:
+            log(f'overlaps FSM has {len(overlaps_fsm)} states')
+
+        merged_overlaps = overlaps_fsm.merge()
+        return merged_overlaps
 
     @classmethod
     def build_product_same_writes_map(

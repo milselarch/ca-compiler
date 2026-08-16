@@ -4,8 +4,7 @@ import copy
 import dataclasses
 
 from collections import defaultdict
-from typing import Iterator, Self
-
+from typing import Iterator, Self, Sequence
 from py_ca_compiler import D, PyMultiTapeProduct
 
 from automata_builder.rule_generator import (
@@ -147,6 +146,18 @@ class TapeOverlaps(object):
             lambda: FreezableDefaultDict(FreezableSet)
         )
 
+    def delete_state(self, state: MultiTapeState):
+        if self._frozen:
+            raise ValueError("Can't delete from frozen tape overlaps")
+
+        if state in self._overlaps:
+            del self._overlaps[state]
+
+        for _, source_overlaps in self._overlaps.items():
+            for _, offset_overlaps in source_overlaps.items():
+                if state in offset_overlaps:
+                    offset_overlaps.remove(state)
+
     def freeze(self) -> Self:
         self._frozen = True
         self._overlaps.freeze()
@@ -155,36 +166,11 @@ class TapeOverlaps(object):
     def freeze_copy(self) -> Self:
         return copy.deepcopy(self).freeze()
 
-    def encode(self) -> tuple[tuple[
-        MultiTapeState,
-        tuple[tuple[int, tuple[MultiTapeState, ...]], ...]
-    ], ...]:
-        # TODO: refactor to FreezableDefaultDict's responsibility
-        source_states = tuple(sorted(list(self._overlaps.keys())))
-        overlap_items: list[tuple[
-            MultiTapeState,
-            tuple[tuple[int, tuple[MultiTapeState, ...]], ...]
-        ]] = []
+    def encode(self):
+        return self._overlaps.encode()
 
-        for source_state in source_states:
-            offset_overlaps = self._overlaps[source_state]
-            offsets = tuple(sorted(list(offset_overlaps.keys())))
-            offset_overlap_items: list[
-                tuple[int, tuple[MultiTapeState, ...]]
-            ] = []
-
-            for offset in offsets:
-                overlap_states = offset_overlaps[offset]
-                overlap_state_items = tuple(sorted(list(overlap_states)))
-                offset_overlap_items.append((
-                    offset, overlap_state_items
-                ))
-
-            overlap_items.append((
-                source_state, tuple(offset_overlap_items)
-            ))
-
-        return tuple(sorted(overlap_items))
+    def items(self):
+        return self._overlaps.items()
 
     def __hash__(self):
         if not self._frozen:
@@ -196,15 +182,34 @@ class TapeOverlaps(object):
         if not isinstance(other, TapeOverlaps):
             return False
 
-        if not self._frozen or not other._frozen:
-            raise ValueError(
-                "Can't compare overlaps before freezing"
-            )
-
         if self._overlaps.keys() != other._overlaps.keys():
             return False
 
         return self.encode() == other.encode()
+
+    def __or__(self, other: object):
+        if not isinstance(other, self.__class__):
+            raise TypeError(
+                f"Unsupported operand type(s) for |: "
+                f"{other.__class__.__name__}"
+            )
+
+    @classmethod
+    def merge(
+        cls, input_tape_overlaps: Sequence[TapeOverlaps]
+    ) -> TapeOverlaps:
+        new_overlaps = cls()
+
+        for tape_overlaps in input_tape_overlaps:
+            for source_state, source_overlaps in tape_overlaps.items():
+                for offset, offset_overlaps in source_overlaps.items():
+                    for target_state in offset_overlaps:
+                        new_overlaps.insert_direct_overlap(
+                            source_state=source_state,
+                            offset=offset, target_state=target_state
+                        )
+
+        return new_overlaps
 
     def get_cell_states_for_tape(self, tape_no: TapeNo) -> set[TapeCellState]:
         return set([
@@ -295,7 +300,8 @@ class TapeOverlaps(object):
 
         overlap_map = self._overlaps[source_state]
         overlap_offsets = set(overlap_map.keys())
-        min_offset, max_offset = 0, 0
+        min_offset: int = 0
+        max_offset: int = 0
 
         if overlap_offsets:
             min_offset = min(min(overlap_offsets), 0)
@@ -346,9 +352,6 @@ class TapeOverlaps(object):
 
     def __repr__(self):
         return f'{self.__class__.__name__}(overlaps={self._overlaps})'
-
-    def get_all_states(self) -> set[MultiTapeState]:
-        return set(self._overlaps.keys())
 
     def get_overlaps_for_offset(
         self, source_state: MultiTapeState, offset: int
@@ -942,7 +945,15 @@ class TapeOverlapsFSM(object):
 
     def insert(
         self, overlaps: TapeOverlaps, next_overlaps: TapeOverlaps
-    ) -> TapeOverlaps:
+    ) -> tuple[TapeOverlaps, bool]:
+        """
+        :param overlaps:
+        :param next_overlaps:
+        :return:
+        frozen copy of inserted next_overlaps, and whether
+        the inserted overlaps are newly inserted into the FSM
+        (i.e. they didn't already exist)
+        """
         if overlaps not in self._existing_overlaps:
             raise ValueError(
                 f'Overlaps FSM state "{overlaps}" does not exist'
@@ -953,7 +964,7 @@ class TapeOverlapsFSM(object):
             self._next_overlaps[overlaps] = frozen_next_overlaps
             self._existing_overlaps.add(frozen_next_overlaps)
             assert frozen_next_overlaps in self
-            return frozen_next_overlaps
+            return frozen_next_overlaps, True
         else:
             existing_next_overlaps = self._next_overlaps[overlaps]
 
@@ -962,4 +973,7 @@ class TapeOverlapsFSM(object):
                     f"Conflicting next overlaps for {overlaps=}: "
                     f"{existing_next_overlaps=} vs {next_overlaps=}"
                 )
-            return existing_next_overlaps
+            return existing_next_overlaps, False
+
+    def merge(self) -> TapeOverlaps:
+        return TapeOverlaps.merge(list(self._existing_overlaps))

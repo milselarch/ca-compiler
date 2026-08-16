@@ -72,14 +72,53 @@ class Freezable(metaclass=ABCMeta):
     def _freeze(self) -> None:
         raise NotImplementedError
 
+    def encode(self):
+        return self._encode()
+
+    @abstractmethod
+    def _encode(self) -> tuple:
+        raise NotImplementedError
+
+    def decode(self, data: tuple):
+        if not self._frozen:
+            raise ValueError("Cannot encode a non-frozen Freezable object")
+
+        return self._decode(data)
+
+    @classmethod
+    @abstractmethod
+    def _decode(cls, data: tuple) -> typing.Self:
+        raise NotImplementedError
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, type(self)):
+            return False
+
+        return self.encode() == other.encode()
+
+    def __hash__(self) -> int:
+        classname = self.__class__.__name__
+        if not self._frozen:
+            raise ValueError(f"Cannot hash {classname} when not frozen")
+
+        return hash(self.encode())
+
 
 class FreezableSet(Freezable, Generic[V]):
-    def __init__(self) -> None:
+    def __init__(self, *args: list[V]) -> None:
         super().__init__()
-        self._data: set[V] = set()
+        self._data: set[V] = set(args)
 
     def __iter__(self) -> Iterator[V]:
         return iter(self._data)
+
+    def remove(self, value: V):
+        if self._frozen:
+            raise ValueError(
+                f"Cannot delete from frozen {self.__class__.__name__}"
+            )
+
+        self._data.remove(value)
 
     def clone_data(self) -> set[V]:
         return copy.copy(self._data)
@@ -98,6 +137,13 @@ class FreezableSet(Freezable, Generic[V]):
             if isinstance(value, Freezable):
                 value.freeze()
 
+    def _encode(self) -> tuple[V, ...]:
+        return tuple(sorted(list(self._data)))
+
+    @classmethod
+    def _decode(cls, data: tuple[V, ...]) -> typing.Self:
+        return cls(*data)
+
 
 class FreezableDefaultDict(Freezable, Generic[K, V]):
     def __init__(self, default_factory: Callable[[], V]) -> None:
@@ -109,6 +155,14 @@ class FreezableDefaultDict(Freezable, Generic[K, V]):
         for value in self._data.values():
             if isinstance(value, Freezable):
                 value.freeze()
+
+    def __delitem__(self, key: K):
+        if self._frozen:
+            raise ValueError(
+                f"Cannot delete from frozen {self.__class__.__name__}"
+            )
+
+        del self._data[key]
 
     def __getitem__(self, key: K) -> V:
         classname = self.__class__.__name__
@@ -155,3 +209,18 @@ class FreezableDefaultDict(Freezable, Generic[K, V]):
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({dict(self._data)!r})"
+
+    def _encode(self) -> tuple[tuple[K, V], ...]:
+        keys = sorted(list(self.keys()))
+        return tuple([
+            (key, self._data[key]) for key in keys
+        ])
+
+    @classmethod
+    def _decode(cls, data: tuple[tuple[K, V], ...]) -> typing.Self:
+        instance = cls(lambda: None)  # Provide a default factory
+        for key, value in data:
+            instance[key] = value
+
+        instance.freeze()
+        return instance
