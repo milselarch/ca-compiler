@@ -8,7 +8,7 @@ from typing import Iterator, Self, Sequence
 from py_ca_compiler import D, PyMultiTapeProduct
 
 from automata_builder.rule_generator import (
-    TapeCellState, TapeNo
+    TapeCellState, TapeNo, VOID_STATE
 )
 from utils import FreezableDefaultDict, FreezableSet
 
@@ -743,9 +743,18 @@ class ProductWritesMap(object):
 
             if len(product) == 1:
                 input_term = product.get_flat_terms()[0]
+                assert input_term.get_cell_state() != VOID_STATE, (
+                    f"VOID STATE CANNOT AUTO TRANSITION AWAY - {product}"
+                )
+                target_tape_write_state = writes_map.get(target_tape_no, None)
                 instant_delete |= (
+                    # input term has same tape as target term
                     input_term.get_tape_no() == target_tape_no and
-                    input_term.get_cell_state() != target_tape_cell_state
+                    # and input term has same tape state as target term
+                    input_term.get_cell_state() == target_tape_cell_state and
+                    # and product writes back to same tape but with a
+                    # different state than the original target_tape_cell_state
+                    target_tape_write_state != target_tape_cell_state
                 )
 
             writable |= target_state_written and not is_idempotent_transition

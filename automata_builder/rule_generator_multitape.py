@@ -1314,6 +1314,7 @@ class MultiTapeBuilder(object):
                 if is_state_extinct:
                     # extinct_states.add(prev_overlap_state)
                     overlaps.delete_state(prev_overlap_state)
+                    log(f"EXTINCT STATE {prev_overlap_state}")
 
             # print(len(overlaps_fsm._existing_overlaps))
             frozen_overlaps, overlaps_fsm_updated = overlaps_fsm.insert(
