@@ -1173,6 +1173,11 @@ class MultiTapeBuilder(object):
         """
         terms = product.get_flat_terms()
 
+        if len(terms) == 1:
+            # if overlaps contain the one term, then product is satisfiable
+            tape_state = MultiTapeState.from_term(terms[0])
+            return tape_state in overlaps
+
         for k in range(len(terms)-1):
             term_a, term_b = terms[k], terms[k+1]
 
@@ -1204,6 +1209,117 @@ class MultiTapeBuilder(object):
 
         return True
 
+    def transition_overlaps(
+        self, overlaps: TapeOverlaps, prod_to_state_map: ProductWritesMap,
+        overlaps_fsm: TapeOverlapsFSM, verbose: bool = False
+    ) -> tuple[TapeOverlaps, FreezableSet[PyMultiTapeProduct]]:
+        # TODO: actually use this in build_overlaps
+        # TODO: create OverlapsFSMState := (overlaps, relevant_input_products)
+        """
+        :param overlaps:
+        :param prod_to_state_map:
+        :param overlaps_fsm:
+        :param verbose:
+        :return:
+        new tape overlaps, and set of input products that could
+        be affected by the new overlaps
+        """
+        def log(*args, **kwargs):
+            if verbose:
+                print(*args, **kwargs)
+
+        relevant_input_products = tuple(prod_to_state_map.keys())
+        # map state -> products that contain it in their input terms
+        input_state_to_prod_map = (
+            prod_to_state_map.build_input_state_to_prod_map()
+        )
+        prev_overlaps = overlaps.freeze_copy()
+        new_overlaps = copy.deepcopy(overlaps)
+        new_overlaps.print_for_states()
+
+        new_output_states_written: set[MultiTapeState] = set()
+        # print(f'{relevant_input_products=}')
+        new_relevant_input_products: FreezableSet[
+            PyMultiTapeProduct
+        ] = FreezableSet()
+
+        for product in relevant_input_products:
+            if not self.is_product_satisfiable(product, prev_overlaps):
+                log('UNSATISFIABLE', product, product.get_annotation())
+                continue
+
+            log('SATISFIABLE', product, product.get_annotation())
+            product_writes = prod_to_state_map[product]
+            # print('SATISFIABLE PRODUCT PRE:', product, product_writes)
+            input_terms = product.get_flat_terms()
+
+            for write_tape_no in product_writes:
+                output_tape_cell_state = product_writes[write_tape_no]
+                output_state = MultiTapeState(
+                    tape_no=write_tape_no,
+                    tape_cell_state=output_tape_cell_state
+                )
+                new_output_states_written.add(output_state)
+                overlaps_updated = False
+
+                for input_term in input_terms:
+                    # Insert overlaps between the products' constituent
+                    # input states and the output state it writes to
+                    input_state = MultiTapeState.from_term(input_term)
+                    term_offset_from_output = input_term.get_position()
+                    term_offset_from_input = -term_offset_from_output
+
+                    overlaps_updated |= new_overlaps.propagate_overlap(
+                        source_state=input_state,
+                        target_state=output_state,
+                        offset=term_offset_from_input,
+                        min_offset=self.leftmost_extent,
+                        max_offset=self.rightmost_extent
+                    )
+                    assert prev_overlaps in overlaps_fsm
+
+                # write_pair = (write_tape_no, output_tape_cell_state)
+                if not overlaps_updated:
+                    # print("SKIP_WRITE", write_pair)
+                    continue
+
+                # print("DO_WRITE", write_pair)
+                # Get the other products that use the current products'
+                # output state as one of their input states, and add it
+                # to list of products to check for satisfiability later
+                # """
+                affected_products = input_state_to_prod_map[output_state]
+                for affected_product in affected_products:
+                    new_relevant_input_products.add(affected_product)
+                # """
+
+            # print('SATISFIABLE PRODUCT:', product, product_writes)
+            # print('>>>')
+
+        # TODO: clear instant delete states
+        #  if current round does not spawn and rules are instant-delete
+        # all states that could exist at the start of current time step
+        all_prev_overlap_states = prev_overlaps.get_all_states()
+        log(f'{new_output_states_written=}')
+        # states that cease to exist in tapes after current time step
+        # extinct_states: set[MultiTapeState] = set()
+
+        for prev_overlap_state in all_prev_overlap_states:
+            state_attrs = prod_to_state_map.get_state_attributes(
+                prev_overlap_state
+            )
+            is_state_extinct = (
+                state_attrs.instant_delete and
+                prev_overlap_state not in new_output_states_written
+            )
+            if is_state_extinct:
+                # extinct_states.add(prev_overlap_state)
+                new_overlaps.delete_state(prev_overlap_state)
+                log(f"EXTINCT STATE {prev_overlap_state}")
+
+        new_relevant_input_products.freeze()
+        return new_overlaps, new_relevant_input_products
+
     def build_overlaps(self, verbose: bool = True) -> TapeOverlaps:
         """
         Builds a mapping of which tape states can overlap with
@@ -1230,17 +1346,18 @@ class MultiTapeBuilder(object):
         )
         prod_to_state_map.build_state_to_products_map(verbose=True)
         # input products that can effect a new state overlap
-        relevant_input_products = list(prod_to_state_map.keys())
+        relevant_input_products = tuple(prod_to_state_map.keys())
         overlaps_fsm_updated = True
         round_no: int = 0
 
         while overlaps_fsm_updated:
+            log(f'NEXT_ROUND: {round_no}\n')
+            round_no += 1
+
             overlaps.print_for_states()
             new_relevant_input_products: set[PyMultiTapeProduct] = set()
             new_output_states_written: set[MultiTapeState] = set()
             # print(f'{relevant_input_products=}')
-            log(f'NEXT_ROUND: {round_no}\n')
-            round_no += 1
 
             for product in relevant_input_products:
                 if not self.is_product_satisfiable(product, prev_overlaps):
@@ -1277,12 +1394,12 @@ class MultiTapeBuilder(object):
                         )
                         assert prev_overlaps in overlaps_fsm
 
-                    # write_pair = (write_tape_no, output_tape_cell_state)
+                    write_pair = (write_tape_no, output_tape_cell_state)
                     if not overlaps_updated:
                         # print("SKIP_WRITE", write_pair)
                         continue
 
-                    # print("DO_WRITE", write_pair)
+                    print("DO_WRITE", write_pair)
                     # Get the other products that use the current products'
                     # output state as one of their input states, and add it
                     # to list of products to check for satisfiability later
@@ -1322,7 +1439,8 @@ class MultiTapeBuilder(object):
             )
             prev_overlaps = frozen_overlaps
             assert prev_overlaps in overlaps_fsm
-            relevant_input_products = new_relevant_input_products
+            # TODO: reassign input products to new relevant input products?
+            # relevant_input_products = new_relevant_input_products
 
         if verbose:
             log(f'overlaps FSM has {len(overlaps_fsm)} states')

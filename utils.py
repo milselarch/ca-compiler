@@ -5,6 +5,7 @@ from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 from typing import TypeVar, Iterator, Tuple, Sequence, Generic, Callable
 from dataclasses import is_dataclass
+from py_ca_compiler import D, A, PyMultiTapeProduct, PyProduct
 
 T = TypeVar('T')
 U = TypeVar('U')
@@ -52,6 +53,9 @@ class Freezable(metaclass=ABCMeta):
     @staticmethod
     def is_allowed_value(value: typing.Any) -> bool:
         if isinstance(value, (int, float, str, bool)):
+            return True
+        elif isinstance(value, (A, D, PyMultiTapeProduct, PyProduct)):
+            # TODO: find a way to check if maturin class is immutable instead?
             return True
         elif is_frozen_dataclass_instance(value):
             return True
@@ -105,12 +109,18 @@ class Freezable(metaclass=ABCMeta):
 
 
 class FreezableSet(Freezable, Generic[V]):
-    def __init__(self, *args: list[V]) -> None:
+    def __init__(self, args: typing.Collection[V] = ()) -> None:
         super().__init__()
-        self._data: set[V] = set(args)
+        self._data: set[V] = set()
+        for arg in args:
+            self.add(arg)
 
     def __iter__(self) -> Iterator[V]:
         return iter(self._data)
+
+    def __repr__(self):
+        classname = self.__class__.__name__
+        return f"FreezableSet({self._data!r})"
 
     def remove(self, value: V):
         if self._frozen:
@@ -146,6 +156,7 @@ class FreezableSet(Freezable, Generic[V]):
 
 
 class FreezableDefaultDict(Freezable, Generic[K, V]):
+    # TODO: bet this wouldn't be needed in RUST
     def __init__(self, default_factory: Callable[[], V]) -> None:
         super().__init__()
         self._data: defaultdict[K, V] = defaultdict(default_factory)

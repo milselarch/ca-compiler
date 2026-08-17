@@ -146,6 +146,12 @@ class TapeOverlaps(object):
             lambda: FreezableDefaultDict(FreezableSet)
         )
 
+    def __contains__(self, item: object):
+        if not isinstance(item, MultiTapeState):
+            raise TypeError(f'{item} is not a {MultiTapeState.__name__}')
+
+        return item in self._overlaps
+
     def delete_state(self, state: MultiTapeState):
         if self._frozen:
             raise ValueError("Can't delete from frozen tape overlaps")
