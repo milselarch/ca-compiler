@@ -83,11 +83,9 @@ class Freezable(metaclass=ABCMeta):
     def _encode(self) -> tuple:
         raise NotImplementedError
 
-    def decode(self, data: tuple):
-        if not self._frozen:
-            raise ValueError("Cannot encode a non-frozen Freezable object")
-
-        return self._decode(data)
+    @classmethod
+    def decode(cls, data: tuple):
+        return cls._decode(data)
 
     @classmethod
     @abstractmethod

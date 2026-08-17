@@ -2,15 +2,17 @@ from __future__ import annotations
 
 import copy
 import dataclasses
+import typing
 
 from collections import defaultdict
 from typing import Iterator, Self, Sequence
 from py_ca_compiler import D, PyMultiTapeProduct
 
+from automata_builder.build_overlaps_test import tape_overlaps
 from automata_builder.rule_generator import (
     TapeCellState, TapeNo, VOID_STATE
 )
-from utils import FreezableDefaultDict, FreezableSet
+from utils import FreezableDefaultDict, FreezableSet, Freezable
 
 
 @dataclasses.dataclass(frozen=True)
@@ -117,7 +119,13 @@ class MultiTapeStatesMap(object):
         self._whitelist[key] = copy.copy(value)
 
 
-class TapeOverlaps(object):
+InnerOverlaps = FreezableDefaultDict[
+    MultiTapeState,
+    FreezableDefaultDict[int, FreezableSet[MultiTapeState]]
+]
+
+
+class TapeOverlaps(Freezable):
     """
     We say that a tape state A can overlap with tape state B at offset k if
     in the history of the automata it is possible that:
@@ -130,7 +138,7 @@ class TapeOverlaps(object):
     can overlap with tape state B at offset k,
     then tape state B can overlap with tape state A at offset -k
     """
-    def __init__(self):
+    def __init__(self, overlaps: InnerOverlaps | None = None):
         """
         A: MultiTapeState -> B: int -> C: set[MultiTapeState]
 
@@ -138,13 +146,23 @@ class TapeOverlaps(object):
         the mapping gives all target states B that can
         be present at offset k from A, for all possible offsets k.
         """
-        self._frozen: bool = False
-        self._overlaps: FreezableDefaultDict[
-            MultiTapeState,
-            FreezableDefaultDict[int, FreezableSet[MultiTapeState]]
-        ] = FreezableDefaultDict(
-            lambda: FreezableDefaultDict(FreezableSet)
-        )
+        super().__init__()
+        if overlaps is None:
+            self._overlaps: InnerOverlaps = FreezableDefaultDict(
+                lambda: FreezableDefaultDict(FreezableSet)
+            )
+        else:
+            self._overlaps = overlaps
+
+    def _freeze(self) -> None:
+        self._overlaps.freeze()
+
+    def _encode(self) -> tuple:
+        return self._overlaps.encode()
+
+    @classmethod
+    def _decode(cls, data: tuple) -> typing.Self:
+        return cls(FreezableDefaultDict.decode(data))
 
     def __contains__(self, item: object):
         if not isinstance(item, MultiTapeState):
@@ -177,12 +195,6 @@ class TapeOverlaps(object):
 
     def items(self):
         return self._overlaps.items()
-
-    def __hash__(self):
-        if not self._frozen:
-            raise ValueError("Can't compare overlaps before freezing")
-
-        return hash(self.encode())
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, TapeOverlaps):
@@ -650,6 +662,24 @@ class TapeOverlaps(object):
                 )
 
         return whitelist
+
+
+@dataclasses.dataclass(frozen=True)
+class TapeOverlapsFSMState(object):
+    _tape_overlaps: TapeOverlaps
+    _relevant_input_products: FreezableSet[PyMultiTapeProduct]
+
+    @classmethod
+    def create(
+        cls, tape_overlaps: TapeOverlaps,
+        relevant_input_products: FreezableSet[PyMultiTapeProduct]
+    ):
+        relevant_input_products = copy.deepcopy(relevant_input_products)
+        relevant_input_products.freeze()
+        return cls(
+            _tape_overlaps=tape_overlaps.freeze_copy(),
+            _relevant_input_products=relevant_input_products
+        )
 
 
 @dataclasses.dataclass
