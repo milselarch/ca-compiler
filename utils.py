@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import copy
 import typing
 
@@ -5,6 +7,8 @@ from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 from typing import TypeVar, Iterator, Tuple, Sequence, Generic, Callable
 from dataclasses import is_dataclass
+
+import frozendict
 from py_ca_compiler import D, A, PyMultiTapeProduct, PyProduct
 
 T = TypeVar('T')
@@ -49,6 +53,10 @@ V = TypeVar("V")
 class Freezable(metaclass=ABCMeta):
     def __init__(self) -> None:
         self._frozen: bool = False
+
+    @property
+    def is_frozen(self) -> bool:
+        return self._frozen
 
     @staticmethod
     def is_allowed_value(value: typing.Any) -> bool:
@@ -118,7 +126,7 @@ class FreezableSet(Freezable, Generic[V]):
 
     def __repr__(self):
         classname = self.__class__.__name__
-        return f"FreezableSet({self._data!r})"
+        return f"{classname}({self._data!r})"
 
     def remove(self, value: V):
         if self._frozen:
@@ -152,13 +160,31 @@ class FreezableSet(Freezable, Generic[V]):
     def _decode(cls, data: tuple[V, ...]) -> typing.Self:
         return cls(*data)
 
+    def to_frozen(self) -> FrozenSet[V]:
+        frozen_set = FrozenSet(self._data)
+        return frozen_set
+
+
+class FrozenSet(FreezableSet[V]):
+    def __init__(self, args: typing.Collection[V] = ()) -> None:
+        super().__init__(args)
+        self.freeze()
+
 
 class FreezableDefaultDict(Freezable, Generic[K, V]):
     # TODO: bet this wouldn't be needed in RUST
-    def __init__(self, default_factory: Callable[[], V]) -> None:
+    def __init__(
+        self, default_factory: Callable[[], V],
+        initial_data: typing.Optional[dict[K, V]] = None
+    ) -> None:
         super().__init__()
+        self._default_factory = default_factory
         self._data: defaultdict[K, V] = defaultdict(default_factory)
         self._frozen: bool = False
+
+        if initial_data is not None:
+            for key, value in initial_data.items():
+                self._data[key] = value
 
     def _freeze(self) -> None:
         for value in self._data.values():
@@ -233,3 +259,21 @@ class FreezableDefaultDict(Freezable, Generic[K, V]):
 
         instance.freeze()
         return instance
+
+    def to_frozen(self) -> FrozenDefaultDict[K, V]:
+        return FrozenDefaultDict(
+            default_factory=self._default_factory,
+            initial_data=self._data
+        )
+
+
+class FrozenDefaultDict(FreezableDefaultDict[K, V]):
+    def __init__(
+        self, default_factory: Callable[[], V],
+        initial_data: typing.Optional[dict[K, V]] = None
+    ) -> None:
+        super().__init__(
+            default_factory=default_factory,
+            initial_data=initial_data
+        )
+        self.freeze()

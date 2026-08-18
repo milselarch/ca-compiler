@@ -1332,18 +1332,19 @@ class MultiTapeBuilder(object):
             if verbose:
                 print(*args, **kwargs)
 
-        # TODO: infer existing overlaps from the automata as well
-        overlaps = copy.deepcopy(self._initial_overlaps)
-        prev_overlaps = overlaps.freeze_copy()
-        overlaps_fsm = TapeOverlapsFSM(prev_overlaps)
-        assert prev_overlaps in overlaps_fsm
-
         # map input products to output tape writes
         prod_to_state_map = self._get_prod_to_state_map()
         # map state -> products that contain it in their input terms
         input_state_to_prod_map = (
             prod_to_state_map.build_input_state_to_prod_map()
         )
+
+        # TODO: infer existing overlaps from the automata as well
+        overlaps = copy.deepcopy(self._initial_overlaps)
+        prev_overlaps = overlaps.freeze_copy()
+        overlaps_fsm = TapeOverlapsFSM(prev_overlaps)
+        assert prev_overlaps in overlaps_fsm
+
         prod_to_state_map.build_state_to_products_map(verbose=True)
         # input products that can effect a new state overlap
         relevant_input_products = tuple(prod_to_state_map.keys())

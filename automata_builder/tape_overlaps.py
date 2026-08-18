@@ -8,7 +8,6 @@ from collections import defaultdict
 from typing import Iterator, Self, Sequence
 from py_ca_compiler import D, PyMultiTapeProduct
 
-from automata_builder.build_overlaps_test import tape_overlaps
 from automata_builder.rule_generator import (
     TapeCellState, TapeNo, VOID_STATE
 )
@@ -669,6 +668,16 @@ class TapeOverlapsFSMState(object):
     _tape_overlaps: TapeOverlaps
     _relevant_input_products: FreezableSet[PyMultiTapeProduct]
 
+    @property
+    def tape_overlaps(self) -> TapeOverlaps:
+        return self._tape_overlaps
+
+    def __post_init__(self) -> None:
+        if not self._tape_overlaps.is_frozen:
+            raise ValueError("Tape overlaps needs to be frozen")
+        if not self._relevant_input_products.is_frozen:
+            raise ValueError("Input products need to be frozen")
+
     @classmethod
     def create(
         cls, tape_overlaps: TapeOverlaps,
@@ -709,6 +718,13 @@ class ProductWritesMap(object):
 
     def items(self):
         return self.prod_to_state_map.items()
+
+    def get_relevant_input_products(self) -> FreezableSet[PyMultiTapeProduct]:
+        relevant_input_products = FreezableSet()
+        for product in self.prod_to_state_map:
+            relevant_input_products.add(product)
+
+        return relevant_input_products
 
     def get_state_writes_for(
         self, product: PyMultiTapeProduct
@@ -974,51 +990,58 @@ class TapeOverlapsFSMState(object):
 
 
 class TapeOverlapsFSM(object):
-    def __init__(self, initial_overlaps: TapeOverlaps):
-        self._initial_overlaps = initial_overlaps.freeze_copy()
-        self._existing_overlaps: set[TapeOverlaps] = {self._initial_overlaps}
-        self._next_overlaps: dict[TapeOverlaps, TapeOverlaps] = {}
+    def __init__(self, initial_fsm_state: TapeOverlapsFSMState):
+        self._initial_fsm_state = initial_fsm_state
+        self._existing_fsm_states: set[TapeOverlapsFSMState] = {
+            self._initial_fsm_state
+        }
+        self._next_fsm_states: dict[
+            TapeOverlapsFSMState, TapeOverlapsFSMState
+        ] = {}
 
     def __len__(self):
-        return len(self._next_overlaps)
+        return len(self._next_fsm_states)
 
     def __contains__(self, other):
-        if not isinstance(other, TapeOverlaps):
+        if not isinstance(other, TapeOverlapsFSMState):
             return False
 
-        return other in self._existing_overlaps
+        return other in self._existing_fsm_states
 
     def insert(
-        self, overlaps: TapeOverlaps, next_overlaps: TapeOverlaps
-    ) -> tuple[TapeOverlaps, bool]:
-        """
-        :param overlaps:
-        :param next_overlaps:
+        self, state: TapeOverlapsFSMState,
+        next_state: TapeOverlapsFSMState
+    ) -> tuple[TapeOverlapsFSMState, bool]:
+        """  
+        :param state:
+        :param next_state:
         :return:
-        frozen copy of inserted next_overlaps, and whether
-        the inserted overlaps are newly inserted into the FSM
+        frozen copy of inserted next_fsm_state, and whether
+        the inserted fsm state are newly inserted into the FSM
         (i.e. they didn't already exist)
         """
-        if overlaps not in self._existing_overlaps:
+        if state not in self._existing_fsm_states:
             raise ValueError(
-                f'Overlaps FSM state "{overlaps}" does not exist'
+                f'Overlaps FSM state "{state}" does not exist'
             )
 
-        frozen_next_overlaps = next_overlaps.freeze_copy()
-        if overlaps not in self._next_overlaps:
-            self._next_overlaps[overlaps] = frozen_next_overlaps
-            self._existing_overlaps.add(frozen_next_overlaps)
-            assert frozen_next_overlaps in self
-            return frozen_next_overlaps, True
+        if state not in self._next_fsm_states:
+            self._next_fsm_states[state] = next_state
+            self._existing_fsm_states.add(next_state)
+            assert next_state in self
+            return next_state, True
         else:
-            existing_next_overlaps = self._next_overlaps[overlaps]
+            existing_next_fsm_state = self._next_fsm_states[state]
 
-            if existing_next_overlaps != next_overlaps:
+            if existing_next_fsm_state != next_state:
                 raise ValueError(
-                    f"Conflicting next overlaps for {overlaps=}: "
-                    f"{existing_next_overlaps=} vs {next_overlaps=}"
+                    f"Conflicting next state for {state=}: "
+                    f"{existing_next_fsm_state=} vs {next_state=}"
                 )
-            return existing_next_overlaps, False
+            return existing_next_fsm_state, False
 
     def merge(self) -> TapeOverlaps:
-        return TapeOverlaps.merge(list(self._existing_overlaps))
+        return TapeOverlaps.merge([
+            fsm_state.tape_overlaps
+            for fsm_state in self._existing_fsm_states
+        ])
