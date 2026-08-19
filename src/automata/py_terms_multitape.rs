@@ -9,6 +9,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use pyo3_stub_gen::define_stub_info_gatherer;
 use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
+use crate::automata::py_terms::py_hash;
 use crate::automata::terms::{clip_after_space, CellState, ExprDebugInfo};
 use crate::automata::terms_multitape::{validate_debug_info_exists, AbstractMultiTapeExpression, MultiTapeCellState, MultiTapeExpression, MultiTapeProduct, MultiTapeProductFactory, MultiTapeTerm, TapeNo};
 /*
@@ -158,10 +159,8 @@ impl D {
         let tape_and_cell_state = (tape_no, state);
         D { term: MultiTapeTerm::new(position, tape_and_cell_state, optimized) }
     }
-    fn __hash__(&self) -> isize {
-        let mut hasher = DefaultHasher::new();
-        self.term.hash(&mut hasher);
-        hasher.finish() as isize
+    fn __hash__(&self) -> PyResult<isize> {
+        py_hash(&self.term)
     }
     pub fn __deepcopy__(&self, _memo: &Bound<PyDict>) -> Self {
         self.clone()
@@ -382,10 +381,8 @@ impl PyMultiTapeProduct {
             self.product.to_expression()
         ))
     }
-    fn __hash__(&self) -> isize {
-        let mut hasher = DefaultHasher::new();
-        self.product.hash(&mut hasher);
-        hasher.finish() as isize
+    fn __hash__(&self) -> PyResult<isize> {
+        py_hash(&self.product)
     }
     pub fn __deepcopy__(&self, _memo: &Bound<PyDict>) -> Self {
         self.clone()
@@ -543,10 +540,8 @@ impl PyMultiTapeExpression {
     pub fn to_py_expression(&self) -> PyResult<PyMultiTapeExpression> {
         Ok(self.expression.to_pyexpr())
     }
-    fn __hash__(&self) -> isize {
-        let mut hasher = DefaultHasher::new();
-        self.expression.hash(&mut hasher);
-        hasher.finish() as isize
+    fn __hash__(&self) -> PyResult<isize> {
+        py_hash(&self.expression)
     }
     pub fn __deepcopy__(&self, _memo: &Bound<PyDict>) -> Self {
         self.clone()

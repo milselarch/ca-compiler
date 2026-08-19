@@ -11,7 +11,7 @@ from py_ca_compiler import D, PyMultiTapeProduct
 from automata_builder.rule_generator import (
     TapeCellState, TapeNo, VOID_STATE
 )
-from utils import FreezableDefaultDict, FreezableSet, Freezable
+from utils import FreezableDefaultDict, FreezableSet, Freezable, FrozenSet
 
 
 @dataclasses.dataclass(frozen=True)
@@ -186,8 +186,8 @@ class TapeOverlaps(Freezable):
         self._overlaps.freeze()
         return self
 
-    def freeze_copy(self) -> Self:
-        return copy.deepcopy(self).freeze()
+    def freeze_copy(self) -> FrozenTapeOverlaps:
+        return self.to_frozen()
 
     def encode(self):
         return self._overlaps.encode()
@@ -662,15 +662,46 @@ class TapeOverlaps(Freezable):
 
         return whitelist
 
+    def to_unfrozen(self) -> typing.Self:
+        return self.__class__(
+            overlaps=self._overlaps.to_unfrozen()
+        )
+
+    def to_frozen(self) -> FrozenTapeOverlaps:
+        return FrozenTapeOverlaps(
+            overlaps=self._overlaps.to_frozen()
+        )
+
+
+class FrozenTapeOverlaps(TapeOverlaps):
+    def __init__(self, overlaps: InnerOverlaps):
+        if not overlaps.is_frozen:
+            raise ValueError("Tape overlaps need to be frozen")
+
+        super().__init__(overlaps)
+        self.freeze()
+
+    def to_unfrozen(self) -> TapeOverlaps:
+        return TapeOverlaps(
+            overlaps=self._overlaps.to_unfrozen()
+        )
+
+    def __hash__(self) -> int:
+        return hash(self._overlaps)
+
 
 @dataclasses.dataclass(frozen=True)
 class TapeOverlapsFSMState(object):
-    _tape_overlaps: TapeOverlaps
-    _relevant_input_products: FreezableSet[PyMultiTapeProduct]
+    _tape_overlaps: FrozenTapeOverlaps
+    _relevant_input_products: FrozenSet[PyMultiTapeProduct]
 
     @property
     def tape_overlaps(self) -> TapeOverlaps:
         return self._tape_overlaps
+
+    @property
+    def relevant_input_products(self) -> FreezableSet[PyMultiTapeProduct]:
+        return self._relevant_input_products
 
     def __post_init__(self) -> None:
         if not self._tape_overlaps.is_frozen:
@@ -683,11 +714,9 @@ class TapeOverlapsFSMState(object):
         cls, tape_overlaps: TapeOverlaps,
         relevant_input_products: FreezableSet[PyMultiTapeProduct]
     ):
-        relevant_input_products = copy.deepcopy(relevant_input_products)
-        relevant_input_products.freeze()
         return cls(
             _tape_overlaps=tape_overlaps.freeze_copy(),
-            _relevant_input_products=relevant_input_products
+            _relevant_input_products=relevant_input_products.to_frozen()
         )
 
 
@@ -719,7 +748,7 @@ class ProductWritesMap(object):
     def items(self):
         return self.prod_to_state_map.items()
 
-    def get_relevant_input_products(self) -> FreezableSet[PyMultiTapeProduct]:
+    def build_input_products(self) -> FreezableSet[PyMultiTapeProduct]:
         relevant_input_products = FreezableSet()
         for product in self.prod_to_state_map:
             relevant_input_products.add(product)

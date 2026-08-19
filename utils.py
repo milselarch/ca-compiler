@@ -100,6 +100,10 @@ class Freezable(metaclass=ABCMeta):
     def _decode(cls, data: tuple) -> typing.Self:
         raise NotImplementedError
 
+    @abstractmethod
+    def to_unfrozen(self) -> typing.Self:
+        raise NotImplementedError
+
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, type(self)):
             return False
@@ -154,7 +158,7 @@ class FreezableSet(Freezable, Generic[V]):
                 value.freeze()
 
     def _encode(self) -> tuple[V, ...]:
-        return tuple(sorted(list(self._data)))
+        return tuple(list(self._data))
 
     @classmethod
     def _decode(cls, data: tuple[V, ...]) -> typing.Self:
@@ -164,11 +168,25 @@ class FreezableSet(Freezable, Generic[V]):
         frozen_set = FrozenSet(self._data)
         return frozen_set
 
+    def to_unfrozen(self) -> typing.Self:
+        unfrozen_elements = []
+        for element in self._data:
+            if isinstance(element, Freezable):
+                unfrozen_elements.append(element.to_unfrozen())
+            else:
+                unfrozen_elements.append(element)
+
+        unfrozen_set = FreezableSet(self._data)
+        return unfrozen_set
+
 
 class FrozenSet(FreezableSet[V]):
     def __init__(self, args: typing.Collection[V] = ()) -> None:
         super().__init__(args)
         self.freeze()
+
+    def to_unfrozen(self) -> FreezableSet[V]:
+        raise ValueError("Cannot be unfrozen")
 
 
 class FreezableDefaultDict(Freezable, Generic[K, V]):
@@ -264,6 +282,19 @@ class FreezableDefaultDict(Freezable, Generic[K, V]):
         return FrozenDefaultDict(
             default_factory=self._default_factory,
             initial_data=self._data
+        )
+
+    def to_unfrozen(self) -> FreezableDefaultDict[K, V]:
+        unfrozen_data = {}
+        for key, value in self._data.items():
+            if isinstance(value, Freezable):
+                unfrozen_data[key] = value.to_unfrozen()
+            else:
+                unfrozen_data[key] = value
+
+        return FreezableDefaultDict(
+            default_factory=self._default_factory,
+            initial_data=unfrozen_data
         )
 
 
