@@ -1334,13 +1334,12 @@ class MultiTapeBuilder(object):
         relevant_input_products = prod_to_state_map.build_input_products()
 
         # TODO: infer existing overlaps from the automata as well
-        prev_overlaps = self._initial_overlaps.to_frozen()
         initial_fsm_state = TapeOverlapsFSMState.create(
-            tape_overlaps=prev_overlaps,
+            tape_overlaps=self._initial_overlaps.to_frozen(),
             relevant_input_products=relevant_input_products,
         )
         overlaps_fsm = TapeOverlapsFSM(initial_fsm_state=initial_fsm_state)
-        prev_fsm_state = initial_fsm_state
+        prev_fsm_state: TapeOverlapsFSMState = initial_fsm_state
 
         assert prev_fsm_state in overlaps_fsm
         prod_to_state_map.build_state_to_products_map(verbose=True)
@@ -1356,22 +1355,13 @@ class MultiTapeBuilder(object):
                 prod_to_state_map=prod_to_state_map,
                 overlaps_fsm=overlaps_fsm,
             )
-
-            print("PREV_FSM_STATE:")
-            prev_fsm_state.tape_overlaps.print_for_states()
-            print("NEXT_FSM_STATE:")
-            next_fsm_state.tape_overlaps.print_for_states()
-            print("EQ_FSM_STATE", prev_fsm_state == next_fsm_state)
-            print("HH_FSM_STATE", hash(prev_fsm_state), hash(next_fsm_state))
-            # TODO: SHOULD NOT BE TERMINATING AFTER 1 ROUND
-
             # print(len(overlaps_fsm._existing_overlaps))
             _, overlaps_fsm_updated = overlaps_fsm.insert(
                 state=prev_fsm_state, next_state=next_fsm_state
             )
-            print(f'{overlaps_fsm_updated=}')
-            prev_overlaps = next_fsm_state
-            assert prev_overlaps in overlaps_fsm
+            log(f'{overlaps_fsm_updated=}')
+            prev_fsm_state = next_fsm_state
+            assert prev_fsm_state in overlaps_fsm
 
         if verbose:
             log(f'overlaps FSM has {len(overlaps_fsm)} states')
