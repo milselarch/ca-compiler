@@ -67,7 +67,7 @@ class Freezable(metaclass=ABCMeta):
             return True
         elif is_frozen_dataclass_instance(value):
             return True
-        if isinstance(value, Freezable):
+        elif isinstance(value, Freezable):
             return True
 
         return False

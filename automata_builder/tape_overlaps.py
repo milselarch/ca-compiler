@@ -735,6 +735,7 @@ class MultiTapeStateAttributes(object):
 class ProductWritesMap(object):
     """
     map product -> tape_no -> output tape cell state
+    TODO: make frozen variant, use in overlaps FSM transition
     """
     prod_to_state_map: defaultdict[
         PyMultiTapeProduct, dict[TapeNo, TapeCellState]
