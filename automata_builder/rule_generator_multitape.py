@@ -1337,6 +1337,7 @@ class MultiTapeBuilder(object):
         initial_fsm_state = TapeOverlapsFSMState.create(
             tape_overlaps=self._initial_overlaps.to_frozen(),
             relevant_input_products=relevant_input_products,
+            unsatisfiable_products=FrozenSet()
         )
         overlaps_fsm = TapeOverlapsFSM(initial_fsm_state=initial_fsm_state)
         prev_fsm_state: TapeOverlapsFSMState = initial_fsm_state

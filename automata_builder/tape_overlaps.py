@@ -11,7 +11,7 @@ from py_ca_compiler import D, PyMultiTapeProduct
 from automata_builder.rule_generator import (
     TapeCellState, TapeNo, VOID_STATE
 )
-from utils import FreezableDefaultDict, FreezableSet, Freezable, FrozenSet
+from utils import FreezableDefaultDict, FreezableSet, Freezable, FrozenSet, FrozenDict, FreezableDict
 
 
 @dataclasses.dataclass(frozen=True)
@@ -234,14 +234,16 @@ class TapeOverlaps(Freezable):
             self.get_states_for_tape(tape_no=tape_no)
         ])
 
-    def get_states_for_tape(self, tape_no: TapeNo) -> set[MultiTapeState]:
+    def get_states_for_tape(
+        self, tape_no: TapeNo
+    ) -> FreezableSet[MultiTapeState]:
         tape_states: set[MultiTapeState] = set()
 
         for source_state in self._overlaps:
             if source_state.tape_no == tape_no:
                 tape_states.add(source_state)
 
-        return tape_states
+        return FreezableSet(tape_states)
 
     def get_all_states(self) -> set[MultiTapeState]:
         return set(self._overlaps.keys())
@@ -694,6 +696,8 @@ class FrozenTapeOverlaps(TapeOverlaps):
 class TapeOverlapsFSMState(object):
     _tape_overlaps: FrozenTapeOverlaps
     _relevant_input_products: FrozenSet[PyMultiTapeProduct]
+    # TODO: replace with product writes map
+    _unsatisfiable_products: FrozenSet[PyMultiTapeProduct]
 
     @property
     def tape_overlaps(self) -> TapeOverlaps:
@@ -702,6 +706,10 @@ class TapeOverlapsFSMState(object):
     @property
     def relevant_input_products(self) -> FreezableSet[PyMultiTapeProduct]:
         return self._relevant_input_products
+
+    @property
+    def unsatisfiable_products(self) -> FreezableSet[PyMultiTapeProduct]:
+        return self._unsatisfiable_products
 
     def __post_init__(self) -> None:
         if not self._tape_overlaps.is_frozen:
@@ -712,11 +720,13 @@ class TapeOverlapsFSMState(object):
     @classmethod
     def create(
         cls, tape_overlaps: TapeOverlaps,
-        relevant_input_products: FreezableSet[PyMultiTapeProduct]
+        relevant_input_products: FreezableSet[PyMultiTapeProduct],
+        unsatisfiable_products: FreezableSet[PyMultiTapeProduct]
     ):
         return cls(
             _tape_overlaps=tape_overlaps.freeze_copy(),
-            _relevant_input_products=relevant_input_products.to_frozen()
+            _relevant_input_products=relevant_input_products.to_frozen(),
+            _unsatisfiable_products=unsatisfiable_products.to_frozen()
         )
 
 
@@ -731,27 +741,72 @@ class MultiTapeStateAttributes(object):
     instant_delete: bool
 
 
-@dataclasses.dataclass
-class ProductWritesMap(object):
+class ProductWritesMap(Freezable):
     """
     map product -> tape_no -> output tape cell state
-    TODO: make frozen variant, use in overlaps FSM transition
+    TODO: rewrite all of this in rust
     """
-    prod_to_state_map: defaultdict[
-        PyMultiTapeProduct, dict[TapeNo, TapeCellState]
-    ] = dataclasses.field(
-        default_factory=lambda: defaultdict(lambda: dict())
-    )
+    def __init__(self, prod_to_state_map: FreezableDefaultDict[
+        PyMultiTapeProduct, FreezableDict[TapeNo, TapeCellState]
+    ] | None = None):
+        super().__init__()
+        if prod_to_state_map is None:
+            prod_to_state_map = FreezableDefaultDict(
+                default_factory=lambda: FreezableDict
+            )
+
+        self._prod_to_state_map: FreezableDefaultDict[
+            PyMultiTapeProduct, FreezableDict[TapeNo, TapeCellState]
+        ] = prod_to_state_map
+
+    def _freeze(self) -> None:
+        self._prod_to_state_map.freeze()
+
+    def _encode(self) -> tuple:
+        return self._prod_to_state_map.encode()
+
+    @classmethod
+    def _decode(cls, data: tuple) -> typing.Self:
+        return cls(FreezableDefaultDict.decode(data))
+
+    def to_unfrozen(self) -> typing.Self:
+        return self.__class__(
+            prod_to_state_map=self._prod_to_state_map.to_unfrozen()
+        )
+
+    def to_frozen(self) -> FrozenProductWritesMap:
+        return FrozenProductWritesMap(
+            prod_to_state_map=self._prod_to_state_map.to_frozen()
+        )
 
     def __iter__(self) -> Iterator[PyMultiTapeProduct]:
-        return iter(self.prod_to_state_map.keys())
+        return iter(self._prod_to_state_map.keys())
 
     def items(self):
-        return self.prod_to_state_map.items()
+        return self._prod_to_state_map.items()
+
+    def does_product_becomes_unsatisfiable(
+        self, product: PyMultiTapeProduct
+    ):
+        if product not in self._prod_to_state_map:
+            raise KeyError(
+                f"Product {product} is not in {self._prod_to_state_map}"
+            )
+
+        state_attributes_map = self.build_all_state_attributes_map()
+        product_writes = self._prod_to_state_map[product]
+
+        input_terms = product.get_flat_terms()
+        for input_term in input_terms:
+            input_multi_tape_state = MultiTapeState.from_term(input_term)
+            input_term_attrs = state_attributes_map[input_multi_tape_state]
+            input_term_offset = input_term.get_position()
+
+        # TODO: complete this
 
     def build_input_products(self) -> FreezableSet[PyMultiTapeProduct]:
         relevant_input_products = FreezableSet()
-        for product in self.prod_to_state_map:
+        for product in self._prod_to_state_map:
             relevant_input_products.add(product)
 
         return relevant_input_products
@@ -759,7 +814,7 @@ class ProductWritesMap(object):
     def get_state_writes_for(
         self, product: PyMultiTapeProduct
     ) -> list[MultiTapeState]:
-        writes_map = self.prod_to_state_map[product]
+        writes_map = self._prod_to_state_map[product]
         tape_state_writes: list[MultiTapeState] = []
 
         for tape_no in writes_map:
@@ -771,6 +826,20 @@ class ProductWritesMap(object):
 
         return tape_state_writes
 
+    def build_all_state_attributes_map(self) -> FrozenDict[
+        MultiTapeState, MultiTapeStateAttributes
+    ]:
+        all_states = self.get_states_set()
+        state_attributes_map: dict[
+            MultiTapeState, MultiTapeStateAttributes
+        ] = {}
+
+        for state in all_states:
+            state_attributes = self.get_state_attributes(state)
+            state_attributes_map[state] = state_attributes
+
+        return FrozenDict(state_attributes_map)
+
     def get_state_attributes(
         self, target_state: MultiTapeState
     ) -> MultiTapeStateAttributes:
@@ -781,8 +850,8 @@ class ProductWritesMap(object):
         # this happens if there is a rule target_state -> other_state
         instant_delete = False
 
-        for product in self.prod_to_state_map:
-            writes_map = self.prod_to_state_map[product]
+        for product in self._prod_to_state_map:
+            writes_map = self._prod_to_state_map[product]
             target_state_written = False
 
             for tape_no in writes_map:
@@ -859,8 +928,8 @@ class ProductWritesMap(object):
             MultiTapeState, set[PyMultiTapeProduct]
         ] = defaultdict(set)
 
-        for product in self.prod_to_state_map:
-            writes_map = self.prod_to_state_map[product]
+        for product in self._prod_to_state_map:
+            writes_map = self._prod_to_state_map[product]
 
             for tape_no in writes_map:
                 tape_cell_state = writes_map[tape_no]
@@ -896,7 +965,7 @@ class ProductWritesMap(object):
             MultiTapeState, set[PyMultiTapeProduct]
         ] = defaultdict(set)
 
-        for product in self.prod_to_state_map:
+        for product in self._prod_to_state_map:
             input_terms = product.get_flat_terms()
 
             for input_term in input_terms:
@@ -918,7 +987,7 @@ class ProductWritesMap(object):
     def get_states_set(self) -> set[MultiTapeState]:
         states_set: set[MultiTapeState] = set()
 
-        for tape_product in self.prod_to_state_map:
+        for tape_product in self._prod_to_state_map:
             product_terms = tape_product.get_flat_terms()
 
             for term in product_terms:
@@ -931,13 +1000,13 @@ class ProductWritesMap(object):
         return states_set
 
     def keys(self):
-        return self.prod_to_state_map.keys()
+        return self._prod_to_state_map.keys()
 
     def values(self):
-        return self.prod_to_state_map.values()
+        return self._prod_to_state_map.values()
 
     def __getitem__(self, item: PyMultiTapeProduct):
-        return copy.copy(self.prod_to_state_map[item])
+        return copy.copy(self._prod_to_state_map[item])
 
     @classmethod
     def get_zero_terms_from_path(cls, product_path: list[D]) -> list[D]:
@@ -993,7 +1062,7 @@ class ProductWritesMap(object):
         self, product: PyMultiTapeProduct, write_tape_no: TapeNo,
         write_tape_cell_state: TapeCellState
     ):
-        writes_map = self.prod_to_state_map[product]
+        writes_map = self._prod_to_state_map[product]
         existing_tape_write_state = writes_map.get(
             write_tape_no, write_tape_cell_state
         )
@@ -1008,15 +1077,23 @@ class ProductWritesMap(object):
         writes_map[write_tape_no] = write_tape_cell_state
 
 
-"""
-@dataclasses.dataclass
-class TapeOverlapsFSMState(object):
-    overlaps: TapeOverlaps  # TODO: enforce that its frozen
-    next_overlaps: TapeOverlaps  # TODO: enforce that its frozen
-    undeletable_states: set[MultiTapeState]
-    unwritable_states: set[MultiTapeState]
-    product_writes_map: ProductWritesMap
-"""
+class FrozenProductWritesMap(ProductWritesMap):
+    def __init__(self,  prod_to_state_map: FreezableDefaultDict[
+        PyMultiTapeProduct, FreezableDict[TapeNo, TapeCellState]
+    ] | None = None):
+        if not prod_to_state_map.is_frozen:
+            raise ValueError(
+                "FrozenProductWritesMap only works with "
+                "frozen prod_to_state_map"
+            )
+
+        super().__init__(prod_to_state_map=prod_to_state_map)
+        self.freeze()
+
+    def to_unfrozen(self) -> ProductWritesMap:
+        return ProductWritesMap(
+            prod_to_state_map=self._prod_to_state_map.to_unfrozen()
+        )
 
 
 class TapeOverlapsFSM(object):

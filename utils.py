@@ -7,8 +7,6 @@ from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 from typing import TypeVar, Iterator, Tuple, Sequence, Generic, Callable
 from dataclasses import is_dataclass
-
-import frozendict
 from py_ca_compiler import D, A, PyMultiTapeProduct, PyProduct
 
 T = TypeVar('T')
@@ -162,7 +160,7 @@ class FreezableSet(Freezable, Generic[V]):
 
     @classmethod
     def _decode(cls, data: tuple[V, ...]) -> typing.Self:
-        return cls(*data)
+        return cls(data)
 
     def to_frozen(self) -> FrozenSet[V]:
         frozen_set = FrozenSet(self._data)
@@ -176,7 +174,7 @@ class FreezableSet(Freezable, Generic[V]):
             else:
                 unfrozen_elements.append(element)
 
-        unfrozen_set = FreezableSet(self._data)
+        unfrozen_set = FreezableSet(unfrozen_elements)
         return unfrozen_set
 
 
@@ -190,7 +188,6 @@ class FrozenSet(FreezableSet[V]):
 
 
 class FreezableDefaultDict(Freezable, Generic[K, V]):
-    # TODO: bet this wouldn't be needed in RUST
     def __init__(
         self, default_factory: Callable[[], V],
         initial_data: typing.Optional[dict[K, V]] = None
@@ -198,7 +195,6 @@ class FreezableDefaultDict(Freezable, Generic[K, V]):
         super().__init__()
         self._default_factory = default_factory
         self._data: defaultdict[K, V] = defaultdict(default_factory)
-        self._frozen: bool = False
 
         if initial_data is not None:
             for key, value in initial_data.items():
@@ -220,7 +216,7 @@ class FreezableDefaultDict(Freezable, Generic[K, V]):
     def __getitem__(self, key: K) -> V:
         classname = self.__class__.__name__
         if self._frozen and key not in self._data:
-            raise ValueError(
+            raise KeyError(
                 f"Cannot create missing key in frozen {classname}"
             )
 
@@ -252,6 +248,11 @@ class FreezableDefaultDict(Freezable, Generic[K, V]):
         return self._data.values()
 
     def pop(self, key: K) -> V:
+        if self._frozen:
+            raise ValueError(
+                f"Cannot pop from frozen {self.__class__.__name__}"
+            )
+
         return self._data.pop(key)
 
     def __iter__(self) -> Iterator[K]:
@@ -270,8 +271,10 @@ class FreezableDefaultDict(Freezable, Generic[K, V]):
         ])
 
     @classmethod
-    def _decode(cls, data: tuple[tuple[K, V], ...]) -> typing.Self:
-        instance = cls(lambda: None)  # Provide a default factory
+    def _decode(
+        cls, data: tuple[tuple[K, V], ...]
+    ) -> FreezableDict[K, V]:
+        instance = FreezableDict()
         for key, value in data:
             instance[key] = value
 
@@ -297,6 +300,20 @@ class FreezableDefaultDict(Freezable, Generic[K, V]):
             initial_data=unfrozen_data
         )
 
+    def to_freezable_dict(self):
+        if self._frozen:
+            raise ValueError("cannot convert to freezable dict when frozen")
+
+        freezable_dict = FreezableDict(initial_data=self._data)
+        return freezable_dict
+
+    def to_frozen_dict(self):
+        if not self._frozen:
+            raise ValueError("cannot convert to frozen dict when not frozen")
+
+        frozen_dict = FrozenDict(initial_data=self._data)
+        return frozen_dict
+
 
 class FrozenDefaultDict(FreezableDefaultDict[K, V]):
     def __init__(
@@ -308,3 +325,40 @@ class FrozenDefaultDict(FreezableDefaultDict[K, V]):
             initial_data=initial_data
         )
         self.freeze()
+
+
+class FreezableDict(FreezableDefaultDict[K, V]):
+    def __init__(
+        self, initial_data: typing.Optional[dict[K, V]] = None
+    ) -> None:
+        default_factory = lambda: None
+        super().__init__(default_factory, initial_data)
+
+    def __getitem__(self, key: K) -> V:
+        if self._frozen and key not in self._data:
+            raise KeyError(f'Cannot create missing key in frozen {self}')
+
+        return self._data[key]
+
+    def to_frozen(self) -> FrozenDict[K, V]:
+        frozen_default_dict = super().to_frozen()
+        return frozen_default_dict.to_frozen_dict()
+
+    def to_unfrozen(self) -> FreezableDict[K, V]:
+        unfrozen_default_dict = super().to_unfrozen()
+        return unfrozen_default_dict.to_freezable_dict()
+
+
+class FrozenDict(FreezableDict[K, V]):
+    def __init__(
+        self, initial_data: typing.Optional[dict[K, V]] = None
+    ) -> None:
+        super().__init__(initial_data)
+        self.freeze()
+
+    def to_frozen(self) -> FrozenDict[K, V]:
+        return self
+
+    def to_unfrozen(self) -> FreezableDict[K, V]:
+        unfrozen_default_dict = super().to_unfrozen()
+        return unfrozen_default_dict.to_freezable_dict()
