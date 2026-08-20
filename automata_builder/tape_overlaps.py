@@ -696,8 +696,7 @@ class FrozenTapeOverlaps(TapeOverlaps):
 class TapeOverlapsFSMState(object):
     _tape_overlaps: FrozenTapeOverlaps
     _relevant_input_products: FrozenSet[PyMultiTapeProduct]
-    # TODO: replace with product writes map
-    _unsatisfiable_products: FrozenSet[PyMultiTapeProduct]
+    _product_writes_map: FrozenProductWritesMap
 
     @property
     def tape_overlaps(self) -> TapeOverlaps:
@@ -708,8 +707,8 @@ class TapeOverlapsFSMState(object):
         return self._relevant_input_products
 
     @property
-    def unsatisfiable_products(self) -> FreezableSet[PyMultiTapeProduct]:
-        return self._unsatisfiable_products
+    def product_writes_map(self) -> FrozenProductWritesMap:
+        return self._product_writes_map
 
     def __post_init__(self) -> None:
         if not self._tape_overlaps.is_frozen:
@@ -721,23 +720,24 @@ class TapeOverlapsFSMState(object):
     def create(
         cls, tape_overlaps: TapeOverlaps,
         relevant_input_products: FreezableSet[PyMultiTapeProduct],
-        unsatisfiable_products: FreezableSet[PyMultiTapeProduct]
+        product_writes_map: ProductWritesMap
     ):
         return cls(
-            _tape_overlaps=tape_overlaps.freeze_copy(),
+            _tape_overlaps=tape_overlaps.to_frozen(),
             _relevant_input_products=relevant_input_products.to_frozen(),
-            _unsatisfiable_products=unsatisfiable_products.to_frozen()
+            _product_writes_map=product_writes_map.to_frozen()
         )
 
 
 @dataclasses.dataclass
 class MultiTapeStateAttributes(object):
-    # whether the rules allow the creation of the target state
+    # Whether automata rules allow for the creation of the target state
     writable: bool
-    # whether the rules allow for the transition away from the target state
+    # Whether automata rules allow for
+    # transition away from the target state
     deletable: bool
-    # whether all instances of the target state are immediately deleted
-    # this happens if there is a rule target_state -> other_state
+    # Whether all instances of the target state are immediately deleted.
+    # This happens if there is a rule target_state -> other_state
     instant_delete: bool
 
 
@@ -750,14 +750,14 @@ class ProductWritesMap(Freezable):
         PyMultiTapeProduct, FreezableDict[TapeNo, TapeCellState]
     ] | None = None):
         super().__init__()
-        if prod_to_state_map is None:
-            prod_to_state_map = FreezableDefaultDict(
-                default_factory=lambda: FreezableDict
-            )
-
         self._prod_to_state_map: FreezableDefaultDict[
             PyMultiTapeProduct, FreezableDict[TapeNo, TapeCellState]
-        ] = prod_to_state_map
+        ] = FreezableDefaultDict(
+            default_factory=lambda: FreezableDict
+        )
+
+        if prod_to_state_map is not None:
+            self._prod_to_state_map = prod_to_state_map
 
     def _freeze(self) -> None:
         self._prod_to_state_map.freeze()
@@ -787,12 +787,14 @@ class ProductWritesMap(Freezable):
 
     def does_product_becomes_unsatisfiable(
         self, product: PyMultiTapeProduct
-    ):
+    ) -> bool:
         if product not in self._prod_to_state_map:
             raise KeyError(
                 f"Product {product} is not in {self._prod_to_state_map}"
             )
 
+        has_transition_to_unsatisfiability = False
+        has_input_terms_along_output_offset = False
         state_attributes_map = self.build_all_state_attributes_map()
         product_writes = self._prod_to_state_map[product]
 
@@ -802,7 +804,67 @@ class ProductWritesMap(Freezable):
             input_term_attrs = state_attributes_map[input_multi_tape_state]
             input_term_offset = input_term.get_position()
 
-        # TODO: complete this
+            if input_term_offset != 0:
+                if input_term_attrs.writable:
+                    """
+                    If any of the input product's terms can be spawned
+                    from somewhere else, and said term does not lie along
+                    the output position, then at some point its possible that
+                    the state will be spawned and make the product
+                    satisfiable
+                    """
+                    return False
+
+                continue
+
+            assert input_term_offset == 0
+            has_input_terms_along_output_offset = True
+            input_term_tape_no = TapeNo(input_term.get_tape_no())
+            # input_term_tape_cell_state = input_term.get_cell_state()
+            if input_term_tape_no not in product_writes:
+                continue
+
+            output_tape_cell_state = product_writes[input_term_tape_no]
+            output_multi_tape_state = MultiTapeState(
+                tape_no=input_term_tape_no,
+                tape_cell_state=output_tape_cell_state
+            )
+            output_term_attrs = state_attributes_map[output_multi_tape_state]
+
+            input_is_unwritable = not input_term_attrs.writable
+            output_term_is_undeletable = not output_term_attrs.deletable
+            in_out_neq = input_multi_tape_state != output_multi_tape_state
+            """
+            if:
+            1. all input terms outside write position are unwritable,
+               (if input_term_offset != 0: if input_term_attrs.writable:)
+            2. some input along offset 0 must be unwritable, 
+            3. and that input must be replaced with an undeletable state, 
+            4. and the replaced state is different from the input state,
+            -> then we can be sure that the product will no longer be used
+               moving forward
+            
+            Property #1 & #2 would mean that new instances of such products  
+            will not form from elsewhere (i.e. other positions). 
+            
+            Property #3 & #4 would mean that all current combinations of 
+            terms that satisfy the product transition away from 
+            satisfying it, and remain so permanently  
+            """
+            has_transition_to_unsatisfiability |= (
+                input_is_unwritable and
+                output_term_is_undeletable and
+                in_out_neq
+            )
+
+        if not has_input_terms_along_output_offset:
+            """
+            all input terms are offset away from output, and
+            none of them can be spawned moving forward
+            """
+            return True
+
+        return has_transition_to_unsatisfiability
 
     def build_input_products(self) -> FreezableSet[PyMultiTapeProduct]:
         relevant_input_products = FreezableSet()
