@@ -696,8 +696,7 @@ class FrozenTapeOverlaps(TapeOverlaps):
 class TapeOverlapsFSMState(object):
     _tape_overlaps: FrozenTapeOverlaps
     _relevant_input_products: FrozenSet[PyMultiTapeProduct]
-    # TODO: replace with product writes map
-    _unsatisfiable_products: FrozenSet[PyMultiTapeProduct]
+    _product_writes_map: FrozenProductWritesMap
 
     @property
     def tape_overlaps(self) -> TapeOverlaps:
@@ -708,8 +707,8 @@ class TapeOverlapsFSMState(object):
         return self._relevant_input_products
 
     @property
-    def unsatisfiable_products(self) -> FreezableSet[PyMultiTapeProduct]:
-        return self._unsatisfiable_products
+    def product_writes_map(self) -> FrozenProductWritesMap:
+        return self._product_writes_map
 
     def __post_init__(self) -> None:
         if not self._tape_overlaps.is_frozen:
@@ -721,12 +720,12 @@ class TapeOverlapsFSMState(object):
     def create(
         cls, tape_overlaps: TapeOverlaps,
         relevant_input_products: FreezableSet[PyMultiTapeProduct],
-        unsatisfiable_products: FreezableSet[PyMultiTapeProduct]
+        product_writes_map: ProductWritesMap
     ):
         return cls(
             _tape_overlaps=tape_overlaps.freeze_copy(),
             _relevant_input_products=relevant_input_products.to_frozen(),
-            _unsatisfiable_products=unsatisfiable_products.to_frozen()
+            _product_writes_map=product_writes_map.to_frozen()
         )
 
 
@@ -752,7 +751,7 @@ class ProductWritesMap(Freezable):
         super().__init__()
         if prod_to_state_map is None:
             prod_to_state_map = FreezableDefaultDict(
-                default_factory=lambda: FreezableDict
+                default_factory=FreezableDict
             )
 
         self._prod_to_state_map: FreezableDefaultDict[
@@ -781,6 +780,12 @@ class ProductWritesMap(Freezable):
 
     def __iter__(self) -> Iterator[PyMultiTapeProduct]:
         return iter(self._prod_to_state_map.keys())
+
+    def __delitem__(self, product: PyMultiTapeProduct) -> None:
+        if self._frozen:
+            raise ValueError("Cannot remove product when frozen")
+
+        del self._prod_to_state_map[product]
 
     def items(self):
         return self._prod_to_state_map.items()
