@@ -20,6 +20,14 @@ class TestReducedTransitionLeanProof(unittest.TestCase):
                         f'for base {base}.'
                     )
                 )
+                lean_check_passed, lean_output = proof.check_in_lean()
+                self.assertTrue(
+                    lean_check_passed,
+                    msg=(
+                        f'Generated Lean proof should typecheck for base '
+                        f'{base}. Lean output:\n{lean_output}'
+                    )
+                )
                 self.assertIn(
                     f'def b : Nat := {base}',
                     proof.lean_source,

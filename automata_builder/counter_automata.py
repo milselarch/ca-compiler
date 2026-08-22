@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import dataclasses
 import os
+import shutil
+import subprocess
+import tempfile
 
 from typing import Final, Callable, Sequence
 from py_ca_compiler import D
@@ -63,6 +66,37 @@ class ReducedTransitionsLeanProof(object):
     @property
     def is_valid(self) -> bool:
         return all(obligation.is_valid for obligation in self.obligations)
+
+    def check_in_lean(self) -> tuple[bool, str]:
+        lean_path = shutil.which('lean')
+        if lean_path is None:
+            return False, 'lean executable was not found in PATH.'
+
+        with tempfile.NamedTemporaryFile(
+            mode='w',
+            suffix='.lean',
+            delete=False,
+            encoding='utf-8',
+        ) as tmp_file:
+            tmp_file.write(self.lean_source)
+            lean_file_path = tmp_file.name
+
+        try:
+            result = subprocess.run(
+                [lean_path, lean_file_path],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=False,
+            )
+        finally:
+            os.remove(lean_file_path)
+
+        output = '\n'.join(
+            part for part in (result.stdout.strip(), result.stderr.strip())
+            if part
+        )
+        return result.returncode == 0, output
 
 
 def prefill_tape(position: int, tape_no: int) -> Callable[[int], D]:
@@ -421,6 +455,7 @@ class CounterAutomataBuilder(object):
         )
 
         lean_source = (
+            'import Std.Tactic.NativeDecide\n\n'
             'namespace CounterAutomataProofs\n\n'
             f'def b : Nat := {base}\n\n'
             '/--\n'
