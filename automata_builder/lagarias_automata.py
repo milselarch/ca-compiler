@@ -432,9 +432,16 @@ class LagariasAutomataRunner(object):
             harmonic = harmonic_interval_bounds(n=n, scale=scale)
             self.tape_registers[HARMONIC_TAPE] = harmonic
 
-            log_interval = log_interval_bounds(
-                interval=harmonic, num_terms=log_terms
-            )
+            try:
+                log_interval = log_interval_bounds(
+                    interval=harmonic, num_terms=log_terms
+                )
+            except ValueError:
+                scale *= 2
+                log_terms += 2
+                exp_terms += 4
+                continue
+
             self.tape_registers[LOG_TAPE] = log_interval
 
             try:
