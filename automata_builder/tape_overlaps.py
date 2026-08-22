@@ -782,6 +782,12 @@ class ProductWritesMap(Freezable):
     def __iter__(self) -> Iterator[PyMultiTapeProduct]:
         return iter(self._prod_to_state_map.keys())
 
+    def __delitem__(self, product: PyMultiTapeProduct) -> None:
+        if self._frozen:
+            raise ValueError("Cannot remove product when frozen")
+
+        del self._prod_to_state_map[product]
+
     def items(self):
         return self._prod_to_state_map.items()
 

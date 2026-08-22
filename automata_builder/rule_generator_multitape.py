@@ -1211,14 +1211,12 @@ class MultiTapeBuilder(object):
 
     def transition_overlaps(
         self, overlaps_fsm_state: TapeOverlapsFSMState,
-        prod_to_state_map: ProductWritesMap,
         overlaps_fsm: TapeOverlapsFSM, verbose: bool = False
     ) -> TapeOverlapsFSMState:
         # TODO: actually use this in build_overlaps
         # TODO: create OverlapsFSMState := (overlaps, relevant_input_products)
         """
         :param overlaps_fsm_state:
-        :param prod_to_state_map:
         :param overlaps_fsm:
         :param verbose:
         :return:
@@ -1231,13 +1229,15 @@ class MultiTapeBuilder(object):
 
         prev_overlaps = overlaps_fsm_state.tape_overlaps
         relevant_input_products = overlaps_fsm_state.relevant_input_products
+        prev_prod_to_state_map = overlaps_fsm_state.product_writes_map
+
         prev_overlaps.print_for_states()
         new_relevant_input_products: set[PyMultiTapeProduct] = set()
         new_output_states_written: set[MultiTapeState] = set()
         overlaps = prev_overlaps.to_unfrozen()
         # print(f'{relevant_input_products=}')
         input_state_to_prod_map = (
-            prod_to_state_map.build_input_state_to_prod_map()
+            prev_prod_to_state_map.build_input_state_to_prod_map()
         )
 
         for product in relevant_input_products:
@@ -1246,7 +1246,7 @@ class MultiTapeBuilder(object):
                 continue
 
             log('SATISFIABLE', product, product.get_annotation())
-            product_writes = prod_to_state_map[product]
+            product_writes = prev_prod_to_state_map[product]
             # print('SATISFIABLE PRODUCT PRE:', product, product_writes)
             input_terms = product.get_flat_terms()
 
@@ -1300,7 +1300,7 @@ class MultiTapeBuilder(object):
         # extinct_states: set[MultiTapeState] = set()
 
         for prev_overlap_state in all_prev_overlap_states:
-            state_attrs = prod_to_state_map.get_state_attributes(
+            state_attrs = prev_prod_to_state_map.get_state_attributes(
                 prev_overlap_state
             )
             is_state_extinct = (
@@ -1312,9 +1312,15 @@ class MultiTapeBuilder(object):
                 overlaps.delete_state(prev_overlap_state)
                 log(f"EXTINCT STATE {prev_overlap_state}")
 
+        # TODO: remove products with extinct states
+        #   but only if we know that said state is unwritable
+        prod_to_state_map = prev_prod_to_state_map.to_unfrozen()
+        # TODO: remove unsatisfiable products
+
         return TapeOverlapsFSMState.create(
             tape_overlaps=overlaps.to_frozen(),
-            relevant_input_products=FrozenSet(new_relevant_input_products)
+            relevant_input_products=FrozenSet(new_relevant_input_products),
+            product_writes_map=prod_to_state_map
         )
 
     def build_overlaps(self, verbose: bool = True) -> TapeOverlaps:
@@ -1337,13 +1343,13 @@ class MultiTapeBuilder(object):
         initial_fsm_state = TapeOverlapsFSMState.create(
             tape_overlaps=self._initial_overlaps.to_frozen(),
             relevant_input_products=relevant_input_products,
-            unsatisfiable_products=FrozenSet()
+            product_writes_map=prod_to_state_map
         )
         overlaps_fsm = TapeOverlapsFSM(initial_fsm_state=initial_fsm_state)
         prev_fsm_state: TapeOverlapsFSMState = initial_fsm_state
 
         assert prev_fsm_state in overlaps_fsm
-        prod_to_state_map.build_state_to_products_map(verbose=True)
+        # prod_to_state_map.build_state_to_products_map(verbose=True)
         overlaps_fsm_updated = True
         round_no: int = 0
 
@@ -1353,7 +1359,6 @@ class MultiTapeBuilder(object):
 
             next_fsm_state = self.transition_overlaps(
                 overlaps_fsm_state=prev_fsm_state,
-                prod_to_state_map=prod_to_state_map,
                 overlaps_fsm=overlaps_fsm,
             )
             # print(len(overlaps_fsm._existing_overlaps))
