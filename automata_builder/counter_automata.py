@@ -474,6 +474,35 @@ class CounterAutomataBuilder(object):
         and where the encoded number is fully contained within the range of
         the data tape at time n without leftover carry states
         on the carry tape.
+
+        Outline of proof:
+        TODO: formalize proof in lean or something
+        0. b-ary data range with n cells is declared in data tape at the start
+        1. reducer tape data cells spawn to the left
+           of the data range and travels
+           rightwards at speed of 1/2 cells per timestep
+           (due to pausing every other timestep)
+        2. b-ary counter is initialized (in signals tape)
+           to the right and travels
+           leftwards at speed of 1/2 cells per timestep
+           (due to pausing every other timestep)
+        3. counter increments when it passes over a data cell
+           on the data tape and there is no reducer tape data cell
+           at the same position
+        4. at time n, the counter will have incremented n/2 times
+           since there would only have been n/2 data tape cells
+           with no corresponding reducer cells to pass over
+        5. after time n, no more counter increments will occur
+        6. since this is an n-ary counter, the accumulated counter
+           will never be more than n/2 length in width given
+           n/2 increments
+        6. carry cells that spawn will therefore take at most
+           2*(n/2) = n timesteps to propagate throughout the counter
+           (we multiply by 2 since carry also propagates at a
+           speed of 1/2 cells per timesteps)
+        7. therefore by time n+n = 2n, the counter encodes
+           a value of n/2 in base b, and the carry tape is empty,
+           and both will remain so forever after
         :return:
         """
         transitions_group = self.build_base_transitions_group()
