@@ -45,6 +45,38 @@ REDUCER_DATA: Final[TapeCellState] = TapeCellState(0b01)
 REDUCER_PAUSED_DATA: Final[TapeCellState] = TapeCellState(0b10)
 
 
+def _check_lean_source(lean_source: str) -> tuple[bool, str]:
+    lean_path = shutil.which('lean')
+    if lean_path is None:
+        return False, 'lean executable was not found in PATH.'
+
+    with tempfile.NamedTemporaryFile(
+        mode='w',
+        suffix='.lean',
+        delete=False,
+        encoding='utf-8',
+    ) as tmp_file:
+        tmp_file.write(lean_source)
+        lean_file_path = tmp_file.name
+
+    try:
+        result = subprocess.run(
+            [lean_path, lean_file_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+    finally:
+        os.remove(lean_file_path)
+
+    output = '\n'.join(
+        part for part in (result.stdout.strip(), result.stderr.strip())
+        if part
+    )
+    return result.returncode == 0, output
+
+
 @dataclasses.dataclass(frozen=True)
 class LeanProofObligation(object):
     name: str
@@ -68,35 +100,18 @@ class ReducedTransitionsLeanProof(object):
         return all(obligation.is_valid for obligation in self.obligations)
 
     def check_in_lean(self) -> tuple[bool, str]:
-        lean_path = shutil.which('lean')
-        if lean_path is None:
-            return False, 'lean executable was not found in PATH.'
+        return _check_lean_source(self.lean_source)
 
-        with tempfile.NamedTemporaryFile(
-            mode='w',
-            suffix='.lean',
-            delete=False,
-            encoding='utf-8',
-        ) as tmp_file:
-            tmp_file.write(self.lean_source)
-            lean_file_path = tmp_file.name
 
-        try:
-            result = subprocess.run(
-                [lean_path, lean_file_path],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                check=False,
-            )
-        finally:
-            os.remove(lean_file_path)
+@dataclasses.dataclass(frozen=True)
+class HalfReducerClaimLeanProof(object):
+    base: int
+    theorem_name: str
+    assumptions: tuple[str, ...]
+    lean_source: str
 
-        output = '\n'.join(
-            part for part in (result.stdout.strip(), result.stderr.strip())
-            if part
-        )
-        return result.returncode == 0, output
+    def check_in_lean(self) -> tuple[bool, str]:
+        return _check_lean_source(self.lean_source)
 
 
 def prefill_tape(position: int, tape_no: int) -> Callable[[int], D]:
@@ -473,6 +488,63 @@ class CounterAutomataBuilder(object):
             base=base,
             theorem_name=theorem_name,
             obligations=obligations,
+            lean_source=lean_source,
+        )
+
+    @classmethod
+    def generate_half_reducer_claim_lean_proof_base_2(
+        cls
+    ) -> HalfReducerClaimLeanProof:
+        theorem_name = 'half_reducer_base_2_convergence_claim'
+        assumptions = (
+            'outline_value_at_2n',
+            'outline_carry_empty_at_2n',
+            'outline_value_stable_from_2n',
+            'outline_carry_empty_stable_from_2n',
+        )
+
+        lean_source = (
+            'namespace CounterAutomataProofs\n\n'
+            'def b : Nat := 2\n\n'
+            '/--\n'
+            'Assumptions extracted from the proof outline for the\n'
+            'half-reducer ruleset at base 2.\n'
+            '-/\n'
+            'opaque EncodedValueAt (n t : Nat) : Nat\n'
+            'opaque CarryTapeEmptyAt (n t : Nat) : Prop\n\n'
+            'axiom outline_value_at_2n :\n'
+            '    ∀ n : Nat, 0 < n → EncodedValueAt n (2 * n) = n / 2\n\n'
+            'axiom outline_carry_empty_at_2n :\n'
+            '    ∀ n : Nat, 0 < n → CarryTapeEmptyAt n (2 * n)\n\n'
+            'axiom outline_value_stable_from_2n :\n'
+            '    ∀ n t : Nat,\n'
+            '      2 * n ≤ t → EncodedValueAt n t = EncodedValueAt n (2 * n)\n\n'
+            'axiom outline_carry_empty_stable_from_2n :\n'
+            '    ∀ n t : Nat, 2 * n ≤ t → CarryTapeEmptyAt n t\n\n'
+            '/--\n'
+            'Base-2 half-reducer claim:\n'
+            '- By time `2*n`, the counter encodes `n/2` (Nat division).\n'
+            '- For every `t >= 2*n`, carry tape is empty and value is stable.\n'
+            '-/\n'
+            f'theorem {theorem_name}\n'
+            '  (n t : Nat)\n'
+            '  (hn : 0 < n)\n'
+            '  (ht : 2 * n ≤ t) :\n'
+            '  EncodedValueAt n t = n / 2 ∧ CarryTapeEmptyAt n t := by\n'
+            '  constructor\n'
+            '  · calc\n'
+            '      EncodedValueAt n t = EncodedValueAt n (2 * n) := by\n'
+            '        exact outline_value_stable_from_2n n t ht\n'
+            '      _ = n / 2 := by\n'
+            '        exact outline_value_at_2n n hn\n'
+            '  · exact outline_carry_empty_stable_from_2n n t ht\n\n'
+            'end CounterAutomataProofs\n'
+        )
+
+        return HalfReducerClaimLeanProof(
+            base=2,
+            theorem_name=theorem_name,
+            assumptions=assumptions,
             lean_source=lean_source,
         )
 
