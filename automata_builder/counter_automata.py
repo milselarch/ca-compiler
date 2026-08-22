@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import os
 
 from typing import Final, Callable, Sequence
@@ -39,6 +40,29 @@ CT_DATA: Final[TapeCellState] = TapeCellState(0b10)
 
 REDUCER_DATA: Final[TapeCellState] = TapeCellState(0b01)
 REDUCER_PAUSED_DATA: Final[TapeCellState] = TapeCellState(0b10)
+
+
+@dataclasses.dataclass(frozen=True)
+class LeanProofObligation(object):
+    name: str
+    actual: int
+    expected: int
+
+    @property
+    def is_valid(self) -> bool:
+        return self.actual == self.expected
+
+
+@dataclasses.dataclass(frozen=True)
+class ReducedTransitionsLeanProof(object):
+    base: int
+    theorem_name: str
+    obligations: tuple[LeanProofObligation, ...]
+    lean_source: str
+
+    @property
+    def is_valid(self) -> bool:
+        return all(obligation.is_valid for obligation in self.obligations)
 
 
 def prefill_tape(position: int, tape_no: int) -> Callable[[int], D]:
@@ -155,6 +179,267 @@ class CounterAutomataBuilder(object):
     def __init__(self, base: int = 2):
         assert base >= 2, "Base must be at least 2"
         self.base = base
+
+    @staticmethod
+    def _has_term(
+        terms: tuple[D, ...], position: int, tape_no: TapeNo,
+        state: TapeCellState
+    ) -> bool:
+        for term in terms:
+            if (
+                term.get_position() == position and
+                term.get_tape_no() == tape_no and
+                term.get_cell_state() == state
+            ):
+                return True
+
+        return False
+
+    @classmethod
+    def _build_reduced_transition_proof_obligations(
+        cls, base: int
+    ) -> tuple[LeanProofObligation, ...]:
+        builder = cls(base=base)
+        transitions_group = builder.build_reduced_transitions_group()
+        transitions = transitions_group.transitions
+
+        def count_annotations(
+            annotation_filter: Callable[[str], bool]
+        ) -> int:
+            return sum(
+                int(annotation_filter(transition.annotation))
+                for transition in transitions
+            )
+
+        def count_transitions(
+            transition_filter: Callable[[MultiTapeTransition], bool]
+        ) -> int:
+            return sum(
+                int(transition_filter(transition))
+                for transition in transitions
+            )
+
+        obligations = (
+            LeanProofObligation(
+                name='exp_reduce_start_rule',
+                actual=count_annotations(
+                    lambda annotation: annotation == 'EXP_REDUCE_START'
+                ),
+                expected=1,
+            ),
+            LeanProofObligation(
+                name='counter_acc_start_rule',
+                actual=count_annotations(
+                    lambda annotation: annotation == 'COUNTER_ACC_START'
+                ),
+                expected=1,
+            ),
+            LeanProofObligation(
+                name='reducer_spawn_left_end_rule',
+                actual=count_annotations(
+                    lambda annotation: annotation == 'REDUCER_SPAWN_LEFT_END'
+                ),
+                expected=1,
+            ),
+            LeanProofObligation(
+                name='reducer_data_spread_right_rule',
+                actual=count_annotations(
+                    lambda annotation: annotation == 'REDUCER_DATA_SPREAD_RIGHT'
+                ),
+                expected=1,
+            ),
+            LeanProofObligation(
+                name='reducer_data_spread_left_rule',
+                actual=count_annotations(
+                    lambda annotation: annotation == 'REDUCER_DATA_SPREAD_LEFT'
+                ),
+                expected=1,
+            ),
+            LeanProofObligation(
+                name='reducer_pause_to_unpause_rule',
+                actual=count_annotations(
+                    lambda annotation: annotation == 'REDUCER_PAUSE_TO_UNPAUSE'
+                ),
+                expected=1,
+            ),
+            LeanProofObligation(
+                name='left_shift_no_carry_rules',
+                actual=count_annotations(
+                    lambda annotation: (
+                        annotation.startswith('SHL_') and
+                        annotation.endswith('_NO_CARRY')
+                    )
+                ),
+                expected=base ** 2,
+            ),
+            LeanProofObligation(
+                name='carry_cancel_rules',
+                actual=count_annotations(
+                    lambda annotation: annotation == 'CANCEL_CARRY'
+                ),
+                expected=base * (base - 1),
+            ),
+            LeanProofObligation(
+                name='left_shift_overflow_rules',
+                actual=count_annotations(
+                    lambda annotation: (
+                        annotation.startswith('SHL_') and
+                        annotation.endswith('_OVERFLOW')
+                    )
+                ),
+                expected=base,
+            ),
+            LeanProofObligation(
+                name='right_overflow_increment_rules',
+                actual=count_annotations(
+                    lambda annotation: annotation == 'RIGHT_OVERFLOW_INC'
+                ),
+                expected=base,
+            ),
+            LeanProofObligation(
+                name='right_overflow_cancel_rules',
+                actual=count_annotations(
+                    lambda annotation: (
+                        annotation == 'RIGHT_OVERFLOW_CARRY_CANCEL'
+                    )
+                ),
+                expected=base,
+            ),
+            LeanProofObligation(
+                name='clear_rightmost_rules',
+                actual=count_annotations(
+                    lambda annotation: (
+                        annotation.startswith('CLEAR_RIGHTMOST_') and
+                        not annotation.endswith('_ST')
+                    )
+                ),
+                expected=base,
+            ),
+            LeanProofObligation(
+                name='clear_rightmost_st_rules',
+                actual=count_annotations(
+                    lambda annotation: (
+                        annotation.startswith('CLEAR_RIGHTMOST_') and
+                        annotation.endswith('_ST')
+                    )
+                ),
+                expected=base,
+            ),
+            LeanProofObligation(
+                name='pause_to_unpause_rules',
+                actual=count_annotations(
+                    lambda annotation: annotation.startswith('PAUSE_TO_UNPAUSE_')
+                ),
+                expected=base,
+            ),
+            LeanProofObligation(
+                name='lm_left_increment_rules',
+                actual=count_annotations(
+                    lambda annotation: (
+                        annotation.startswith('LM_LEFT_') and
+                        annotation.endswith('_AND_INC')
+                    )
+                ),
+                expected=base - 1,
+            ),
+            LeanProofObligation(
+                name='lm_overflow_rule',
+                actual=count_annotations(
+                    lambda annotation: annotation == f'LM_OVERFLOW_{base-1}'
+                ),
+                expected=1,
+            ),
+            LeanProofObligation(
+                name='lm_spawn_carry_rule',
+                actual=count_annotations(
+                    lambda annotation: annotation == 'LM_SPAWN_CARRY'
+                ),
+                expected=1,
+            ),
+            LeanProofObligation(
+                name='bleed_rules',
+                actual=count_annotations(
+                    lambda annotation: annotation.startswith('BLEED_')
+                ),
+                expected=2 * base,
+            ),
+            LeanProofObligation(
+                name='lm_rules_use_reducer_void_trigger',
+                actual=count_transitions(
+                    lambda transition: (
+                        transition.annotation.startswith('LM_') and
+                        cls._has_term(
+                            transition.input_terms,
+                            position=MID,
+                            tape_no=REDUCER_TAPE,
+                            state=VOID_STATE,
+                        )
+                    )
+                ),
+                expected=base + 1,
+            ),
+            LeanProofObligation(
+                name='bleed_rules_use_reducer_no_increment_states',
+                actual=count_transitions(
+                    lambda transition: (
+                        transition.annotation.startswith('BLEED_') and
+                        (
+                            cls._has_term(
+                                transition.input_terms,
+                                position=MID,
+                                tape_no=REDUCER_TAPE,
+                                state=REDUCER_DATA,
+                            ) or
+                            cls._has_term(
+                                transition.input_terms,
+                                position=MID,
+                                tape_no=REDUCER_TAPE,
+                                state=REDUCER_PAUSED_DATA,
+                            )
+                        )
+                    )
+                ),
+                expected=2 * base,
+            ),
+        )
+
+        return obligations
+
+    @classmethod
+    def generate_reduced_transitions_lean_proof(
+        cls, base: int
+    ) -> ReducedTransitionsLeanProof:
+        obligations = cls._build_reduced_transition_proof_obligations(base)
+        theorem_name = f'reduced_transitions_group_base_{base}_proof'
+
+        theorem_body = " ∧\n    ".join(
+            (
+                f'({obligation.actual} = {obligation.expected})'
+                f' -- {obligation.name}'
+            )
+            for obligation in obligations
+        )
+
+        lean_source = (
+            'namespace CounterAutomataProofs\n\n'
+            f'def b : Nat := {base}\n\n'
+            '/--\n'
+            'Automatically-generated proof obligations for the\n'
+            '`build_reduced_transitions_group` rule family for base `b`.\n'
+            '-/\n'
+            f'theorem {theorem_name} :\n'
+            f'    {theorem_body}\n'
+            ':= by\n'
+            '  native_decide\n\n'
+            'end CounterAutomataProofs\n'
+        )
+
+        return ReducedTransitionsLeanProof(
+            base=base,
+            theorem_name=theorem_name,
+            obligations=obligations,
+            lean_source=lean_source,
+        )
 
     def build_base_transitions_group(
         self, transitions_group: MultiTapeTransitionsGroup | None = None
