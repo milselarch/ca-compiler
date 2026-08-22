@@ -447,25 +447,25 @@ class CounterAutomataBuilder(object):
         theorem_name = f'reduced_transitions_group_base_{base}_proof'
 
         theorem_body = " ∧\n    ".join(
-            (
-                f'({obligation.actual} = {obligation.expected})'
-                f' -- {obligation.name}'
-            )
+            f'({obligation.actual} = {obligation.expected})'
             for obligation in obligations
+        )
+        obligation_names_comment = ''.join(
+            f'-- {obligation.name}\n' for obligation in obligations
         )
 
         lean_source = (
-            'import Std.Tactic.NativeDecide\n\n'
             'namespace CounterAutomataProofs\n\n'
             f'def b : Nat := {base}\n\n'
             '/--\n'
             'Automatically-generated proof obligations for the\n'
             '`build_reduced_transitions_group` rule family for base `b`.\n'
             '-/\n'
+            f'{obligation_names_comment}'
             f'theorem {theorem_name} :\n'
             f'    {theorem_body}\n'
             ':= by\n'
-            '  native_decide\n\n'
+            '  decide\n\n'
             'end CounterAutomataProofs\n'
         )
 

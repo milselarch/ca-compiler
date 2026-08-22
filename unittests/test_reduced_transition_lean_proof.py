@@ -36,7 +36,7 @@ class TestReducedTransitionLeanProof(unittest.TestCase):
                     f'theorem {proof.theorem_name}',
                     proof.lean_source,
                 )
-                self.assertIn('native_decide', proof.lean_source)
+                self.assertIn('decide', proof.lean_source)
                 for obligation in proof.obligations:
                     self.assertIn(
                         f'-- {obligation.name}',
