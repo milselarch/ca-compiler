@@ -988,9 +988,14 @@ class ProductWritesMap(Freezable):
                 if input_term.get_tape_no() != target_state.tape_no:
                     continue
 
-                # TODO THIS WRONG CHECK OUTPUT STATE INSTEAD
                 tape_cell_state = input_term.get_cell_state()
                 if tape_cell_state != target_state.tape_cell_state:
+                    continue
+
+                output_tape_cell_state = writes_map.get(
+                    target_state.tape_no, target_state.tape_cell_state
+                )
+                if target_state.tape_cell_state != output_tape_cell_state:
                     """
                     Our input product contains target_state
                     along that output position (offset 0) and the
