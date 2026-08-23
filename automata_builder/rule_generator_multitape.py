@@ -1213,8 +1213,6 @@ class MultiTapeBuilder(object):
         self, overlaps_fsm_state: TapeOverlapsFSMState,
         overlaps_fsm: TapeOverlapsFSM, verbose: bool = False
     ) -> TapeOverlapsFSMState:
-        # TODO: actually use this in build_overlaps
-        # TODO: create OverlapsFSMState := (overlaps, relevant_input_products)
         """
         :param overlaps_fsm_state:
         :param overlaps_fsm:
@@ -1280,7 +1278,7 @@ class MultiTapeBuilder(object):
                     # print("SKIP_WRITE", write_pair)
                     continue
 
-                print("DO_WRITE", write_pair)
+                log("DO_WRITE", write_pair)
                 # Get the other products that use the current products'
                 # output state as one of their input states, and add it
                 # to list of products to check for satisfiability later
@@ -1298,24 +1296,25 @@ class MultiTapeBuilder(object):
         log(f'{new_output_states_written=}')
         # states that cease to exist in tapes after current time step
         # extinct_states: set[MultiTapeState] = set()
+        prod_to_state_map = prev_prod_to_state_map.to_unfrozen()
 
         for prev_overlap_state in all_prev_overlap_states:
             state_attrs = prev_prod_to_state_map.get_state_attributes(
                 prev_overlap_state
             )
-            is_state_extinct = (
+            # whether state has no occurrences after current time step
+            no_state_occurrences_post_transition = (
                 state_attrs.instant_delete and
                 prev_overlap_state not in new_output_states_written
             )
-            if is_state_extinct:
-                # extinct_states.add(prev_overlap_state)
+            if no_state_occurrences_post_transition:
                 overlaps.delete_state(prev_overlap_state)
                 log(f"EXTINCT STATE {prev_overlap_state}")
 
-        # TODO: remove products with extinct states
-        #   but only if we know that said state is unwritable
-        prod_to_state_map = prev_prod_to_state_map.to_unfrozen()
-        # TODO: remove unsatisfiable products
+                if not state_attrs.writable:
+                    prod_to_state_map.extinct_input_state(prev_overlap_state)
+
+        prod_to_state_map.purge_unsatisfiable_products()
 
         return TapeOverlapsFSMState.create(
             tape_overlaps=overlaps.to_frozen(),

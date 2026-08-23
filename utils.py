@@ -95,11 +95,11 @@ class Freezable(metaclass=ABCMeta):
 
     @classmethod
     @abstractmethod
-    def _decode(cls, data: tuple) -> typing.Self:
+    def _decode(cls, data: tuple) -> Freezable:
         raise NotImplementedError
 
     @abstractmethod
-    def to_unfrozen(self) -> typing.Self:
+    def to_unfrozen(self):
         raise NotImplementedError
 
     def __eq__(self, other: object) -> bool:
@@ -166,7 +166,7 @@ class FreezableSet(Freezable, Generic[V]):
         frozen_set = FrozenSet(self._data)
         return frozen_set
 
-    def to_unfrozen(self) -> typing.Self:
+    def to_unfrozen(self):
         unfrozen_elements = []
         for element in self._data:
             if isinstance(element, Freezable):
@@ -273,13 +273,12 @@ class FreezableDefaultDict(Freezable, Generic[K, V]):
     @classmethod
     def _decode(
         cls, data: tuple[tuple[K, V], ...]
-    ) -> FreezableDict[K, V]:
+    ) -> FrozenDefaultDict[K, V]:
         instance = FreezableDict()
         for key, value in data:
             instance[key] = value
 
-        instance.freeze()
-        return instance
+        return instance.to_frozen()
 
     def to_frozen(self) -> FrozenDefaultDict[K, V]:
         return FrozenDefaultDict(
@@ -331,6 +330,8 @@ class FreezableDict(FreezableDefaultDict[K, V]):
     def __init__(
         self, initial_data: typing.Optional[dict[K, V]] = None
     ) -> None:
+        # TODO: FreezableDefaultDict should inherit from
+        #  FreezableDict instead (same for FreezableSet)
         default_factory = lambda: None
         super().__init__(default_factory, initial_data)
 
@@ -340,7 +341,16 @@ class FreezableDict(FreezableDefaultDict[K, V]):
 
         return self._data[key]
 
-    def to_frozen(self) -> FrozenDict[K, V]:
+    def to_default_dict(
+        self
+    ) -> FreezableDefaultDict[K, V]:
+        default_dict = FreezableDefaultDict(
+            default_factory=lambda: None,
+            initial_data=self._data
+        )
+        return default_dict
+
+    def to_frozen(self):
         frozen_default_dict = super().to_frozen()
         return frozen_default_dict.to_frozen_dict()
 

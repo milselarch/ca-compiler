@@ -5,13 +5,16 @@ import dataclasses
 import typing
 
 from collections import defaultdict
-from typing import Iterator, Self, Sequence
+from typing import Iterator, Sequence
 from py_ca_compiler import D, PyMultiTapeProduct
 
 from automata_builder.rule_generator import (
     TapeCellState, TapeNo, VOID_STATE
 )
-from utils import FreezableDefaultDict, FreezableSet, Freezable, FrozenSet, FrozenDict, FreezableDict
+from utils import (
+    FreezableDefaultDict, FreezableSet, Freezable, FrozenSet,
+    FrozenDict, FreezableDict
+)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -165,7 +168,7 @@ class TapeOverlaps(Freezable):
 
     def __contains__(self, item: object):
         if not isinstance(item, MultiTapeState):
-            raise TypeError(f'{item} is not a {MultiTapeState.__name__}')
+            raise TypeError(f'not {MultiTapeState.__name__}')
 
         return item in self._overlaps
 
@@ -181,10 +184,9 @@ class TapeOverlaps(Freezable):
                 if state in offset_overlaps:
                     offset_overlaps.remove(state)
 
-    def freeze(self) -> Self:
+    def freeze(self) -> bool:
         self._frozen = True
-        self._overlaps.freeze()
-        return self
+        return self._overlaps.freeze()
 
     def freeze_copy(self) -> FrozenTapeOverlaps:
         return self.to_frozen()
@@ -664,7 +666,7 @@ class TapeOverlaps(Freezable):
 
         return whitelist
 
-    def to_unfrozen(self) -> typing.Self:
+    def to_unfrozen(self):
         return self.__class__(
             overlaps=self._overlaps.to_unfrozen()
         )
@@ -753,7 +755,7 @@ class ProductWritesMap(Freezable):
         self._prod_to_state_map: FreezableDefaultDict[
             PyMultiTapeProduct, FreezableDict[TapeNo, TapeCellState]
         ] = FreezableDefaultDict(
-            default_factory=lambda: FreezableDict
+            default_factory=FreezableDict
         )
 
         if prod_to_state_map is not None:
@@ -769,7 +771,36 @@ class ProductWritesMap(Freezable):
     def _decode(cls, data: tuple) -> typing.Self:
         return cls(FreezableDefaultDict.decode(data))
 
-    def to_unfrozen(self) -> typing.Self:
+    def extinct_input_state(self, state: MultiTapeState):
+        """
+        Remove all input products that contain the input state
+        :param state:
+        :return:
+        """
+        if self._frozen:
+            raise ValueError("Cannot modify when frozen")
+
+        for product in self._prod_to_state_map.keys():
+            input_terms = product.get_flat_terms()
+
+            for input_term in input_terms:
+                input_multi_tape_state = MultiTapeState.from_term(input_term)
+                if input_multi_tape_state == state:
+                    del self._prod_to_state_map[product]
+
+    def purge_unsatisfiable_products(self):
+        """
+        Remove all input products that are unsatisfiable
+        :return:
+        """
+        if self._frozen:
+            raise ValueError("Cannot modify when frozen")
+
+        for product in list(self._prod_to_state_map.keys()):
+            if self.does_product_becomes_unsatisfiable(product):
+                del self._prod_to_state_map[product]
+
+    def to_unfrozen(self):
         return self.__class__(
             prod_to_state_map=self._prod_to_state_map.to_unfrozen()
         )
@@ -1149,7 +1180,7 @@ class FrozenProductWritesMap(ProductWritesMap):
     def __init__(self,  prod_to_state_map: FreezableDefaultDict[
         PyMultiTapeProduct, FreezableDict[TapeNo, TapeCellState]
     ] | None = None):
-        if not prod_to_state_map.is_frozen:
+        if prod_to_state_map and not prod_to_state_map.is_frozen:
             raise ValueError(
                 "FrozenProductWritesMap only works with "
                 "frozen prod_to_state_map"
