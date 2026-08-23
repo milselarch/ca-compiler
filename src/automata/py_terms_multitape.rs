@@ -409,6 +409,15 @@ impl PyMultiTapeProduct {
             Err(PyTypeError::new_err("Unsupported operand type(s)"))
         }
     }
+
+    fn __lt__(&self, other: &Bound<PyAny>) -> PyResult<bool> {
+        if let Ok(other_product) = other.extract::<PyMultiTapeProduct>() {
+            Ok(self.product < other_product.product)
+        } else {
+            Ok(false)
+        }
+    }
+
     fn multiply_by_term(&self, term: D) -> PyResult<PyMultiTapeProduct> {
         Ok(Self::from_product(self.product.copy() * term.term))
     }

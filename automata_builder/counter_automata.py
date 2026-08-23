@@ -96,9 +96,9 @@ def build_st_counter_state(counter_digit: int, paused: bool) -> int:
     assert counter_digit >= 0, "Counter digit must be non-negative"
     # noinspection PyRedundantParentheses
     return (
-            (0b00) |  # bit 0: equals 0 when in counter state
-            (0b10 if paused else 0b00) |  # bit 1: paused or not
-            ((counter_digit + 1) << 2)  # bits 2...: counter value
+        (0b00) |  # bit 0: equals 0 when in counter state
+        (0b10 if paused else 0b00) |  # bit 1: paused or not
+        ((counter_digit + 1) << 2)  # bits 2...: counter value
     )
 
 
@@ -264,18 +264,21 @@ class CounterAutomataBuilder(object):
 
         # clear rightmost counter cell if no carry
         for digit in range(self.base):
-            # if right (signals tape) cell is any void cell
+            # TODO: replace with a sort of ABANDONED cell state
+            # if cell next to rightmost (signals tape) counter cell
+            # is a data cell
             _transitions_group.add_transition(
                 input_terms=(
                     ST_MID(active_counter(digit)),
-                    ST_RIGHT(VOID_STATE),
+                    ST_RIGHT(DT_DATA),
                     CT_MID(VOID_STATE)
                 ),
                 output_tape_no=SIGNALS_TAPE,
-                output_cell_state=VOID_STATE,
+                output_cell_state=DT_DATA,
                 annotation=f'CLEAR_RIGHTMOST_{digit}'
             )
-            # if right signals tape cell is reduction start marker
+            # if cell next to rightmost (signals tape) counter cell
+            # is reduction start marker
             _transitions_group.add_transition(
                 input_terms=(
                     ST_MID(active_counter(digit)),
@@ -283,7 +286,7 @@ class CounterAutomataBuilder(object):
                     CT_MID(VOID_STATE)
                 ),
                 output_tape_no=SIGNALS_TAPE,
-                output_cell_state=VOID_STATE,
+                output_cell_state=DT_DATA,
                 annotation=f'CLEAR_RIGHTMOST_{digit}_ST'
             )
 
