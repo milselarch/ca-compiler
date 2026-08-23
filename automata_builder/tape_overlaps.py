@@ -798,6 +798,7 @@ class ProductWritesMap(Freezable):
 
         for product in list(self._prod_to_state_map.keys()):
             if self.does_product_becomes_unsatisfiable(product):
+                print("UNSATISFIABLE", product)
                 del self._prod_to_state_map[product]
 
     def to_unfrozen(self):
@@ -830,6 +831,9 @@ class ProductWritesMap(Freezable):
                 f"Product {product} is not in {self._prod_to_state_map}"
             )
 
+        if product.get_annotation() == 'EXP_REDUCE_START':
+            print("TOMATO")
+
         has_transition_to_unsatisfiability = False
         has_input_terms_along_output_offset = False
         state_attributes_map = self.build_all_state_attributes_map()
@@ -859,6 +863,8 @@ class ProductWritesMap(Freezable):
             input_term_tape_no = TapeNo(input_term.get_tape_no())
             # input_term_tape_cell_state = input_term.get_cell_state()
             if input_term_tape_no not in product_writes:
+                # output does not write to the same tape as input term
+                # -> we don't care to check for unsatisfiability in that case
                 continue
 
             output_tape_cell_state = product_writes[input_term_tape_no]
@@ -893,6 +899,9 @@ class ProductWritesMap(Freezable):
                 output_term_is_undeletable and
                 in_out_neq
             )
+
+        if (1, 8) in product_writes.items():
+            print("POTATO")
 
         if not has_input_terms_along_output_offset:
             """
@@ -979,12 +988,13 @@ class ProductWritesMap(Freezable):
                 if input_term.get_tape_no() != target_state.tape_no:
                     continue
 
+                # TODO THIS WRONG CHECK OUTPUT STATE INSTEAD
                 tape_cell_state = input_term.get_cell_state()
                 if tape_cell_state != target_state.tape_cell_state:
                     """
                     Our input product contains target_state
                     along that output position (offset 0) and the
-                    output writes to the same tape to a different state,
+                    output writes to the same tape, but to a different state,
                     so the original target_state is deleted
                     """
                     writes_away_from_target_state = True
