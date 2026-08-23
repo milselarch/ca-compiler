@@ -116,85 +116,12 @@ class Freezable(metaclass=ABCMeta):
         return hash(self.encode())
 
 
-class FreezableSet(Freezable, Generic[V]):
-    def __init__(self, args: typing.Collection[V] = ()) -> None:
-        super().__init__()
-        self._data: set[V] = set()
-        for arg in args:
-            self.add(arg)
-
-    def __iter__(self) -> Iterator[V]:
-        return iter(self._data)
-
-    def __repr__(self):
-        classname = self.__class__.__name__
-        return f"{classname}({self._data!r})"
-
-    def remove(self, value: V):
-        if self._frozen:
-            raise ValueError(
-                f"Cannot delete from frozen {self.__class__.__name__}"
-            )
-
-        self._data.remove(value)
-
-    def clone_data(self) -> set[V]:
-        return copy.copy(self._data)
-
-    def add(self, other: V) -> None:
-        if self._frozen:
-            raise ValueError("Cannot add to frozen set")
-
-        if not self.is_allowed_value(other):
-            raise ValueError(f"Value {other} is not allowed")
-
-        self._data.add(other)
-
-    def _freeze(self) -> None:
-        for value in self._data:
-            if isinstance(value, Freezable):
-                value.freeze()
-
-    def _encode(self) -> tuple[V, ...]:
-        return tuple(list(self._data))
-
-    @classmethod
-    def _decode(cls, data: tuple[V, ...]) -> typing.Self:
-        return cls(data)
-
-    def to_frozen(self) -> FrozenSet[V]:
-        frozen_set = FrozenSet(self._data)
-        return frozen_set
-
-    def to_unfrozen(self):
-        unfrozen_elements = []
-        for element in self._data:
-            if isinstance(element, Freezable):
-                unfrozen_elements.append(element.to_unfrozen())
-            else:
-                unfrozen_elements.append(element)
-
-        unfrozen_set = FreezableSet(unfrozen_elements)
-        return unfrozen_set
-
-
-class FrozenSet(FreezableSet[V]):
-    def __init__(self, args: typing.Collection[V] = ()) -> None:
-        super().__init__(args)
-        self.freeze()
-
-    def to_unfrozen(self) -> FreezableSet[V]:
-        raise ValueError("Cannot be unfrozen")
-
-
-class FreezableDefaultDict(Freezable, Generic[K, V]):
+class FreezableDict(Freezable, Generic[K, V]):
     def __init__(
-        self, default_factory: Callable[[], V],
-        initial_data: typing.Optional[dict[K, V]] = None
+        self, initial_data: typing.Optional[dict[K, V]] = None
     ) -> None:
         super().__init__()
-        self._default_factory = default_factory
-        self._data: defaultdict[K, V] = defaultdict(default_factory)
+        self._data: dict[K, V] = {}
 
         if initial_data is not None:
             for key, value in initial_data.items():
@@ -273,7 +200,72 @@ class FreezableDefaultDict(Freezable, Generic[K, V]):
     @classmethod
     def _decode(
         cls, data: tuple[tuple[K, V], ...]
-    ) -> FrozenDefaultDict[K, V]:
+    ) -> FrozenDict[K, V]:
+        instance = FreezableDict()
+        for key, value in data:
+            instance[key] = value
+
+        return instance.to_frozen()
+
+    def to_default_dict(
+        self
+    ) -> FreezableDefaultDict[K, V]:
+        default_dict = FreezableDefaultDict(
+            default_factory=lambda: None,
+            initial_data=self._data
+        )
+        return default_dict
+
+    def to_frozen(self) -> FrozenDict[K, V]:
+        return FrozenDict(initial_data=self._data)
+
+    def to_unfrozen(self) -> FreezableDict[K, V]:
+        unfrozen_data = {}
+        for key, value in self._data.items():
+            if isinstance(value, Freezable):
+                unfrozen_data[key] = value.to_unfrozen()
+            else:
+                unfrozen_data[key] = value
+
+        return FreezableDict(initial_data=unfrozen_data)
+
+
+class FrozenDict(FreezableDict[K, V]):
+    def __init__(
+        self, initial_data: typing.Optional[dict[K, V]] = None
+    ) -> None:
+        super().__init__(initial_data)
+        self.freeze()
+
+    def to_frozen(self) -> FrozenDict[K, V]:
+        return self
+
+    def to_unfrozen(self) -> FreezableDict[K, V]:
+        return super().to_unfrozen()
+
+
+class FreezableDefaultDict(FreezableDict[K, V]):
+    def __init__(
+        self, default_factory: Callable[[], V],
+        initial_data: typing.Optional[dict[K, V]] = None
+    ) -> None:
+        super().__init__(initial_data=initial_data)
+        self._default_factory = default_factory
+        self._data: defaultdict[K, V] = defaultdict(default_factory, self._data)
+
+    def __getitem__(self, key: K) -> V:
+        classname = self.__class__.__name__
+        if self._frozen and key not in self._data:
+            raise KeyError(
+                f"Cannot create missing key in frozen {classname}"
+            )
+
+        return self._data[key]
+
+    @classmethod
+    def _decode(
+        cls, data: tuple[tuple[K, V], ...]
+    ) -> FrozenDict[K, V]:
         instance = FreezableDict()
         for key, value in data:
             instance[key] = value
@@ -326,49 +318,72 @@ class FrozenDefaultDict(FreezableDefaultDict[K, V]):
         self.freeze()
 
 
-class FreezableDict(FreezableDefaultDict[K, V]):
-    def __init__(
-        self, initial_data: typing.Optional[dict[K, V]] = None
-    ) -> None:
-        # TODO: FreezableDefaultDict should inherit from
-        #  FreezableDict instead (same for FreezableSet)
-        default_factory = lambda: None
-        super().__init__(default_factory, initial_data)
+class FreezableSet(FreezableDict[V, V], Generic[V]):
+    def __init__(self, args: typing.Collection[V] = ()) -> None:
+        Freezable.__init__(self)
+        self._data: set[V] = set()
+        for arg in args:
+            self.add(arg)
 
-    def __getitem__(self, key: K) -> V:
-        if self._frozen and key not in self._data:
-            raise KeyError(f'Cannot create missing key in frozen {self}')
+    def __iter__(self) -> Iterator[V]:
+        return iter(self._data)
 
-        return self._data[key]
+    def __repr__(self):
+        classname = self.__class__.__name__
+        return f"{classname}({self._data!r})"
 
-    def to_default_dict(
-        self
-    ) -> FreezableDefaultDict[K, V]:
-        default_dict = FreezableDefaultDict(
-            default_factory=lambda: None,
-            initial_data=self._data
-        )
-        return default_dict
+    def remove(self, value: V):
+        if self._frozen:
+            raise ValueError(
+                f"Cannot delete from frozen {self.__class__.__name__}"
+            )
 
-    def to_frozen(self):
-        frozen_default_dict = super().to_frozen()
-        return frozen_default_dict.to_frozen_dict()
+        self._data.remove(value)
 
-    def to_unfrozen(self) -> FreezableDict[K, V]:
-        unfrozen_default_dict = super().to_unfrozen()
-        return unfrozen_default_dict.to_freezable_dict()
+    def clone_data(self) -> set[V]:
+        return copy.copy(self._data)
+
+    def add(self, other: V) -> None:
+        if self._frozen:
+            raise ValueError("Cannot add to frozen set")
+
+        if not self.is_allowed_value(other):
+            raise ValueError(f"Value {other} is not allowed")
+
+        self._data.add(other)
+
+    def _freeze(self) -> None:
+        for value in self._data:
+            if isinstance(value, Freezable):
+                value.freeze()
+
+    def _encode(self) -> tuple[V, ...]:
+        return tuple(list(self._data))
+
+    @classmethod
+    def _decode(cls, data: tuple[V, ...]) -> typing.Self:
+        return cls(data)
+
+    def to_frozen(self) -> FrozenSet[V]:
+        frozen_set = FrozenSet(self._data)
+        return frozen_set
+
+    def to_unfrozen(self):
+        unfrozen_elements = []
+        for element in self._data:
+            if isinstance(element, Freezable):
+                unfrozen_elements.append(element.to_unfrozen())
+            else:
+                unfrozen_elements.append(element)
+
+        unfrozen_set = FreezableSet(unfrozen_elements)
+        return unfrozen_set
 
 
-class FrozenDict(FreezableDict[K, V]):
-    def __init__(
-        self, initial_data: typing.Optional[dict[K, V]] = None
-    ) -> None:
-        super().__init__(initial_data)
+class FrozenSet(FreezableSet[V]):
+    def __init__(self, args: typing.Collection[V] = ()) -> None:
+        super().__init__(args)
         self.freeze()
 
-    def to_frozen(self) -> FrozenDict[K, V]:
-        return self
-
-    def to_unfrozen(self) -> FreezableDict[K, V]:
-        unfrozen_default_dict = super().to_unfrozen()
-        return unfrozen_default_dict.to_freezable_dict()
+    def to_unfrozen(self) -> FreezableSet[V]:
+        raise ValueError("Cannot be unfrozen")
