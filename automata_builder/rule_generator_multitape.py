@@ -1228,6 +1228,7 @@ class MultiTapeBuilder(object):
         prev_overlaps = overlaps_fsm_state.tape_overlaps
         relevant_input_products = overlaps_fsm_state.relevant_input_products
         prev_prod_to_state_map = overlaps_fsm_state.product_writes_map
+        current_extant_states = prev_overlaps.get_all_states()
 
         prev_overlaps.print_for_states()
         new_relevant_input_products: set[PyMultiTapeProduct] = set()
@@ -1240,10 +1241,10 @@ class MultiTapeBuilder(object):
 
         for product in relevant_input_products:
             if not self.is_product_satisfiable(product, prev_overlaps):
-                log('UNSATISFIABLE', product, product.get_annotation())
+                log('NO_SAT <<<', product, product.get_annotation())
                 continue
 
-            log('SATISFIABLE', product, product.get_annotation())
+            log('IS_SAT >>>', product, product.get_annotation())
             product_writes = prev_prod_to_state_map[product]
             # print('SATISFIABLE PRODUCT PRE:', product, product_writes)
             input_terms = product.get_flat_terms()
@@ -1291,7 +1292,6 @@ class MultiTapeBuilder(object):
             # print('SATISFIABLE PRODUCT:', product, product_writes)
             # print('>>>')
 
-        print(f'{new_output_states_written=}')
         # all states that could exist at the start of current time step
         all_prev_overlap_states = prev_overlaps.get_all_states()
         extinct_states: set[MultiTapeState] = set()
@@ -1300,12 +1300,12 @@ class MultiTapeBuilder(object):
         prod_to_state_map = prev_prod_to_state_map.to_unfrozen()
 
         for prev_overlap_state in all_prev_overlap_states:
-            state_attrs = prev_prod_to_state_map.get_state_attributes(
-                prev_overlap_state
+            current_state_attrs = prev_prod_to_state_map.get_state_attributes(
+                prev_overlap_state, extant_states=current_extant_states
             )
             # whether state has no occurrences after current time step
             no_state_occurrences_post_transition = (
-                state_attrs.instant_delete and
+                current_state_attrs.instant_delete and
                 prev_overlap_state not in new_output_states_written
             )
             if no_state_occurrences_post_transition:
@@ -1313,11 +1313,21 @@ class MultiTapeBuilder(object):
                 log(f"DISAPPEARED STATE {prev_overlap_state}")
                 disappeared_states.add(prev_overlap_state)
 
-                if not state_attrs.writable:
+                if not current_state_attrs.writable:
+                    # a state is extinct if it will never show up again
+                    # in any future time step
                     extinct_states.add(prev_overlap_state)
                     prod_to_state_map.extinct_input_state(prev_overlap_state)
 
-        prod_to_state_map.purge_unsatisfiable_products()
+        # remove products that will never be satisfiable after
+        # current time step
+        state_attrs_map = prod_to_state_map.build_all_state_attrs_map(
+            extant_states=None
+        )
+        prod_to_state_map.purge_unsatisfiable_products(
+            state_attributes_map=state_attrs_map
+        )
+
         log(f'{new_output_states_written=}')
         log(f'{disappeared_states=}')
         log(f'{extinct_states=}')
@@ -1365,6 +1375,7 @@ class MultiTapeBuilder(object):
             next_fsm_state = self.transition_overlaps(
                 overlaps_fsm_state=prev_fsm_state,
                 overlaps_fsm=overlaps_fsm,
+                verbose=verbose
             )
             # print(len(overlaps_fsm._existing_overlaps))
             _, overlaps_fsm_updated = overlaps_fsm.insert(

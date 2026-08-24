@@ -733,13 +733,18 @@ class TapeOverlapsFSMState(object):
 
 @dataclasses.dataclass
 class MultiTapeStateAttributes(object):
-    # Whether automata rules allow for the creation of the target state
+    """
+    :param writable:
+    Whether there are products that can produce the target state
+    :param deletable:
+    Whether there are products that can transition away from
+    the target state
+    :param instant_delete:
+    whether all instances of target_state are immediately deleted
+    this happens if there is a rule target_state -> other_state
+    """
     writable: bool
-    # Whether automata rules allow for
-    # transition away from the target state
     deletable: bool
-    # Whether all instances of the target state are immediately deleted.
-    # This happens if there is a rule target_state -> other_state
     instant_delete: bool
 
 
@@ -788,7 +793,11 @@ class ProductWritesMap(Freezable):
                 if input_multi_tape_state == state:
                     del self._prod_to_state_map[product]
 
-    def purge_unsatisfiable_products(self):
+    def purge_unsatisfiable_products(
+        self, state_attributes_map: FrozenDict[
+            MultiTapeState, MultiTapeStateAttributes
+        ]
+    ):
         """
         Remove all input products that are unsatisfiable
         :return:
@@ -797,8 +806,11 @@ class ProductWritesMap(Freezable):
             raise ValueError("Cannot modify when frozen")
 
         for product in list(self._prod_to_state_map.keys()):
-            if self.does_product_becomes_unsatisfiable(product):
-                print("UNSATISFIABLE", product)
+            becomes_unsatisfiable = self.does_product_becomes_unsatisfiable(
+                product=product, state_attributes_map=state_attributes_map
+            )
+            if becomes_unsatisfiable:
+                print("UNSATISFIABLE", product, product.get_annotation())
                 del self._prod_to_state_map[product]
 
     def to_unfrozen(self):
@@ -824,7 +836,10 @@ class ProductWritesMap(Freezable):
         return self._prod_to_state_map.items()
 
     def does_product_becomes_unsatisfiable(
-        self, product: PyMultiTapeProduct
+        self, product: PyMultiTapeProduct,
+        state_attributes_map: FrozenDict[
+            MultiTapeState, MultiTapeStateAttributes
+        ]
     ) -> bool:
         if product not in self._prod_to_state_map:
             raise KeyError(
@@ -836,7 +851,6 @@ class ProductWritesMap(Freezable):
 
         has_transition_to_unsatisfiability = False
         has_input_terms_along_output_offset = False
-        state_attributes_map = self.build_all_state_attributes_map()
         product_writes = self._prod_to_state_map[product]
 
         input_terms = product.get_flat_terms()
@@ -934,7 +948,9 @@ class ProductWritesMap(Freezable):
 
         return tape_state_writes
 
-    def build_all_state_attributes_map(self) -> FrozenDict[
+    def build_all_state_attrs_map(
+        self, extant_states: set[MultiTapeState] | None
+    ) -> FrozenDict[
         MultiTapeState, MultiTapeStateAttributes
     ]:
         all_states = self.get_states_set()
@@ -943,22 +959,63 @@ class ProductWritesMap(Freezable):
         ] = {}
 
         for state in all_states:
-            state_attributes = self.get_state_attributes(state)
+            state_attributes = self.get_state_attributes(
+                state, extant_states=extant_states
+            )
             state_attributes_map[state] = state_attributes
 
         return FrozenDict(state_attributes_map)
 
     def get_state_attributes(
-        self, target_state: MultiTapeState
+        self, target_state: MultiTapeState,
+        extant_states: set[MultiTapeState] | None
     ) -> MultiTapeStateAttributes:
+        """
+        :param target_state:
+        State to get attributes for
+        :param extant_states:
+        Tape states that we declare exist in the cellular automata
+        at the time step we are getting attributes for
+
+        If None, then the generated state attributes will be applicable
+        throughout all future timesteps of the automata, otherwise
+        it will only be applicable for the time step we are getting
+        attributes for
+        :return:
+        """
         target_tape_no = target_state.tape_no
         target_tape_cell_state = target_state.tape_cell_state
+        """
+        :writable:
+        Whether there are products that can produce the target_state
+        :deletable:
+        Whether there are products that can transition away from 
+        the target_state
+        """
         writable, deletable = False, False
-        # whether all instances of target_state are immediately deleted
-        # this happens if there is a rule target_state -> other_state
+        """
+        whether all instances of target_state are immediately deleted
+        this happens if there is a rule target_state -> other_state
+        """
         instant_delete = False
 
         for product in self._prod_to_state_map:
+            if extant_states is not None:
+                """
+                Check if the input states required for the product 
+                all exist in extant_states, if not the product 
+                is unsatisfiable
+                """
+                is_product_unsatisfiable = False
+                for input_term in product.get_flat_terms():
+                    multi_tape_state = MultiTapeState.from_term(input_term)
+                    if multi_tape_state not in extant_states:
+                        is_product_unsatisfiable = True
+                        break
+
+                if is_product_unsatisfiable:
+                    continue
+
             writes_map = self._prod_to_state_map[product]
             target_state_written = False
 
