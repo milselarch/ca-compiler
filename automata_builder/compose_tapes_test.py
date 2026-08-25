@@ -56,8 +56,24 @@ if __name__ == '__main__':
     duration = end_stamp - start_stamp
     print(f'Completed in {duration:.02f} seconds')
 
+    num_remapped_states = compose_result.count_unique_states()
+    print(f'num remapped states = {num_remapped_states}')
     transitions = compose_result.transitions_group.transitions
     print(f'num transitions = {len(transitions)}')
+
+    # TODO: count transitions with both paused and active states
+    """
+    for transition in transitions:
+        input_terms, output_state = transition
+        input_product = PyProduct(input_terms)
+        input_multi_term_prod_res = compose_result.remap_prod_to_multi_tape(
+            input_product=input_product
+        )
+        if input_multi_term_prod_res.is_ok():
+            input_multi_term_product = input_multi_term_prod_res.unwrap()
+        else:
+            continue
+    """
 
     for k, transition in enumerate(transitions[:args.display_transitions]):
         input_terms, output_state = transition

@@ -264,7 +264,6 @@ class CounterAutomataBuilder(object):
 
         # clear rightmost counter cell if no carry
         for digit in range(self.base):
-            # TODO: replace with a sort of ABANDONED cell state
             # if cell next to rightmost (signals tape) counter cell
             # is a data cell
             _transitions_group.add_transition(
@@ -274,9 +273,10 @@ class CounterAutomataBuilder(object):
                     CT_MID(VOID_STATE)
                 ),
                 output_tape_no=SIGNALS_TAPE,
-                output_cell_state=DT_DATA,
+                output_cell_state=VOID_STATE,
                 annotation=f'CLEAR_RIGHTMOST_{digit}'
             )
+            # TODO: ^ include void variant for optimization (?)
             # if cell next to rightmost (signals tape) counter cell
             # is reduction start marker
             _transitions_group.add_transition(
@@ -286,7 +286,7 @@ class CounterAutomataBuilder(object):
                     CT_MID(VOID_STATE)
                 ),
                 output_tape_no=SIGNALS_TAPE,
-                output_cell_state=DT_DATA,
+                output_cell_state=VOID_STATE,
                 annotation=f'CLEAR_RIGHTMOST_{digit}_ST'
             )
 

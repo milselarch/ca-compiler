@@ -701,11 +701,11 @@ class TapeOverlapsFSMState(object):
     _product_writes_map: FrozenProductWritesMap
 
     @property
-    def tape_overlaps(self) -> TapeOverlaps:
+    def tape_overlaps(self) -> FrozenTapeOverlaps:
         return self._tape_overlaps
 
     @property
-    def relevant_input_products(self) -> FreezableSet[PyMultiTapeProduct]:
+    def relevant_input_products(self) -> FrozenSet[PyMultiTapeProduct]:
         return self._relevant_input_products
 
     @property
