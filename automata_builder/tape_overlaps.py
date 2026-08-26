@@ -162,6 +162,9 @@ class TapeOverlaps(Freezable):
     def _encode(self) -> tuple:
         return self._overlaps.encode()
 
+    def __iter__(self) -> Iterator[MultiTapeState]:
+        return iter(self._overlaps)
+
     @classmethod
     def _decode(cls, data: tuple) -> typing.Self:
         return cls(FreezableDefaultDict.decode(data))
@@ -456,7 +459,7 @@ class TapeOverlaps(Freezable):
 
     def insert_overlaps_for(
         self, source_state: MultiTapeState, target_state: MultiTapeState,
-        offset: int, min_offset: int, max_offset: int
+        offset: int, min_offset: int | None, max_offset: int | None
     ) -> bool:
         """
         :param source_state:
@@ -486,9 +489,9 @@ class TapeOverlaps(Freezable):
             """
             source_state_offset = offset + target_state_offset
             # target_state_offset_overlap_inserted = False
-            if source_state_offset < min_offset:
+            if (min_offset is not None) and source_state_offset < min_offset:
                 continue
-            if source_state_offset > max_offset:
+            if (max_offset is not None) and source_state_offset > max_offset:
                 continue
 
             target_overlap_states = target_overlaps_map[target_state_offset]
@@ -526,7 +529,6 @@ class TapeOverlaps(Freezable):
                     source_state_offset
                 ]
                 # target_state_offset_overlap_inserted = True
-
                 """
                 The target_overlap_state also would now overlap with 
                 source_state at an offset of -offset
