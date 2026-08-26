@@ -273,10 +273,9 @@ class CounterAutomataBuilder(object):
                     CT_MID(VOID_STATE)
                 ),
                 output_tape_no=SIGNALS_TAPE,
-                output_cell_state=VOID_STATE,
+                output_cell_state=ST_REDUCE_START,
                 annotation=f'CLEAR_RIGHTMOST_{digit}'
             )
-            # TODO: ^ include void variant for optimization (?)
             # if cell next to rightmost (signals tape) counter cell
             # is reduction start marker
             _transitions_group.add_transition(
@@ -286,7 +285,7 @@ class CounterAutomataBuilder(object):
                     CT_MID(VOID_STATE)
                 ),
                 output_tape_no=SIGNALS_TAPE,
-                output_cell_state=VOID_STATE,
+                output_cell_state=ST_REDUCE_START,
                 annotation=f'CLEAR_RIGHTMOST_{digit}_ST'
             )
 

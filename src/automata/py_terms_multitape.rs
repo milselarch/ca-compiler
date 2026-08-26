@@ -228,6 +228,15 @@ impl D {
             Err(PyTypeError::new_err("Unsupported operand type(s)"))
         }
     }
+
+    fn __lt__(&self, other: &Bound<PyAny>) -> PyResult<bool> {
+        if let Ok(other_product) = other.extract::<D>() {
+            Ok(self.term < other_product.term)
+        } else {
+            Ok(false)
+        }
+    }
+
     fn __eq__(&self, other: &Bound<PyAny>) -> PyResult<bool> {
         if let Ok(other_term) = other.extract::<D>() {
             Ok(self == other_term)

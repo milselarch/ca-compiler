@@ -600,6 +600,7 @@ class TapeOverlaps(Freezable):
             offset == 0
         )
         if has_tape_mutual_exclusion:
+            # states have same-tape mutual exclusion, so can't overlap
             return False
 
         source_overlaps = self._overlaps[source_state][offset]
@@ -612,6 +613,25 @@ class TapeOverlaps(Freezable):
         source_overlaps.add(target_state)
         # assert source_state not in target_overlaps
         target_overlaps.add(source_state)
+        self.validate_mutual_overlaps_for(source_state=source_state)
+        self.validate_symmetric_overlaps_for(source_state=source_state)
+        return True
+
+    def remove_direct_overlap(
+        self, source_state: MultiTapeState, target_state: MultiTapeState,
+        offset: int
+    ):
+        if self._frozen:
+            raise ValueError("Can't remove direct overlap when frozen")
+
+        source_overlaps = self._overlaps[source_state][offset]
+        target_overlaps = self._overlaps[target_state][-offset]
+
+        if target_state in source_overlaps:
+            source_overlaps.remove(target_state)
+        if source_state not in target_overlaps:
+            target_overlaps.remove(source_state)
+
         self.validate_mutual_overlaps_for(source_state=source_state)
         self.validate_symmetric_overlaps_for(source_state=source_state)
         return True
@@ -775,6 +795,47 @@ class ProductWritesMap(Freezable):
     @classmethod
     def _decode(cls, data: tuple) -> typing.Self:
         return cls(FreezableDefaultDict.decode(data))
+
+    def get_translated_variants(
+        self, target_product: PyMultiTapeProduct
+    ) -> set[tuple[PyMultiTapeProduct, int]]:
+        """
+        :param target_product:
+        :return:
+        All products which have the same form as the input product
+        but all the offsets are shifted by a constant amount
+
+        e.g.
+        D(0,1,1)*D(1,2,1) and D(1,1,1)*D(2,2,1) are translational variants
+        (second product is shifted by +1 offset)
+        """
+        if target_product not in self._prod_to_state_map:
+            raise KeyError(
+                f"Product {target_product} is not in {self._prod_to_state_map}"
+            )
+
+        translational_variants: set[tuple[PyMultiTapeProduct, int]] = set()
+        input_terms = sorted(target_product.get_flat_terms())
+        all_products = self._prod_to_state_map.keys()
+
+        for target_product in all_products:
+            target_terms = sorted(target_product.get_flat_terms())
+            if len(input_terms) != len(target_terms):
+                continue
+
+            offset_diffs = set()
+            for input_term, target_term in zip(input_terms, target_terms):
+                input_offset = input_term.get_position()
+                target_offset = target_term.get_position()
+                offset_diff = target_offset - input_offset
+                offset_diffs.add(offset_diff)
+
+            if len(offset_diffs) == 1:
+                translational_variants.add(
+                    (target_product, offset_diffs.pop())
+                )
+
+        return translational_variants
 
     def extinct_input_state(self, state: MultiTapeState):
         """
