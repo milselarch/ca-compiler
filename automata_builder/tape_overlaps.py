@@ -175,7 +175,7 @@ class TapeOverlaps(Freezable):
     def _decode(cls, data: tuple) -> typing.Self:
         return cls(FreezableDefaultDict.decode(data))
 
-    def __contains__(self, item: object):
+    def __contains__(self, item: MultiTapeState):
         if not isinstance(item, MultiTapeState):
             raise TypeError(f'not {MultiTapeState.__name__}')
 
@@ -646,17 +646,19 @@ class TapeOverlaps(Freezable):
 
     def can_overlap_exist(
         self, source_state: MultiTapeState,
-        target_state: MultiTapeState, offset: int
+        target_state: MultiTapeState, offset: int,
+        default_value_if_no_source_state: bool = False
     ) -> bool:
         """
         :param source_state:
         :param target_state:
         :param offset:
         offset of term with target_state FROM term with source_state
+        :param default_value_if_no_source_state:
         :return:
         """
         if source_state not in self._overlaps:
-            return False
+            return default_value_if_no_source_state
 
         source_overlaps = self._overlaps[source_state]
         if offset not in source_overlaps:

@@ -1298,12 +1298,12 @@ class MultiTapeBuilder(object):
 
     @classmethod
     def _create_optimizations(
-        cls, overlaps_fsm_state: TapeOverlapsFSMState,
+        cls, start_overlaps_fsm_state: TapeOverlapsFSMState,
         states_written: dict[MultiTapeState, set[PyMultiTapeProduct]],
         verbose: bool = False
     ) -> TransitionOptimizations:
         """
-        :param overlaps_fsm_state:
+        :param start_overlaps_fsm_state:
         overlaps FSM state at start of time step
         (i.e. previous overlaps FSM state)
 
@@ -1322,8 +1322,8 @@ class MultiTapeBuilder(object):
             if verbose:
                 print(*args, **kwargs)
 
-        prev_overlaps = overlaps_fsm_state.tape_overlaps
-        prev_prod_to_state_map = overlaps_fsm_state.product_writes_map
+        prev_overlaps = start_overlaps_fsm_state.tape_overlaps
+        prev_prod_to_state_map = start_overlaps_fsm_state.product_writes_map
         # all states that could exist at the start of current time step
         all_prev_overlap_states = prev_overlaps.get_all_states()
         extinct_states: set[MultiTapeState] = set()
@@ -1353,7 +1353,7 @@ class MultiTapeBuilder(object):
         # TODO: apply overlap_states_at_offsets to tape_overlaps
         # TODO: refactor automata builder to its own repo?
         whitelist_overlaps = cls._build_whitelist_overlaps(
-            overlaps_fsm_state=overlaps_fsm_state,
+            overlaps_fsm_state=start_overlaps_fsm_state,
             states_written=states_written
         )
 
@@ -1417,11 +1417,11 @@ class MultiTapeBuilder(object):
         return states_written
 
     def transition_overlaps(
-        self, overlaps_fsm_state: TapeOverlapsFSMState,
+        self, start_overlaps_fsm_state: TapeOverlapsFSMState,
         overlaps_fsm: TapeOverlapsFSM, verbose: bool = False
     ) -> TapeOverlapsFSMState:
         """
-        :param overlaps_fsm_state:
+        :param start_overlaps_fsm_state:
         :param overlaps_fsm:
         :param verbose:
         :return:
@@ -1432,9 +1432,9 @@ class MultiTapeBuilder(object):
             if verbose:
                 print(*args, **kwargs)
 
-        prev_overlaps = overlaps_fsm_state.tape_overlaps
-        relevant_input_products = overlaps_fsm_state.relevant_input_products
-        prev_prod_to_state_map = overlaps_fsm_state.product_writes_map
+        prev_overlaps = start_overlaps_fsm_state.tape_overlaps
+        # relevant_input_products = overlaps_fsm_state.relevant_input_products
+        prev_prod_to_state_map = start_overlaps_fsm_state.product_writes_map
         input_state_to_prod_map = (
             prev_prod_to_state_map.build_input_state_to_prod_map()
         )
@@ -1449,13 +1449,16 @@ class MultiTapeBuilder(object):
         """
         overlaps = prev_overlaps.to_unfrozen()
         states_written = self.determine_state_written(
-            overlaps_fsm_state=overlaps_fsm_state, verbose=verbose
+            overlaps_fsm_state=start_overlaps_fsm_state, verbose=verbose
         )
         optimizations = self._create_optimizations(
-            overlaps_fsm_state=overlaps_fsm_state,
+            start_overlaps_fsm_state=start_overlaps_fsm_state,
             states_written=states_written,
             verbose=verbose
         )
+
+        whitelist_overlaps = optimizations.whitelist_overlaps
+        disappeared_states = optimizations.disappeared_states
 
         for output_state in states_written:
             write_tape_no = output_state.tape_no
@@ -1474,6 +1477,17 @@ class MultiTapeBuilder(object):
                     term_offset_from_output = input_term.get_position()
                     term_offset_from_input = -term_offset_from_output
 
+                    if not whitelist_overlaps.can_overlap_exist(
+                        source_state=input_state, target_state=output_state,
+                        offset=term_offset_from_input,
+                        default_value_if_no_source_state=True
+                    ):
+                        log(
+                            "WHITELIST_SKIP",
+                            input_state, output_state, term_offset_from_input
+                        )
+                        continue
+
                     # TODO: check if in whitelist_overlaps first
                     overlaps_updated |= overlaps.propagate_overlap(
                         source_state=input_state,
@@ -1482,7 +1496,7 @@ class MultiTapeBuilder(object):
                         min_offset=self.leftmost_extent,
                         max_offset=self.rightmost_extent
                     )
-                    assert overlaps_fsm_state in overlaps_fsm
+                    assert start_overlaps_fsm_state in overlaps_fsm
 
                 write_pair = (write_tape_no, output_tape_cell_state)
                 if not overlaps_updated:
@@ -1500,7 +1514,6 @@ class MultiTapeBuilder(object):
                 # """
 
         # TODO: refactor to optimizations.apply_to(fsm_state) -> new_fsm_state
-        disappeared_states = optimizations.disappeared_states
         for disappeared_state in disappeared_states:
             overlaps.delete_state(disappeared_state)
 
@@ -1573,7 +1586,7 @@ class MultiTapeBuilder(object):
             round_no += 1
 
             next_fsm_state = self.transition_overlaps(
-                overlaps_fsm_state=prev_fsm_state,
+                start_overlaps_fsm_state=prev_fsm_state,
                 overlaps_fsm=overlaps_fsm,
                 verbose=verbose
             )
