@@ -165,6 +165,12 @@ class TapeOverlaps(Freezable):
     def __iter__(self) -> Iterator[MultiTapeState]:
         return iter(self._overlaps)
 
+    def __getitem__(
+        self, item: MultiTapeState
+    ) -> FreezableDefaultDict[int, FreezableSet[MultiTapeState]]:
+        # get the overlaps for a given source state
+        return self._overlaps[item]
+
     @classmethod
     def _decode(cls, data: tuple) -> typing.Self:
         return cls(FreezableDefaultDict.decode(data))
