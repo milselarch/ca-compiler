@@ -181,6 +181,12 @@ class TapeOverlaps(Freezable):
 
         return item in self._overlaps
 
+    def __bool__(self) -> bool:
+        return bool(self._overlaps)
+
+    def __len__(self) -> int:
+        return len(self._overlaps)
+
     def delete_state(self, state: MultiTapeState):
         if self._frozen:
             raise ValueError("Can't delete from frozen tape overlaps")
@@ -647,22 +653,22 @@ class TapeOverlaps(Freezable):
     def can_overlap_exist(
         self, source_state: MultiTapeState,
         target_state: MultiTapeState, offset: int,
-        default_value_if_no_source_state: bool = False
+        default_value: bool = False
     ) -> bool:
         """
         :param source_state:
         :param target_state:
         :param offset:
         offset of term with target_state FROM term with source_state
-        :param default_value_if_no_source_state:
+        :param default_value:
         :return:
         """
         if source_state not in self._overlaps:
-            return default_value_if_no_source_state
+            return default_value
 
         source_overlaps = self._overlaps[source_state]
         if offset not in source_overlaps:
-            return False
+            return default_value
 
         offset_overlaps = source_overlaps[offset]
         return target_state in offset_overlaps
@@ -705,6 +711,36 @@ class TapeOverlaps(Freezable):
         return FrozenTapeOverlaps(
             overlaps=self._overlaps.to_frozen()
         )
+
+    def fits_within_whitelist(
+        self, whitelist_overlaps: TapeOverlaps,
+        ignore_missing_source_states: bool = True,
+        verbose: bool = True
+    ):
+        def log(*args, **kwargs):
+            if verbose:
+                print(*args, **kwargs)
+
+        for source_state in self:
+            if source_state not in whitelist_overlaps:
+                if ignore_missing_source_states:
+                    continue
+
+            whitelisted_state_overlaps = whitelist_overlaps[source_state]
+            source_state_overlaps = self[source_state]
+
+            for offset in whitelisted_state_overlaps:
+                whitelisted_offset_states = whitelisted_state_overlaps[offset]
+                offset_states = source_state_overlaps[offset].to_frozen()
+
+                for target_state in offset_states:
+                    if target_state in whitelisted_offset_states:
+                        continue
+
+                    log("ESCAPES", (source_state, target_state, offset))
+                    return False
+
+        return True
 
 
 class FrozenTapeOverlaps(TapeOverlaps):

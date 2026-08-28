@@ -1477,18 +1477,22 @@ class MultiTapeBuilder(object):
                     term_offset_from_output = input_term.get_position()
                     term_offset_from_input = -term_offset_from_output
 
+                    """
                     if not whitelist_overlaps.can_overlap_exist(
                         source_state=input_state, target_state=output_state,
                         offset=term_offset_from_input,
-                        default_value_if_no_source_state=True
+                        default_value=True
                     ):
                         log(
                             "WHITELIST_SKIP",
                             input_state, output_state, term_offset_from_input
                         )
+                        raise RuntimeError
                         continue
 
                     # TODO: check if in whitelist_overlaps first
+                    """
+
                     overlaps_updated |= overlaps.propagate_overlap(
                         source_state=input_state,
                         target_state=output_state,
@@ -1520,7 +1524,6 @@ class MultiTapeBuilder(object):
         log(f'{states_written=}')
         log(f'{disappeared_states=}')
 
-        """
         whitelist_overlaps = optimizations.whitelist_overlaps
         for source_state in overlaps:
             # TODO: can we get away with just removing direct overlaps
@@ -1538,13 +1541,13 @@ class MultiTapeBuilder(object):
                     if target_state in whitelisted_offset_states:
                         continue
 
+                    # TODO: resolve asymmetric overlaps error
                     # raise RuntimeError()
                     overlaps.remove_direct_overlap(
                         source_state=source_state,
                         target_state=target_state,
                         offset=offset
                     )
-        """
 
         prod_to_state_map = optimizations.new_prod_to_state_map.to_frozen()
         return TapeOverlapsFSMState.create(
