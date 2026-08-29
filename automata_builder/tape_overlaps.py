@@ -815,12 +815,13 @@ class TapeOverlaps(Freezable):
                         """
                         Any state in the automata *has* to overlap with some
                         other state on the same tape, otherwise it would be
-                        impossible for that state to exist in the automata at all.
+                        impossible for that state to exist in the automata
+                        at all.
 
-                        So if we don't specify any target_state that source_state
-                        can overlap with, we take it that the overlaps
-                        makes no claims about what states can overlap with
-                        source_state at that offset.
+                        So if we don't specify any target_state that
+                        source_state can overlap with, we take it that the
+                        overlaps makes no claims about what states can
+                        overlap with source_state at that offset.
                         """
                         continue
 
