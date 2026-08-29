@@ -1254,7 +1254,15 @@ class MultiTapeBuilder(object):
 
             state_written_tape_no = state_written.tape_no
             log(f"NEW SPAWNED STATE {state_written}")
+            # set of products that spawned state_written
             writing_products = states_written[state_written]
+            """
+            maps 
+            write_offset
+            -> 
+            products whose outputs are offset by write_offset 
+            relative from the products that wrote state_written
+            """
             covering_products: defaultdict[
                 int, set[PyMultiTapeProduct]
             ] = defaultdict(set)
@@ -1263,7 +1271,7 @@ class MultiTapeBuilder(object):
                 translated_prods = prod_to_state_map.get_translated_variants(
                     target_product=contributing_product
                 )
-                for translated_prod, offset in translated_prods:
+                for translated_prod, terms_offset in translated_prods:
                     prod_writes = prod_to_state_map.get_state_writes_for(
                         translated_prod
                     )
@@ -1271,10 +1279,19 @@ class MultiTapeBuilder(object):
                     if state_written_tape_no not in tapes_written:
                         continue
 
-                    covering_products[offset].add(translated_prod)
+                    """
+                    if for a translated_product the input term positions 
+                    that make it up are displaced by term_offset 
+                    relative to the input terms of the contributing_product, 
+                    then its output will be displaced by 
+                    (write_offset := -terms_offset) from the output position 
+                    of the contributing_product that spawned state_written
+                    """
+                    write_offset = -terms_offset
+                    covering_products[write_offset].add(translated_prod)
 
-            for offset, translated_prods in covering_products.items():
-                if offset == 0:
+            for write_offset, translated_prods in covering_products.items():
+                if write_offset == 0:
                     continue
                 if len(translated_prods) != len(writing_products):
                     # translated products don't cover
@@ -1288,10 +1305,14 @@ class MultiTapeBuilder(object):
                         tape_no=state_written_tape_no,
                         tape_cell_state=written_tape_cell_state
                     )
-                    whitelist_overlaps.insert_overlaps_for(
-                        source_state=state_written,
-                        target_state=target_state,
-                        offset=offset, min_offset=None, max_offset=None
+                    log(
+                        "WHITE_INS",
+                        (state_written, target_state, write_offset)
+                    )
+                    whitelist_overlaps.insert_direct_overlap(
+                        source_state=state_written, target_state=target_state,
+                        offset=write_offset,
+                        # min_offset=None, max_offset=None
                     )
 
         return whitelist_overlaps.to_frozen()
@@ -1354,7 +1375,8 @@ class MultiTapeBuilder(object):
         # TODO: refactor automata builder to its own repo?
         whitelist_overlaps = cls._build_whitelist_overlaps(
             overlaps_fsm_state=start_overlaps_fsm_state,
-            states_written=states_written
+            states_written=states_written,
+            verbose=verbose
         )
 
         # remove products that will never be satisfiable after
@@ -1457,9 +1479,6 @@ class MultiTapeBuilder(object):
             verbose=verbose
         )
 
-        whitelist_overlaps = optimizations.whitelist_overlaps
-        disappeared_states = optimizations.disappeared_states
-
         for output_state in states_written:
             write_tape_no = output_state.tape_no
             output_tape_cell_state = output_state.tape_cell_state
@@ -1517,6 +1536,7 @@ class MultiTapeBuilder(object):
                     new_relevant_input_products.add(affected_product)
                 # """
 
+        disappeared_states = optimizations.disappeared_states
         # TODO: refactor to optimizations.apply_to(fsm_state) -> new_fsm_state
         for disappeared_state in disappeared_states:
             overlaps.delete_state(disappeared_state)
@@ -1525,29 +1545,9 @@ class MultiTapeBuilder(object):
         log(f'{disappeared_states=}')
 
         whitelist_overlaps = optimizations.whitelist_overlaps
-        for source_state in overlaps:
-            # TODO: can we get away with just removing direct overlaps
-            if source_state not in whitelist_overlaps:
-                continue
-
-            whitelisted_state_overlaps = whitelist_overlaps[source_state]
-            source_state_overlaps = overlaps[source_state]
-
-            for offset in whitelisted_state_overlaps:
-                whitelisted_offset_states = whitelisted_state_overlaps[offset]
-                offset_states = source_state_overlaps[offset].to_frozen()
-
-                for target_state in offset_states:
-                    if target_state in whitelisted_offset_states:
-                        continue
-
-                    # TODO: resolve asymmetric overlaps error
-                    # raise RuntimeError()
-                    overlaps.remove_direct_overlap(
-                        source_state=source_state,
-                        target_state=target_state,
-                        offset=offset
-                    )
+        overlaps.apply_whitelist(
+            whitelist_overlaps=whitelist_overlaps, verbose=verbose
+        )
 
         prod_to_state_map = optimizations.new_prod_to_state_map.to_frozen()
         return TapeOverlapsFSMState.create(

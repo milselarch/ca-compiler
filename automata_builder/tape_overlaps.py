@@ -650,6 +650,32 @@ class TapeOverlaps(Freezable):
         self.validate_symmetric_overlaps_for(source_state=source_state)
         return True
 
+    def remove_overlaps_for(
+        self, source_state: MultiTapeState, target_state: MultiTapeState,
+        offset: int
+    ) -> bool:
+        """
+        :param source_state:
+        :param target_state:
+        :param offset:
+        offset of target_state FROM source_state
+        :return:
+        """
+        source_overlaps_map = self._overlaps[source_state]
+        target_overlaps_map = self._overlaps[target_state]
+        source_overlap_states = source_overlaps_map[offset]
+        target_overlap_states = target_overlaps_map[-offset]
+
+        if target_state not in source_overlap_states:
+            # overlap doesn't exist
+            return False
+
+        source_overlap_states.remove(target_state)
+        target_overlap_states.remove(source_state)
+        self.validate_mutual_overlaps_for(source_state=source_state)
+        self.validate_symmetric_overlaps_for(source_state=source_state)
+        return True
+
     def can_overlap_exist(
         self, source_state: MultiTapeState,
         target_state: MultiTapeState, offset: int,
@@ -714,7 +740,6 @@ class TapeOverlaps(Freezable):
 
     def fits_within_whitelist(
         self, whitelist_overlaps: TapeOverlaps,
-        ignore_missing_source_states: bool = True,
         verbose: bool = True
     ):
         def log(*args, **kwargs):
@@ -723,24 +748,75 @@ class TapeOverlaps(Freezable):
 
         for source_state in self:
             if source_state not in whitelist_overlaps:
-                if ignore_missing_source_states:
-                    continue
+                # TODO: explain skip here
+                continue
 
             whitelisted_state_overlaps = whitelist_overlaps[source_state]
             source_state_overlaps = self[source_state]
 
             for offset in whitelisted_state_overlaps:
-                whitelisted_offset_states = whitelisted_state_overlaps[offset]
                 offset_states = source_state_overlaps[offset].to_frozen()
+                whitelisted_offset_states = whitelisted_state_overlaps[offset]
+                whitelisted_offset_tapes = set([
+                    state.tape_no for state in whitelisted_offset_states
+                ])
 
                 for target_state in offset_states:
                     if target_state in whitelisted_offset_states:
+                        continue
+                    elif target_state.tape_no not in whitelisted_offset_tapes:
+                        # TODO: explain why we skip here
                         continue
 
                     log("ESCAPES", (source_state, target_state, offset))
                     return False
 
         return True
+
+    def apply_whitelist(
+        self, whitelist_overlaps: TapeOverlaps, verbose: bool = False
+    ):
+        """
+        :param whitelist_overlaps:
+        :param verbose:
+        :return:
+        """
+        def log(*args, **kwargs):
+            if verbose:
+                print(*args, **kwargs)
+
+        for source_state in self:
+            # TODO: can we get away with just removing direct overlaps
+            if source_state not in whitelist_overlaps:
+                continue
+
+            whitelisted_state_overlaps = whitelist_overlaps[source_state]
+            source_state_overlaps = self[source_state]
+
+            for offset in whitelisted_state_overlaps:
+                offset_states = source_state_overlaps[offset].to_frozen()
+                whitelisted_offset_states = whitelisted_state_overlaps[offset]
+                whitelisted_offset_tapes = set([
+                    state.tape_no for state in whitelisted_offset_states
+                ])
+
+                for target_state in offset_states:
+                    if target_state in whitelisted_offset_states:
+                        continue
+                    elif target_state.tape_no not in whitelisted_offset_tapes:
+                        # TODO: explain why we skip here
+                        continue
+
+                    # raise RuntimeError()
+                    log(
+                        f'REMOVE_OVERLAPS',
+                        (source_state, target_state, offset)
+                    )
+                    self.remove_overlaps_for(
+                        source_state=source_state,
+                        target_state=target_state,
+                        offset=offset
+                    )
 
 
 class FrozenTapeOverlaps(TapeOverlaps):
