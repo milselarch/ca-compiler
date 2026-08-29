@@ -777,6 +777,11 @@ class TapeOverlaps(Freezable):
         self, whitelist_overlaps: TapeOverlaps, verbose: bool = False
     ):
         """
+        if there is overlap := (source_state, target_state, offset) in self
+        but not in whitelist_overlaps, and whitelist_overlaps contains
+        (source_state, states with tape_no = target_state.tape_no, offset)
+        overlaps, then we remove said overlap.
+
         :param whitelist_overlaps:
         :param verbose:
         :return:
@@ -786,8 +791,11 @@ class TapeOverlaps(Freezable):
                 print(*args, **kwargs)
 
         for source_state in self:
-            # TODO: can we get away with just removing direct overlaps
             if source_state not in whitelist_overlaps:
+                """
+                This means that whitelist_overlaps makes no claims
+                on what states are whitelisted to coexist with source_state
+                """
                 continue
 
             whitelisted_state_overlaps = whitelist_overlaps[source_state]
@@ -804,7 +812,16 @@ class TapeOverlaps(Freezable):
                     if target_state in whitelisted_offset_states:
                         continue
                     elif target_state.tape_no not in whitelisted_offset_tapes:
-                        # TODO: explain why we skip here
+                        """
+                        Any state in the automata *has* to overlap with some
+                        other state on the same tape, otherwise it would be
+                        impossible for that state to exist in the automata at all.
+
+                        So if we don't specify any target_state that source_state
+                        can overlap with, we take it that the overlaps
+                        makes no claims about what states can overlap with
+                        source_state at that offset.
+                        """
                         continue
 
                     # raise RuntimeError()
