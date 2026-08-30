@@ -162,6 +162,9 @@ class FreezableDict(Freezable, Generic[K, V]):
     def __contains__(self, key: object) -> bool:
         return key in self._data
 
+    def to_dict(self):
+        return copy.deepcopy(self._data)
+
     def get(self, key: K, default: V | None = None) -> V | None:
         return self._data.get(key, default)
 

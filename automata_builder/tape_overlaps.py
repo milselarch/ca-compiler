@@ -1448,6 +1448,12 @@ class ProductWritesMap(Freezable):
 
         writes_map[write_tape_no] = write_tape_cell_state
 
+    def get_all_transitioned_states(self) -> set[MultiTapeState]:
+        # TODO: implement this
+        # use tape overlaps to get all states source_state
+        # can transition to
+        raise NotImplementedError
+
 
 class FrozenProductWritesMap(ProductWritesMap):
     def __init__(self,  prod_to_state_map: FreezableDefaultDict[

@@ -269,7 +269,7 @@ class CounterAutomataBuilder(object):
             _transitions_group.add_transition(
                 input_terms=(
                     ST_MID(active_counter(digit)),
-                    ST_RIGHT(DT_DATA),
+                    ST_RIGHT(ST_REDUCE_START),
                     CT_MID(VOID_STATE)
                 ),
                 output_tape_no=SIGNALS_TAPE,

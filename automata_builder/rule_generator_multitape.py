@@ -1530,11 +1530,9 @@ class MultiTapeBuilder(object):
                 # Get the other products that use the current products'
                 # output state as one of their input states, and add it
                 # to list of products to check for satisfiability later
-                # """
                 affected_products = input_state_to_prod_map[output_state]
                 for affected_product in affected_products:
                     new_relevant_input_products.add(affected_product)
-                # """
 
         disappeared_states = optimizations.disappeared_states
         # TODO: refactor to optimizations.apply_to(fsm_state) -> new_fsm_state
