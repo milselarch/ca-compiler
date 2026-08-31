@@ -8,6 +8,10 @@ from result import Result, Ok, Err
 from collections import defaultdict
 from typing import Sequence
 
+from automata_builder.product_writes_map import ProductWritesMap
+from automata_builder.tape_overlaps_fsm import (
+    TapeOverlapsFSMState, TapeOverlapsFSM
+)
 from utils import FreezableSet, FrozenSet
 from automata_builder.rule_generator import (
     AutomataTransitionsGroup, TapeCellState, TapeNo,
@@ -16,7 +20,7 @@ from automata_builder.rule_generator import (
 from automata_builder.renderer import RenderFrame
 from automata_builder.tape_overlaps import (
     MultiTapeState, TapeOverlaps, MultiTapeStatesMap,
-    ProductWritesMap, TapeOverlapsFSM, TapeOverlapsFSMState, FrozenTapeOverlaps, FrozenProductWritesMap
+    FrozenTapeOverlaps, is_product_satisfiable
 )
 from py_ca_compiler import (
     D, PyMultiTapeProduct, PyMultiTapeExpression,
@@ -1170,55 +1174,6 @@ class MultiTapeBuilder(object):
                         # max_offset=self.rightmost_extent
                     )
 
-    @staticmethod
-    def is_product_satisfiable(
-        product: PyMultiTapeProduct, overlaps: TapeOverlaps
-    ) -> bool:
-        """
-        Check if the given product is satisfiable based on the
-        overlaps that exist in the automata
-        :param overlaps:
-        :param product:
-        :return:
-        """
-        terms = product.get_flat_terms()
-
-        if len(terms) == 1:
-            # if overlaps contain the one term, then product is satisfiable
-            tape_state = MultiTapeState.from_term(terms[0])
-            return tape_state in overlaps
-
-        for k in range(len(terms)-1):
-            term_a, term_b = terms[k], terms[k+1]
-
-            tape_no_a, tape_state_a = term_a.get_state()
-            offset_a = term_a.get_position()
-            output_state_a = MultiTapeState(
-                tape_no=TapeNo(tape_no_a),
-                tape_cell_state=TapeCellState(tape_state_a)
-            )
-
-            tape_no_b, tape_state_b = term_b.get_state()
-            offset_b = term_b.get_position()
-            output_state_b = MultiTapeState(
-                tape_no=TapeNo(tape_no_b),
-                tape_cell_state=TapeCellState(tape_state_b)
-            )
-
-            relative_offset = offset_b - offset_a
-            overlap_exists = overlaps.can_overlap_exist(
-                source_state=output_state_a, target_state=output_state_b,
-                offset=relative_offset
-            )
-            if not overlap_exists:
-                """
-                output_state_b cannot possibly be found at a position offset 
-                of relative_offset from output_state_a
-                """
-                return False
-
-        return True
-
     @classmethod
     def _build_whitelist_overlaps(
         cls, overlaps_fsm_state: TapeOverlapsFSMState,
@@ -1419,7 +1374,7 @@ class MultiTapeBuilder(object):
         ] = defaultdict(set)
 
         for product in relevant_input_products:
-            if not self.is_product_satisfiable(product, prev_overlaps):
+            if not is_product_satisfiable(product, prev_overlaps):
                 log('NO_SAT <<<', product, product.get_annotation())
                 continue
 
