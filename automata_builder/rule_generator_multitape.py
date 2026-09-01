@@ -1309,7 +1309,8 @@ class MultiTapeBuilder(object):
 
         for prev_overlap_state in all_prev_overlap_states:
             current_state_attrs = prev_prod_to_state_map.get_state_attributes(
-                prev_overlap_state, extant_states=all_prev_overlap_states
+                prev_overlap_state, extant_states=all_prev_overlap_states,
+                tape_overlaps=prev_overlaps
             )
             # whether state has no occurrences after current time step
             no_state_occurrences_post_transition = (
@@ -1337,7 +1338,7 @@ class MultiTapeBuilder(object):
         # remove products that will never be satisfiable after
         # current time step
         state_attrs_map = prod_to_state_map.build_all_state_attrs_map(
-            extant_states=None
+            extant_states=None, tape_overlaps=prev_overlaps
         )
         prod_to_state_map.purge_unsatisfiable_products(
             state_attributes_map=state_attrs_map
@@ -1379,6 +1380,9 @@ class MultiTapeBuilder(object):
                 continue
 
             log('IS_SAT >>>', product, product.get_annotation())
+            if product not in prev_prod_to_state_map:
+                continue
+
             product_writes = prev_prod_to_state_map[product]
             # print('SATISFIABLE PRODUCT PRE:', product, product_writes)
             # input_terms = product.get_flat_terms()

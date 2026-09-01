@@ -1,5 +1,5 @@
 from automata_builder.rule_generator_multitape import (
-    MultiTapeBuilder, MultiTapeState, TapeCellState, TapeNo, TapeOverlaps
+    MultiTapeBuilder, MultiTapeState, TapeOverlaps
 )
 from automata_builder.counter_automata import (
     CounterAutomataRunner, DT_DATA, DATA_TAPE
