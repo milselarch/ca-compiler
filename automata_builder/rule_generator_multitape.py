@@ -1349,8 +1349,9 @@ class MultiTapeBuilder(object):
             whitelist_overlaps=whitelist_overlaps,
         )
 
+    @staticmethod
     def determine_state_written(
-        self, overlaps_fsm_state: TapeOverlapsFSMState,
+        overlaps_fsm_state: TapeOverlapsFSMState,
         verbose: bool = False
     ) -> defaultdict[
         MultiTapeState, set[PyMultiTapeProduct]

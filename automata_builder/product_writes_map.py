@@ -145,6 +145,10 @@ class ProductWritesMap(Freezable):
         if self._frozen:
             raise ValueError("Cannot modify when frozen")
 
+        all_products = self._prod_to_state_map.keys()
+        for product in all_products:
+            # TODO: purge translated
+
         for product in list(self._prod_to_state_map.keys()):
             becomes_unsatisfiable = self.does_product_becomes_unsatisfiable(
                 product=product, state_attributes_map=state_attributes_map
@@ -689,7 +693,8 @@ class ProductWritesMap(Freezable):
             if source_term not in input_terms:
                 continue
 
-            # TODO: check if theres identical products that write to this tape
+            # TODO: check if there are identical products
+            #  that write to this tape
             if source_state_tape_no not in prod_writes_map:
                 continue
 
