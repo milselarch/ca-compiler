@@ -332,6 +332,9 @@ class ProductWritesMap(Freezable):
         :return:
         """
         source_tape_cell_state = source_state.tape_cell_state
+        transitioned_states = self.get_same_tape_states_transitioned_to(
+            source_state=source_state, tape_overlaps=tape_overlaps
+        )
         """
         :writable:
         Whether there are products that can produce the target_state
@@ -359,7 +362,7 @@ class ProductWritesMap(Freezable):
                     continue
 
             writes_map = self._prod_to_state_map[product]
-            target_state_written = False
+            source_state_written = False
 
             for tape_no in writes_map:
                 tape_cell_state = writes_map[tape_no]
@@ -371,7 +374,7 @@ class ProductWritesMap(Freezable):
                     output writes to the same tape and same state as
                     target_state, so it is being "created" per-se
                     """
-                    target_state_written = True
+                    source_state_written = True
 
             # whether product writes to same tape as target_state
             # and the written TapeCellState is different from target_state
@@ -396,10 +399,10 @@ class ProductWritesMap(Freezable):
                 )
                 if source_state.tape_cell_state != output_tape_cell_state:
                     """
-                    Our input product contains target_state
+                    Our input product contains source_state
                     along that output position (offset 0) and the
                     output writes to the same tape, but to a different state,
-                    so the original target_state is deleted
+                    so the original source_state is deleted
                     """
                     writes_away_from_target_state = True
                 else:
@@ -411,12 +414,9 @@ class ProductWritesMap(Freezable):
                     f"VOID STATE CANNOT AUTO TRANSITION AWAY - {product}"
                 )
 
-            writable |= target_state_written and not is_idempotent_transition
+            writable |= source_state_written and not is_idempotent_transition
             deletable |= writes_away_from_target_state
 
-        transitioned_states = self.get_all_transitioned_states(
-            source_state=source_state, tape_overlaps=tape_overlaps
-        )
         # TODO: include this without deleting necessary state overlaps
         instant_delete = (
             source_tape_cell_state not in transitioned_states
@@ -653,7 +653,7 @@ class ProductWritesMap(Freezable):
 
         return combos
 
-    def get_all_transitioned_states(
+    def get_same_tape_states_transitioned_to(
         self, source_state: MultiTapeState, tape_overlaps: TapeOverlaps
     ) -> set[TapeCellState]:
         """
@@ -667,6 +667,7 @@ class ProductWritesMap(Freezable):
             return {source_state.tape_cell_state}
 
         source_state_tape_no = source_state.tape_no
+        source_tape_cell_state = source_state.tape_cell_state
         transitioned_states: set[TapeCellState] = set()
         source_term = D(
             position=0, tape_no=source_state.tape_no,
@@ -708,13 +709,12 @@ class ProductWritesMap(Freezable):
         offset_path_combos = self.build_flat_offset_path_combos(
             source_state, tape_overlaps=tape_overlaps
         )
-
         for offset_path_combo in offset_path_combos:
             """
             Whether there is a product that satisfies
             the combination of states in offset_path_combo
             """
-            covered_by_some_product = False
+            has_satisfiable_product_transitioning_to_same_state = False
 
             for product, prod_writes_map in self._prod_to_state_map.items():
                 """
@@ -722,31 +722,49 @@ class ProductWritesMap(Freezable):
                 the combination of states satisfies the product's input terms
                 """
                 product_covers_combo = True
-                tapes_written = set(prod_writes_map.keys())
-                product_flat_terms = product.get_flat_terms()
+
+                input_terms = product.get_flat_terms()
+                input_tapes = set([c.get_tape_no() for c in input_terms])
+                if source_term not in input_terms:
+                    continue
+
+                written_state_for_source_tape = prod_writes_map.get(
+                    source_state_tape_no,  source_tape_cell_state
+                )
+                transitions_to_same_source_state = (
+                    written_state_for_source_tape == source_tape_cell_state
+                )
+                if written_state_for_source_tape == source_tape_cell_state:
+                    transitions_to_same_source_state = True
 
                 for term in offset_path_combo:
-                    if term.get_tape_no() not in tapes_written:
+                    if term.get_tape_no() not in input_tapes:
                         """
                         If the product doesn't have any input terms 
-                        for the tape that the term, then the product is 
-                        satisfiable regardless of the term
+                        with the same tape_no as the current path combo term, 
+                        then the product is satisfiable regardless of the term
                         """
                         continue
-                    if term not in product_flat_terms:
+                    if term not in input_terms:
                         product_covers_combo = False
                         break
 
-                if product_covers_combo:
-                    covered_by_some_product = True
+                if product_covers_combo and transitions_to_same_source_state:
+                    has_satisfiable_product_transitioning_to_same_state = True
                     break
 
-            if not covered_by_some_product:
+            if has_satisfiable_product_transitioning_to_same_state:
                 has_path_transition_to_same_state = True
                 break
 
         if has_path_transition_to_same_state:
-            transitioned_states.add(source_state.tape_cell_state)
+            transitioned_states.add(source_tape_cell_state)
+        if not transitioned_states:
+            transitioned_states.add(source_tape_cell_state)
+
+        if source_tape_cell_state not in transitioned_states:
+            print("NO PATH TO SAME STATE", source_state, transitioned_states)
+            pass
 
         return transitioned_states
 

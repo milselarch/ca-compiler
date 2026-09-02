@@ -1182,9 +1182,9 @@ class MultiTapeBuilder(object):
     ) -> FrozenTapeOverlaps:
         """
         If for some newly spawned state_written
-        that did not exist in the previous overlaps,
-        if for some offset e,
+        that did not exist in the previous tape overlaps,
 
+        and if for some offset e,
         every contributing product to the state_written
         has a translated variant that also writes to the
         same tape as state_written at said offset e,
