@@ -131,12 +131,12 @@ def active_counter(counter_digit: int) -> int:
 def from_counter_state(state: int) -> tuple[int, bool]:
     """
     Examples:
-    digit=0: pasued=6 active=4
-    digit=1: pasued=10 active=8
-    digit=2: pasued=14 active=12
-    digit=3: pasued=18 active=16
-    digit=4: pasued=22 active=20
-    digit=5: pasued=26 active=24
+    digit=0: paused=6 active=4
+    digit=1: paused=10 active=8
+    digit=2: paused=14 active=12
+    digit=3: paused=18 active=16
+    digit=4: paused=22 active=20
+    digit=5: paused=26 active=24
 
     :param state: counter state in the signals tape encoding
     :return:
@@ -156,8 +156,16 @@ class CounterAutomataBuilder(object):
         self.base = base
 
     def build_base_transitions_group(
-        self, transitions_group: MultiTapeTransitionsGroup | None = None
+        self, transitions_group: MultiTapeTransitionsGroup | None = None,
+        counter_right_state: TapeCellState = ST_REDUCE_START
     ) -> MultiTapeTransitionsGroup:
+        if counter_right_state not in (ST_REDUCE_START, VOID_STATE):
+            raise ValueError(
+                f'counter_right_state must be either '
+                f'{ST_REDUCE_START=} or {VOID_STATE=}, '
+                f'got {counter_right_state}'
+            )
+
         if transitions_group is not None:
             _transitions_group = transitions_group
         else:
@@ -246,7 +254,7 @@ class CounterAutomataBuilder(object):
             # sequence and the rightmost digit is about to overflow
             right_overflow_combo = (
                 ST_MID(active_counter(digit)),
-                ST_RIGHT(VOID_STATE),
+                ST_RIGHT(counter_right_state),
                 CT_MID(CT_DATA)
             )
             _transitions_group.add_transition(
@@ -269,11 +277,11 @@ class CounterAutomataBuilder(object):
             _transitions_group.add_transition(
                 input_terms=(
                     ST_MID(active_counter(digit)),
-                    ST_RIGHT(ST_REDUCE_START),
+                    ST_RIGHT(counter_right_state),
                     CT_MID(VOID_STATE)
                 ),
                 output_tape_no=SIGNALS_TAPE,
-                output_cell_state=ST_REDUCE_START,
+                output_cell_state=counter_right_state,
                 annotation=f'CLEAR_RIGHTMOST_{digit}'
             )
             # if cell next to rightmost (signals tape) counter cell
@@ -281,11 +289,11 @@ class CounterAutomataBuilder(object):
             _transitions_group.add_transition(
                 input_terms=(
                     ST_MID(active_counter(digit)),
-                    ST_RIGHT(ST_REDUCE_START),
+                    ST_RIGHT(counter_right_state),
                     CT_MID(VOID_STATE)
                 ),
                 output_tape_no=SIGNALS_TAPE,
-                output_cell_state=ST_REDUCE_START,
+                output_cell_state=counter_right_state,
                 annotation=f'CLEAR_RIGHTMOST_{digit}_ST'
             )
 
@@ -570,20 +578,20 @@ class CounterAutomataRunner(object):
         # print("DATA_REGION", data_region)
         # The last cell in the signals tape is always an ST_REDUCE_START cell
         assert data_region[-1] == ST_REDUCE_START
-        relevant_data_region = data_region[:-1]
+        digit_data_region = data_region[:-1]
 
-        while relevant_data_region and relevant_data_region[-1] == VOID_STATE:
+        while digit_data_region and digit_data_region[-1] == ST_REDUCE_START:
             # there may be trailing VIUDs between ST_REDUCE_START and data
-            relevant_data_region.pop()
+            digit_data_region.pop()
 
         # the remaining relevant_data_region should just encode
         # the counter value in base {self.base}
-        assert VOID_STATE not in relevant_data_region
+        assert VOID_STATE not in digit_data_region
         counter_paused: bool | None = None
         encoded_number = 0
 
-        for digit_no in range(len(relevant_data_region)):
-            tape_cell_state = relevant_data_region[digit_no]
+        for digit_no in range(len(digit_data_region)):
+            tape_cell_state = digit_data_region[digit_no]
             counter_digit, paused = from_counter_state(tape_cell_state)
             encoded_number += counter_digit * self.base ** digit_no
 

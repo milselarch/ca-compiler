@@ -2,9 +2,10 @@ import argparse
 import time
 
 from py_ca_compiler import A, PyProduct
+from tqdm import tqdm
 
 from automata_builder.counter_automata import (
-    CounterAutomataRunner, DT_DATA, DATA_TAPE
+    CounterAutomataRunner, DT_DATA, DATA_TAPE, SIGNALS_TAPE, from_counter_state
 )
 from automata_builder.rule_generator_multitape import (
     MultiTapeBuilder, MultiTapeState
@@ -78,6 +79,34 @@ if __name__ == '__main__':
         else:
             continue
     """
+
+    num_pause_incomparable_transitions = 0
+
+    for transition in tqdm(transitions):
+        input_terms, output_state = transition
+        input_product = PyProduct(input_terms)
+        input_multi_term_prod_res = compose_result.remap_prod_to_multi_tape(
+            input_product=input_product
+        )
+        if input_multi_term_prod_res.is_err():
+            continue
+
+        input_multi_term_product = input_multi_term_prod_res.unwrap()
+        counter_terms = [
+            term for term in input_multi_term_product.get_flat_terms() if
+            term.get_tape_no() == SIGNALS_TAPE and
+            term.get_cell_state() % 2 == 0 and
+            term.get_cell_state() >= 4
+        ]
+        # print(f'{counter_terms=}')
+        paused_list = [
+            from_counter_state(term.get_cell_state())[1]
+            for term in counter_terms
+        ]
+        if len(set(paused_list)) <= 1:
+            num_pause_incomparable_transitions += 1
+
+    print(f'{num_pause_incomparable_transitions=}')
 
     for k, transition in enumerate(transitions[:args.display_transitions]):
         input_terms, output_state = transition
