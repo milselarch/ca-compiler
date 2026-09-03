@@ -137,7 +137,7 @@ class ProductWritesMap(Freezable):
         self, state_attributes_map: FrozenDict[
             MultiTapeState, MultiTapeStateAttributes
         ]
-    ):
+    ) -> set[PyMultiTapeProduct]:
         """
         Remove all input products that are unsatisfiable
         :return:
@@ -145,13 +145,29 @@ class ProductWritesMap(Freezable):
         if self._frozen:
             raise ValueError("Cannot modify when frozen")
 
-        for product in list(self._prod_to_state_map.keys()):
+        all_products = self._prod_to_state_map.keys()
+        products_to_delete: set[PyMultiTapeProduct] = set()
+
+        for product in all_products:
             becomes_unsatisfiable = self.does_product_becomes_unsatisfiable(
                 product=product, state_attributes_map=state_attributes_map
             )
-            if becomes_unsatisfiable:
-                print("UNSATISFIABLE", product, product.get_annotation())
-                del self._prod_to_state_map[product]
+            if not becomes_unsatisfiable:
+                continue
+
+            products_to_delete.add(product)
+            translated_products_res = self.get_translated_variants(
+                target_product=product
+            )
+            for translated_product, _ in translated_products_res:
+                products_to_delete.add(translated_product)
+
+        for product in products_to_delete:
+            # TODO: add verbose logging option for this
+            # print("DELETED_PRODUCT", product, product.get_annotation())
+            del self._prod_to_state_map[product]
+
+        return products_to_delete
 
     def to_unfrozen(self):
         return self.__class__(
@@ -747,6 +763,122 @@ class ProductWritesMap(Freezable):
 
         if has_path_transition_to_same_state:
             transitioned_states.add(source_state.tape_cell_state)
+
+        return transitioned_states
+
+    def get_same_tape_states_transitioned_to(
+        self, source_state: MultiTapeState, tape_overlaps: TapeOverlaps
+    ) -> set[TapeCellState]:
+        """
+        Get all the states that the source_state will transition to
+        (i.e. what the state could be at the same position after a timestep)
+        :param source_state:
+        :param tape_overlaps:
+        :return:
+        """
+        if source_state not in tape_overlaps:
+            return {source_state.tape_cell_state}
+
+        source_state_tape_no = source_state.tape_no
+        source_tape_cell_state = source_state.tape_cell_state
+        transitioned_states: set[TapeCellState] = set()
+        source_term = D(
+            position=0, tape_no=source_state.tape_no,
+            state=source_state.tape_cell_state
+        )
+
+        for product, prod_writes_map in self._prod_to_state_map.items():
+            input_terms = product.get_flat_terms()
+            product_is_satisfiable = True
+
+            for input_term in input_terms:
+                input_multi_tape_state = MultiTapeState.from_term(input_term)
+                if input_multi_tape_state not in tape_overlaps:
+                    product_is_satisfiable = False
+                    break
+
+            if not product_is_satisfiable:
+                continue
+            if source_term not in input_terms:
+                continue
+
+            # TODO: check if there are identical products
+            #  that write to this tape
+            if source_state_tape_no not in prod_writes_map:
+                continue
+
+            same_tape_write_state = prod_writes_map[source_state_tape_no]
+            if same_tape_write_state in transitioned_states:
+                continue
+
+            transitioned_states.add(same_tape_write_state)
+
+        """
+        Basically if none of the input products are applicable to 
+        some combination of states that can exist in tape_overlaps, 
+        then its possible the source_state will stay the same / 
+        transition to the same state
+        """
+        has_path_transition_to_same_state: bool = False
+        offset_path_combos = self.build_flat_offset_path_combos(
+            source_state, tape_overlaps=tape_overlaps
+        )
+        for offset_path_combo in offset_path_combos:
+            """
+            Whether there is a product that satisfies
+            the combination of states in offset_path_combo
+            """
+            has_satisfiable_product_transitioning_to_same_state = False
+
+            for product, prod_writes_map in self._prod_to_state_map.items():
+                """
+                We say that the product "covers" the combo if 
+                the combination of states satisfies the product's input terms
+                """
+                product_covers_combo = True
+
+                input_terms = product.get_flat_terms()
+                input_tapes = set([c.get_tape_no() for c in input_terms])
+                if source_term not in input_terms:
+                    continue
+
+                written_state_for_source_tape = prod_writes_map.get(
+                    source_state_tape_no,  source_tape_cell_state
+                )
+                transitions_to_same_source_state = (
+                        written_state_for_source_tape == source_tape_cell_state
+                )
+                if written_state_for_source_tape == source_tape_cell_state:
+                    transitions_to_same_source_state = True
+
+                for term in offset_path_combo:
+                    if term.get_tape_no() not in input_tapes:
+                        """
+                        If the product doesn't have any input terms 
+                        with the same tape_no as the current path combo term, 
+                        then the product is satisfiable regardless of the term
+                        """
+                        continue
+                    if term not in input_terms:
+                        product_covers_combo = False
+                        break
+
+                if product_covers_combo and transitions_to_same_source_state:
+                    has_satisfiable_product_transitioning_to_same_state = True
+                    break
+
+            if has_satisfiable_product_transitioning_to_same_state:
+                has_path_transition_to_same_state = True
+                break
+
+        if has_path_transition_to_same_state:
+            transitioned_states.add(source_tape_cell_state)
+        if not transitioned_states:
+            transitioned_states.add(source_tape_cell_state)
+
+        if source_tape_cell_state not in transitioned_states:
+            print("NO PATH TO SAME STATE", source_state, transitioned_states)
+            pass
 
         return transitioned_states
 
