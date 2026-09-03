@@ -137,7 +137,7 @@ class ProductWritesMap(Freezable):
         self, state_attributes_map: FrozenDict[
             MultiTapeState, MultiTapeStateAttributes
         ]
-    ):
+    ) -> set[PyMultiTapeProduct]:
         """
         Remove all input products that are unsatisfiable
         :return:
@@ -146,16 +146,27 @@ class ProductWritesMap(Freezable):
             raise ValueError("Cannot modify when frozen")
 
         all_products = self._prod_to_state_map.keys()
-        for product in all_products:
-            # TODO: purge translated
+        products_to_delete: set[PyMultiTapeProduct] = set()
 
-        for product in list(self._prod_to_state_map.keys()):
+        for product in all_products:
             becomes_unsatisfiable = self.does_product_becomes_unsatisfiable(
                 product=product, state_attributes_map=state_attributes_map
             )
-            if becomes_unsatisfiable:
-                print("UNSATISFIABLE", product, product.get_annotation())
-                del self._prod_to_state_map[product]
+            if not becomes_unsatisfiable:
+                continue
+
+            products_to_delete.add(product)
+            translated_products_res = self.get_translated_variants(
+                target_product=product
+            )
+            for translated_product, _ in translated_products_res:
+                products_to_delete.add(translated_product)
+
+        for product in products_to_delete:
+            print("DELETED_PRODUCT", product, product.get_annotation())
+            del self._prod_to_state_map[product]
+
+        return products_to_delete
 
     def to_unfrozen(self):
         return self.__class__(

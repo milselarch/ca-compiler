@@ -1302,7 +1302,7 @@ class MultiTapeBuilder(object):
         prev_prod_to_state_map = start_overlaps_fsm_state.product_writes_map
         # all states that could exist at the start of current time step
         all_prev_overlap_states = prev_overlaps.get_all_states()
-        extinct_states: set[MultiTapeState] = set()
+        # extinct_states: set[MultiTapeState] = set()
         # states that cease to exist in tapes after current time step
         disappeared_states: set[MultiTapeState] = set()
         prod_to_state_map = prev_prod_to_state_map.to_unfrozen()
@@ -1312,7 +1312,7 @@ class MultiTapeBuilder(object):
                 prev_overlap_state, extant_states=all_prev_overlap_states,
                 tape_overlaps=prev_overlaps
             )
-            # whether state has no occurrences after current time step
+            # whether state has no occurrences after the current time step
             no_state_occurrences_post_transition = (
                 current_state_attrs.instant_delete and
                 prev_overlap_state not in states_written
@@ -1321,11 +1321,14 @@ class MultiTapeBuilder(object):
                 log(f"DISAPPEARED STATE {prev_overlap_state}")
                 disappeared_states.add(prev_overlap_state)
 
+                """
                 if not current_state_attrs.writable:
                     # a state is extinct if it will never show up again
                     # in any future time step
+                    log("EXTINCT", prev_overlap_state)
                     extinct_states.add(prev_overlap_state)
                     prod_to_state_map.extinct_input_state(prev_overlap_state)
+                """
 
         # TODO: apply overlap_states_at_offsets to tape_overlaps
         # TODO: refactor automata builder to its own repo?

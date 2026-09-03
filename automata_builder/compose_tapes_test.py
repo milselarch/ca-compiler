@@ -4,7 +4,7 @@ import time
 from py_ca_compiler import A, PyProduct
 
 from automata_builder.counter_automata import (
-    CounterAutomataRunner, DT_DATA, DATA_TAPE
+    CounterAutomataRunner, DT_DATA, DATA_TAPE, SIGNALS_TAPE, from_counter_state
 )
 from automata_builder.rule_generator_multitape import (
     MultiTapeBuilder, MultiTapeState
@@ -97,6 +97,20 @@ if __name__ == '__main__':
         )
         if output_product_res.is_ok():
             output_product = output_product_res.unwrap()
+
+            # TODO: check across ALL produts
+            counter_terms = [
+                term for term in output_product.get_flat_terms() if
+                term.get_tape_no() == SIGNALS_TAPE and
+                term.get_cell_state() % 2 == 0 and
+                term.get_cell_state() >= 4
+            ]
+            print(f'{counter_terms=}')
+            paused_list = [
+                from_counter_state(term.get_cell_state())[1]
+                for term in counter_terms
+            ]
+            assert len(set(paused_list)) <= 1
         else:
             output_product = 'HALT'
 
