@@ -1,6 +1,7 @@
 import argparse
 import time
 
+from pprint import pprint
 from py_ca_compiler import A, PyProduct
 from tqdm import tqdm
 
@@ -59,8 +60,21 @@ if __name__ == '__main__':
     compose_result = multi_tape_builder.compose_tapes()
     end_stamp = time.time()
     duration = end_stamp - start_stamp
-    print(f'Completed in {duration:.02f} seconds')
 
+    state_mappings = {}
+    remapped_states = compose_result.state_remap.get_all_remap_states()
+
+    for remapped_state in remapped_states:
+        rev_lookup_res = compose_result.state_remap.rev_lookup(remapped_state)
+        original = rev_lookup_res.unwrap()
+        state_mappings[remapped_state] = original
+        # print(f'{remapped_state} -> {original}')
+
+    print("\nLOADING STATE MAPPINGS:")
+    pprint(state_mappings, width=200, sort_dicts=True)
+    num_pause_incomparable_transitions = 0
+
+    print(f'Completed in {duration:.02f} seconds')
     num_remapped_states = compose_result.count_unique_states()
     print(f'num remapped states = {num_remapped_states}')
     transitions = compose_result.transitions_group.transitions
@@ -79,8 +93,6 @@ if __name__ == '__main__':
         else:
             continue
     """
-
-    num_pause_incomparable_transitions = 0
 
     for transition in tqdm(transitions):
         input_terms, output_state = transition

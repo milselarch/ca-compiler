@@ -6,7 +6,6 @@ import dataclasses
 
 from collections import defaultdict
 
-from numpy.f2py.crackfortran import sourcecodeform
 from py_ca_compiler import PyMultiTapeProduct, D
 from automata_builder.rule_generator import TapeCellState, TapeNo, VOID_STATE
 from automata_builder.tape_overlaps import MultiTapeState, TapeOverlaps
@@ -481,7 +480,7 @@ class ProductWritesMap(Freezable):
         return state_to_products_map
 
     def build_input_state_to_prod_map(
-            self, verbose: bool = False
+        self, verbose: bool = False
     ) -> defaultdict[
         MultiTapeState, set[PyMultiTapeProduct]
     ]:
@@ -750,8 +749,6 @@ class ProductWritesMap(Freezable):
                 transitions_to_same_source_state = (
                     written_state_for_source_tape == source_tape_cell_state
                 )
-                if written_state_for_source_tape == source_tape_cell_state:
-                    transitions_to_same_source_state = True
 
                 for term in offset_path_combo:
                     if term.get_tape_no() not in input_tapes:

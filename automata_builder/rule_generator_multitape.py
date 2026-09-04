@@ -15,9 +15,9 @@ from automata_builder.tape_overlaps_fsm import (
 from utils import FreezableSet, FrozenSet
 from automata_builder.rule_generator import (
     AutomataTransitionsGroup, TapeCellState, TapeNo,
-    VOID_STATE, HALT_STATE, BLANK_INT
+    VOID_STATE, HALT_STATE, BLANK_INT, BidirectionalTape
 )
-from automata_builder.renderer import RenderFrame
+from automata_builder.renderer import RenderFrame, TapeRenderFrame
 from automata_builder.tape_overlaps import (
     MultiTapeState, TapeOverlaps, MultiTapeStatesMap,
     FrozenTapeOverlaps, is_product_satisfiable
@@ -195,142 +195,6 @@ class MultiTapeRuleGenerator(object):
                     assert product.get_annotation()
 
         return state_eq_map
-
-
-class TapeRenderFrame(RenderFrame):
-    def __init__(self, line: str, num_cells: int, cell_width: int):
-        super().__init__([line])
-        self.num_cells = num_cells
-        self.cell_width = cell_width
-
-    def get_space_consumed(self) -> int:
-        return self.num_cells * (self.cell_width + 1)
-
-
-class BidirectionalTape(object):
-    def __init__(self):
-        # automata cell states from position 0 and higher
-        # note that position increases for cells as we go rightwards in data
-        self.data: list[TapeCellState] = []
-        # automata cell states from position -1 and lower
-        # note that position decreases for cells as we go rightwards in data
-        self.rev_data: list[TapeCellState] = []
-
-    def get_range(self) -> tuple[int, int]:
-        min_pos = -len(self.rev_data)
-        max_pos = len(self.data) - 1
-        return min_pos, max_pos
-
-    def get_all_states(self) -> set[TapeCellState]:
-        # TODO: consider tracking unique states instead of recomputing
-        return set(self.data) | set(self.rev_data)
-
-    def prune(self) -> tuple[int, int]:
-        forward_popped, reverse_popped = 0, 0
-        # prune leading zeros in both directions
-        while self.data and self.data[-1] == VOID_STATE:
-            forward_popped += 1
-            self.data.pop()
-        while self.rev_data and self.rev_data[-1] == VOID_STATE:
-            reverse_popped += 1
-            self.rev_data.pop()
-
-        return forward_popped, reverse_popped
-
-    def get_minimal_data_region(self) -> list[TapeCellState]:
-        """
-        Get the minimal contiguous region of tape data
-        that contains all non-void states.
-        :return:
-        """
-        self.prune()
-        # make a shallow copy to avoid mutable reference
-        data_region = self.rev_data[::-1] + self.data
-        minimal_data_region: list[TapeCellState] = []
-        data_region_started: bool = False
-
-        for tape_cell_state in data_region:
-            if tape_cell_state != VOID_STATE:
-                data_region_started = True
-
-            if not data_region_started:
-                continue
-
-            minimal_data_region.append(tape_cell_state)
-
-        # remove trailing void state cells
-        # this can happen if all data cells are from the rev_data region
-        while minimal_data_region and minimal_data_region[-1] == VOID_STATE:
-            minimal_data_region.pop()
-
-        return minimal_data_region
-
-    def render_line(
-        self, start_position: int, length: int,
-        cell_width: int = BLANK_INT
-    ) -> TapeRenderFrame:
-        all_states = self.get_all_states()
-        max_state = VOID_STATE if not all_states else max(all_states)
-
-        if cell_width == BLANK_INT:
-            cell_width = len(str(max_state))
-        elif cell_width < len(str(max_state)):
-            raise ValueError(
-                f"Cell width {cell_width} is too small to fit "
-                f"the largest state {max_state}"
-            )
-
-        cells_to_render = length // (cell_width + 1)
-        line: str = ""
-
-        for k in range(cells_to_render):
-            position = start_position + k
-            state = self.read(position)
-            line += str(state).rjust(cell_width, '0') + "|"
-
-        line += " " * (length - len(line))
-        return TapeRenderFrame(
-            line=line, num_cells=cells_to_render,
-            cell_width=cell_width
-        )
-
-    def read(self, position: int) -> TapeCellState:
-        if position >= 0:
-            if position >= len(self.data):
-                return VOID_STATE
-
-            return self.data[position]
-        else:
-            rev_position = -position - 1
-            if rev_position >= len(self.rev_data):
-                return VOID_STATE
-
-            return self.rev_data[rev_position]
-
-    def __getitem__(self, position: int) -> TapeCellState:
-        return self.read(position)
-
-    def write(self, position: int, value: TapeCellState):
-        if position >= 0:
-            while position >= len(self.data):
-                self.data.append(VOID_STATE)
-
-            self.data[position] = value
-        else:
-            rev_position = -position - 1
-            while rev_position >= len(self.rev_data):
-                self.rev_data.append(VOID_STATE)
-
-            self.rev_data[rev_position] = value
-
-    def write_region(
-        self, position: int, end_position: int,
-        values: list[TapeCellState]
-    ):
-        for new_position in range(position, end_position+1):
-            offset = new_position - position
-            value = values[offset % len(values)]
-            self.write(new_position, value)
 
 
 class BiDirectionalMultiTape(object):
