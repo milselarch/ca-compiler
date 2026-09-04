@@ -1,6 +1,5 @@
 use std::collections::{HashMap};
 use std::hash::{Hash, Hasher};
-use crate::automata::composer::{Direction, TapeKey, TapeState};
 use indexmap::{IndexMap, IndexSet};
 use indexmap::set::Iter as IndexSetIter;
 

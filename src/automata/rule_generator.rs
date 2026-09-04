@@ -1,11 +1,8 @@
-use crate::automata::terms::{Product, Term};
+use crate::automata::terms::{CellState, Product, Term};
 
-pub type TapeNo = usize;
-pub type TapeCellState = u32;
-
-const BLANK_INT: i64 = -1;
-const VOID_STATE: TapeCellState = 0;
-const HALT_STATE: TapeCellState = 1;
+pub const BLANK_INT: i64 = -1;
+pub const VOID_STATE: CellState = 0;
+pub const HALT_STATE: CellState = 1;
 
 pub fn is_halt_state(term: &Term) -> bool {
     term.state == HALT_STATE
@@ -16,7 +13,9 @@ use std::fmt;
 use std::fmt::Debug;
 use std::ops::Index;
 use indexmap::IndexSet;
-use crate::automata::render_frame_utils::RenderError;
+use crate::automata::renderer::RenderError;
+use crate::automata::renderer::TapeRenderFrame;
+use crate::automata::terms_multitape::TapeNo;
 
 /// Contains a set of transitions for a cellular automaton,
 /// defined as a mapping from input states to output state:
@@ -72,8 +71,8 @@ impl AutomataTransitionsGroup {
         assert!(output_state < num_states);
 
         for term in &input_terms {
-            let state = term.get_state();
-            assert!(state < num_states);
+            let state = term.state;
+            assert!(state < num_states as u32);
 
             if ban_halt_state && is_halt_state(term) {
                 return Err(format!(
@@ -107,7 +106,7 @@ pub enum TapeError {
     /// Requested cell width cannot fit the largest state present on the tape.
     CellWidthTooSmall {
         cell_width: usize,
-        max_state: TapeCellState,
+        max_state: CellState,
     },
     /// `write_region` was called with an empty pattern.
     EmptyWritePattern,
@@ -135,41 +134,17 @@ impl fmt::Display for TapeError {
             TapeError::EmptyWritePattern => {
                 write!(f, "write_region requires a non-empty pattern")
             }
-            _ => {
-                write!(f, "{:?}", self)
+            TapeError::TapesFrozen { tape_no } => {
+                write!(f, "Cannot allocate new tape after tape set is frozen (tape_no={})", tape_no)
+            },
+            TapeError::Render(render_err) => {
+                write!(f, "Render error: {}", render_err)
             }
         }
     }
 }
 impl std::error::Error for TapeError {}
 
-#[derive(Debug, Clone, Default, Eq, PartialEq)]
-pub struct TapeRenderFrame {
-    lines: Vec<String>,
-}
-impl TapeRenderFrame {
-    pub fn new(lines: Vec<String>) -> Option<crate::automata::runner::RenderFrame> {
-        let first_len = lines.first().map(|line| line.chars().count());
-        if let Some(len) = first_len {
-            if lines.iter().any(|line| line.chars().count() != len) {
-                return None;
-            }
-        }
-        Some(crate::automata::runner::RenderFrame { lines })
-    }
-    /// Pads every line on the right so that all of them share the widest length.
-    pub fn from_padded_lines(lines: Vec<String>) -> crate::automata::runner::RenderFrame {
-        let width = lines.iter().map(|line| line.chars().count()).max().unwrap_or(0);
-        let padded = lines
-            .into_iter()
-            .map(|line| {
-                let pad = width - line.chars().count();
-                line + &" ".repeat(pad)
-            })
-            .collect();
-        crate::automata::runner::RenderFrame { lines: padded }
-    }
-}
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct PruneResult {
@@ -181,16 +156,15 @@ pub struct PruneResult {
 pub struct BidirectionalTape {
     /// automata cell states from position 0 and higher
     /// note that position increases for cells as we go rightwards in data
-    data: Vec<TapeCellState>,
+    data: Vec<CellState>,
     /// automata cell states from position -1 and lower
     /// note that position decreases for cells as we go rightwards in rev_data
-    rev_data: Vec<TapeCellState>,
+    rev_data: Vec<CellState>,
 }
 impl BidirectionalTape {
-    pub fn new(data: Vec<TapeCellState>) -> BidirectionalTape {
+    pub fn new(data: Vec<CellState>) -> BidirectionalTape {
         BidirectionalTape { data, rev_data: vec![] }
     }
-
     /// Inclusive range of positions for which cell data is currently allocated.
     /// Note that `max_pos` is `-1` when the rightwards half is empty.
     pub fn get_range(&self) -> (i64, i64) {
@@ -200,11 +174,11 @@ impl BidirectionalTape {
     }
 
     // TODO: consider tracking unique states instead of recomputing
-    pub fn get_all_states(&self) -> IndexSet<TapeCellState> {
+    pub fn get_all_states(&self) -> IndexSet<CellState> {
         self.data.iter().chain(self.rev_data.iter()).copied().collect()
     }
 
-    pub fn max_state(&self) -> TapeCellState {
+    pub fn max_state(&self) -> CellState {
         self.data
             .iter()
             .chain(self.rev_data.iter())
@@ -214,7 +188,7 @@ impl BidirectionalTape {
     }
 
     /// Prune trailing void cells in both directions.
-    pub fn prune(&mut self) -> crate::automata::runner::PruneResult {
+    pub fn prune(&mut self) -> PruneResult {
         let mut forward_popped = 0;
         let mut reverse_popped = 0;
 
@@ -227,11 +201,11 @@ impl BidirectionalTape {
             self.rev_data.pop();
         }
 
-        crate::automata::runner::PruneResult { forward_popped, reverse_popped }
+        PruneResult { forward_popped, reverse_popped }
     }
     /// Get the minimal contiguous region of tape data
     /// that contains all non-void states.
-    pub fn get_minimal_data_region(&mut self) -> Vec<TapeCellState> {
+    pub fn get_minimal_data_region(&mut self) -> Vec<CellState> {
         self.prune();
 
         let data_region = self
@@ -241,7 +215,7 @@ impl BidirectionalTape {
             .chain(self.data.iter())
             .copied();
 
-        let mut minimal_data_region: Vec<TapeCellState> = Vec::new();
+        let mut minimal_data_region: Vec<CellState> = Vec::new();
         let mut data_region_started = false;
 
         for tape_cell_state in data_region {
@@ -270,14 +244,14 @@ impl BidirectionalTape {
         start_position: i64,
         length: usize,
         cell_width: Option<usize>,
-    ) -> Result<TapeRenderFrame, crate::automata::runner::TapeError> {
+    ) -> Result<TapeRenderFrame, TapeError> {
         let max_state = self.max_state();
         let min_cell_width = max_state.to_string().len();
 
         let cell_width = match cell_width {
             None => min_cell_width,
             Some(width) if width < min_cell_width => {
-                return Err(crate::automata::runner::TapeError::CellWidthTooSmall { cell_width: width, max_state });
+                return Err(TapeError::CellWidthTooSmall { cell_width: width, max_state });
             }
             Some(width) => width,
         };
@@ -295,10 +269,10 @@ impl BidirectionalTape {
         // pad out to the requested length
         line.push_str(&" ".repeat(length.saturating_sub(line.len())));
 
-        Ok(TapeRenderFrame::new(line, cells_to_render, cell_width))
+        Ok(TapeRenderFrame::new(&*line, cells_to_render, cell_width))
     }
 
-    pub fn read(&self, position: i64) -> TapeCellState {
+    pub fn read(&self, position: i64) -> CellState {
         if position >= 0 {
             let index = position as usize;
             self.data.get(index).copied().unwrap_or(VOID_STATE)
@@ -307,16 +281,33 @@ impl BidirectionalTape {
             self.rev_data.get(rev_index).copied().unwrap_or(VOID_STATE)
         }
     }
+
+    pub fn write(&mut self, position: i64, value: CellState) {
+        if position >= 0 {
+            let index = position as usize;
+            if index >= self.data.len() {
+                self.data.resize(index + 1, VOID_STATE);
+            }
+            self.data[index] = value;
+        } else {
+            let rev_index = (-position - 1) as usize;
+            if rev_index >= self.rev_data.len() {
+                self.rev_data.resize(rev_index + 1, VOID_STATE);
+            }
+            self.rev_data[rev_index] = value;
+        }
+    }
+
     /// Populate the cells from `position` to `end_position` (inclusive)
     /// using `values` as a repeating pattern.
     pub fn write_region(
         &mut self,
         position: i64,
         end_position: i64,
-        values: &[TapeCellState],
-    ) -> Result<(), crate::automata::runner::TapeError> {
+        values: &[CellState],
+    ) -> Result<(), TapeError> {
         if values.is_empty() {
-            return Err(crate::automata::runner::TapeError::EmptyWritePattern);
+            return Err(TapeError::EmptyWritePattern);
         }
 
         for new_position in position..=end_position {
@@ -328,8 +319,8 @@ impl BidirectionalTape {
     }
 }
 
-impl Index<i64> for crate::automata::runner::BidirectionalTape {
-    type Output = TapeCellState;
+impl Index<i64> for BidirectionalTape {
+    type Output = CellState;
 
     fn index(&self, position: i64) -> &Self::Output {
         if position >= 0 {

@@ -1,3 +1,6 @@
+use std::fmt;
+use std::ops::{Deref, DerefMut};
+
 #[derive(Debug, Clone, Default, Eq, PartialEq)]
 pub struct RenderFrame {
     lines: Vec<String>,
@@ -96,6 +99,54 @@ impl RenderFrame {
         Ok(combined)
     }
 }
+
+/// Equivalent of the `TapeRenderFrame` subclass.
+/// Rust has no inheritance, so this wraps a `RenderFrame` and exposes its
+/// methods through `Deref`/`DerefMut`.
+pub struct TapeRenderFrame {
+    frame: RenderFrame,
+    pub(crate) num_cells: usize,
+    cell_width: usize,
+}
+
+impl TapeRenderFrame {
+    pub fn new(line: &str, num_cells: usize, cell_width: usize) -> Self {
+        TapeRenderFrame {
+            frame: RenderFrame::from_line(line.parse().unwrap()),
+            num_cells,
+            cell_width,
+        }
+    }
+
+    pub fn get_space_consumed(&self) -> usize {
+        self.num_cells * (self.cell_width + 1)
+    }
+}
+
+impl Deref for TapeRenderFrame {
+    type Target = RenderFrame;
+
+    fn deref(&self) -> &RenderFrame {
+        &self.frame
+    }
+}
+
+impl DerefMut for TapeRenderFrame {
+    fn deref_mut(&mut self) -> &mut RenderFrame {
+        &mut self.frame
+    }
+}
+
+impl fmt::Debug for TapeRenderFrame {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "TapeRenderFrame(lines={:?}, num_cells={}, cell_width={})",
+            self.frame.lines, self.num_cells, self.cell_width
+        )
+    }
+}
+
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum RenderError {
