@@ -1,4 +1,5 @@
-use std::collections::BTreeMap;
+use std::fmt;
+
 use crate::automata::terms::CellState;
 use crate::automata::terms_multitape::TapeNo;
 
@@ -11,5 +12,11 @@ pub struct MultiTapeState {
 impl MultiTapeState {
     pub fn new(tape_no: TapeNo, tape_cell_state: CellState) -> MultiTapeState {
         MultiTapeState { tape_no, tape_cell_state }
+    }
+}
+
+impl fmt::Display for MultiTapeState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "MultiTapeState({}, {})", self.tape_no, self.tape_cell_state)
     }
 }

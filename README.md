@@ -2,7 +2,7 @@
 
 Goals of this programming language:
 1. Syntax supported is a subset of C
-   1. Any additional syntax that isn't supported by the C spec should
+   1. Any additional syntax not supported by the C spec should
         come with support for transpilation to C
    2. An exception to this is support for infinite length integers
 2. It can compile to x86-64 assembly
@@ -12,7 +12,7 @@ Goals of this programming language:
 4. True support for infinite length integers
    1. This is as opposed to arbitrary length integers with a length that is
       bounded by the largest int datatype
-   2. More specifically the infinite length integer should theoretically be able to 
+   2. More specifically, the infinite length integer should theoretically be able to 
       actually grow to infinity assuming a machine with an infinite address space 
       and infinite register size, but where the data size at each address 
       is finite still

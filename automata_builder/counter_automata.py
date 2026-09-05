@@ -3,13 +3,11 @@ from __future__ import annotations
 import os
 
 from typing import Final, Callable, Sequence
-from py_ca_compiler import D
-from unicodedata import digit
+from py_ca_compiler import D, PyMultiTapeAutomata, PyProcessStepResult
 
 from automata_builder.rule_generator_multitape import (
     MultiTapeTransitionsGroup, TapeNo, TapeCellState,
-    MultiTapeRuleGenerator, MultiTapeAutomata, ProcessStepResult,
-    MultiTapeState, BLANK_INT, VOID_STATE
+    MultiTapeRuleGenerator, MultiTapeState, BLANK_INT, VOID_STATE
 )
 
 DATA_TAPE: Final[TapeNo] = TapeNo(0)
@@ -540,7 +538,7 @@ class CounterAutomataRunner(object):
 
         self.initial_write_start = initial_write_start
         self.initial_write_end = initial_write_end
-        self.multi_tape_automata = MultiTapeAutomata(self.state_eq_map)
+        self.multi_tape_automata = PyMultiTapeAutomata(self.state_eq_map)
 
         init_tapes = [DATA_TAPE, SIGNALS_TAPE, CARRY_TAPE]
         if apply_reduction:
@@ -608,7 +606,7 @@ class CounterAutomataRunner(object):
         # TODO: consider unpropagated carry states
         return encoded_number
 
-    def step(self, verbose: bool = True) -> ProcessStepResult:
+    def step(self, verbose: bool = True) -> PyProcessStepResult:
         return self.multi_tape_automata.step(verbose=verbose)
 
     def run_simulation(

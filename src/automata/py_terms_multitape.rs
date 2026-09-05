@@ -11,7 +11,11 @@ use pyo3_stub_gen::define_stub_info_gatherer;
 use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 use crate::automata::py_terms::py_hash;
 use crate::automata::terms::{clip_after_space, CellState, ExprDebugInfo};
-use crate::automata::terms_multitape::{validate_debug_info_exists, AbstractMultiTapeExpression, MultiTapeCellState, MultiTapeExpression, MultiTapeProduct, MultiTapeProductFactory, MultiTapeTerm, TapeNo};
+use crate::automata::terms_multitape::{
+    validate_debug_info_exists, AbstractMultiTapeExpression,
+    MultiTapeCellState, MultiTapeExpression, MultiTapeProduct,
+    MultiTapeProductFactory, MultiTapeTerm, TapeNo
+};
 /*
 Reasons to redo this in rust
 - expansion of terms grows hyper-exponentially with each timestep,
@@ -319,7 +323,7 @@ impl D {
 #[derive(struct_macro_eq::CustomEq, Clone, Debug, Hash)]
 #[ignore_regex="^_"]
 pub struct PyMultiTapeProduct {
-    product: MultiTapeProduct
+    pub product: MultiTapeProduct
 }
 impl PyMultiTapeProduct {
     pub fn new(terms: Vec<D>) -> Self {
@@ -344,7 +348,7 @@ impl PyMultiTapeProduct {
     fn _get_num_terms(&self) -> usize {
         self.product._get_num_terms()
     }
-    fn from_product(product: MultiTapeProduct) -> Self {
+    pub(crate) fn from_product(product: MultiTapeProduct) -> Self {
         PyMultiTapeProduct { product }
     }
 }
@@ -523,7 +527,7 @@ impl PyMultiTapeProduct {
 #[derive(struct_macro_eq::CustomEq, Clone, Debug, Hash)]
 #[ignore_regex="^_"]
 pub struct PyMultiTapeExpression {
-    expression: MultiTapeExpression
+    pub expression: MultiTapeExpression
 }
 impl PyMultiTapeExpression {
     pub fn new(expression: MultiTapeExpression) -> Self {
