@@ -111,3 +111,13 @@ class RenderFrame(object):
 
         # print("Combined frame lines:", combined_frame.get_lines())
         return combined_frame
+
+
+class TapeRenderFrame(RenderFrame):
+    def __init__(self, line: str, num_cells: int, cell_width: int):
+        super().__init__([line])
+        self.num_cells = num_cells
+        self.cell_width = cell_width
+
+    def get_space_consumed(self) -> int:
+        return self.num_cells * (self.cell_width + 1)

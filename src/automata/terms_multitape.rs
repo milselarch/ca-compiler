@@ -304,6 +304,12 @@ impl MultiTapeProduct {
     pub fn new(terms: Vec<MultiTapeTerm>) -> Self {
         MultiTapeProductFactory::new(terms).to_product()
     }
+    pub fn to_flat_terms(&self) -> Vec<MultiTapeTerm> {
+        self._terms.clone()
+    }
+    pub fn get_annotation(&self) -> &String {
+        &self._annotation
+    }
     pub(crate) fn _get_term(&self, index: usize) -> Option<&MultiTapeTerm> {
         self._terms.get(index)
     }
