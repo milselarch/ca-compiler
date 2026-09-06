@@ -4,6 +4,7 @@ import unittest
 from fractions import Fraction
 
 from automata_builder.lagarias_automata import (
+    CONTROL_TAPE,
     OUTPUT_HALT_STATE,
     OUTPUT_TRUE_STATE,
     OUTPUT_TAPE,
@@ -58,6 +59,25 @@ class TestLagariasAutomata(unittest.TestCase):
         self.assertEqual(
             runner.tape_registers[OUTPUT_TAPE],
             (OUTPUT_TRUE_STATE, OUTPUT_HALT_STATE),
+        )
+
+    def test_step_advances_control_via_transition_schedule(self) -> None:
+        runner = LagariasAutomataRunner(
+            base=6,
+            initial_write_start=0,
+            initial_write_end=4,
+            derive_n_via_counter_automata=False,
+        )
+        self.assertGreater(len(runner.transitions_group), 0)
+        initial_index = runner.current_snapshot_index
+        initial_control = runner.tape_registers[CONTROL_TAPE]
+
+        runner.step(verbose=False)
+
+        self.assertEqual(runner.current_snapshot_index, initial_index + 1)
+        self.assertNotEqual(
+            runner.tape_registers[CONTROL_TAPE],
+            initial_control,
         )
 
     @unittest.skipUnless(
