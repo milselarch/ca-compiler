@@ -68,6 +68,14 @@ impl ToPyExpression for Term {
     }
 }
 
+pub fn py_hash<T: Hash>(value: &T) -> PyResult<isize> {
+    let mut hasher = DefaultHasher::new();
+    value.hash(&mut hasher);
+    let h = hasher.finish();
+    // Keep conversion explicit/safe across platforms.
+    isize::try_from(h as i64).map_err(|_| PyValueError::new_err("hash overflow"))
+}
+
 #[gen_stub_pyclass]
 #[pyclass]
 #[derive(Clone, Debug)]

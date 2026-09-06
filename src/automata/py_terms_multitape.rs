@@ -9,8 +9,13 @@ use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use pyo3_stub_gen::define_stub_info_gatherer;
 use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
+use crate::automata::py_terms::py_hash;
 use crate::automata::terms::{clip_after_space, CellState, ExprDebugInfo};
-use crate::automata::terms_multitape::{validate_debug_info_exists, AbstractMultiTapeExpression, MultiTapeCellState, MultiTapeExpression, MultiTapeProduct, MultiTapeProductFactory, MultiTapeTerm, TapeNo};
+use crate::automata::terms_multitape::{
+    validate_debug_info_exists, AbstractMultiTapeExpression,
+    MultiTapeCellState, MultiTapeExpression, MultiTapeProduct,
+    MultiTapeProductFactory, MultiTapeTerm, TapeNo
+};
 /*
 Reasons to redo this in rust
 - expansion of terms grows hyper-exponentially with each timestep,
@@ -158,10 +163,8 @@ impl D {
         let tape_and_cell_state = (tape_no, state);
         D { term: MultiTapeTerm::new(position, tape_and_cell_state, optimized) }
     }
-    fn __hash__(&self) -> isize {
-        let mut hasher = DefaultHasher::new();
-        self.term.hash(&mut hasher);
-        hasher.finish() as isize
+    fn __hash__(&self) -> PyResult<isize> {
+        py_hash(&self.term)
     }
     pub fn __deepcopy__(&self, _memo: &Bound<PyDict>) -> Self {
         self.clone()
@@ -229,6 +232,15 @@ impl D {
             Err(PyTypeError::new_err("Unsupported operand type(s)"))
         }
     }
+
+    fn __lt__(&self, other: &Bound<PyAny>) -> PyResult<bool> {
+        if let Ok(other_product) = other.extract::<D>() {
+            Ok(self.term < other_product.term)
+        } else {
+            Ok(false)
+        }
+    }
+
     fn __eq__(&self, other: &Bound<PyAny>) -> PyResult<bool> {
         if let Ok(other_term) = other.extract::<D>() {
             Ok(self == other_term)
@@ -311,7 +323,7 @@ impl D {
 #[derive(struct_macro_eq::CustomEq, Clone, Debug, Hash)]
 #[ignore_regex="^_"]
 pub struct PyMultiTapeProduct {
-    product: MultiTapeProduct
+    pub product: MultiTapeProduct
 }
 impl PyMultiTapeProduct {
     pub fn new(terms: Vec<D>) -> Self {
@@ -336,7 +348,7 @@ impl PyMultiTapeProduct {
     fn _get_num_terms(&self) -> usize {
         self.product._get_num_terms()
     }
-    fn from_product(product: MultiTapeProduct) -> Self {
+    pub(crate) fn from_product(product: MultiTapeProduct) -> Self {
         PyMultiTapeProduct { product }
     }
 }
@@ -382,10 +394,8 @@ impl PyMultiTapeProduct {
             self.product.to_expression()
         ))
     }
-    fn __hash__(&self) -> isize {
-        let mut hasher = DefaultHasher::new();
-        self.product.hash(&mut hasher);
-        hasher.finish() as isize
+    fn __hash__(&self) -> PyResult<isize> {
+        py_hash(&self.product)
     }
     pub fn __deepcopy__(&self, _memo: &Bound<PyDict>) -> Self {
         self.clone()
@@ -412,6 +422,15 @@ impl PyMultiTapeProduct {
             Err(PyTypeError::new_err("Unsupported operand type(s)"))
         }
     }
+
+    fn __lt__(&self, other: &Bound<PyAny>) -> PyResult<bool> {
+        if let Ok(other_product) = other.extract::<PyMultiTapeProduct>() {
+            Ok(self.product < other_product.product)
+        } else {
+            Ok(false)
+        }
+    }
+
     fn multiply_by_term(&self, term: D) -> PyResult<PyMultiTapeProduct> {
         Ok(Self::from_product(self.product.copy() * term.term))
     }
@@ -508,7 +527,7 @@ impl PyMultiTapeProduct {
 #[derive(struct_macro_eq::CustomEq, Clone, Debug, Hash)]
 #[ignore_regex="^_"]
 pub struct PyMultiTapeExpression {
-    expression: MultiTapeExpression
+    pub expression: MultiTapeExpression
 }
 impl PyMultiTapeExpression {
     pub fn new(expression: MultiTapeExpression) -> Self {
@@ -543,10 +562,8 @@ impl PyMultiTapeExpression {
     pub fn to_py_expression(&self) -> PyResult<PyMultiTapeExpression> {
         Ok(self.expression.to_pyexpr())
     }
-    fn __hash__(&self) -> isize {
-        let mut hasher = DefaultHasher::new();
-        self.expression.hash(&mut hasher);
-        hasher.finish() as isize
+    fn __hash__(&self) -> PyResult<isize> {
+        py_hash(&self.expression)
     }
     pub fn __deepcopy__(&self, _memo: &Bound<PyDict>) -> Self {
         self.clone()

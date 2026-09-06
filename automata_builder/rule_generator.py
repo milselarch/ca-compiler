@@ -4,7 +4,27 @@ import dataclasses
 import typing
 import numpy as np
 
+from typing import Final, Self
 from py_ca_compiler import A, PyExpression, PyProduct
+
+from automata_builder.renderer import TapeRenderFrame
+
+
+class TapeNo(int):
+    pass
+
+
+class TapeCellState(int):
+    pass
+
+
+BLANK_INT: Final[int] = -1
+VOID_STATE: Final[TapeCellState] = TapeCellState(0b0)
+HALT_STATE: Final[TapeCellState] = TapeCellState(0b1)
+
+
+def is_halt_state(term: A) -> bool:
+    return term.get_state() == HALT_STATE
 
 
 @dataclasses.dataclass
@@ -15,13 +35,8 @@ class AutomataTransitionsGroup(object):
     map A[] -> output state
     """
     num_states: int | None = None
-    transitions_set: set[
-        tuple[
-            tuple[A, ...],
-            int
-        ]
-    ] = dataclasses.field(
-        default_factory=set
+    transitions_map: dict[tuple[A, ...], int] = dataclasses.field(
+        default_factory=dict
     )
     transitions: list[
         tuple[
@@ -38,15 +53,22 @@ class AutomataTransitionsGroup(object):
         return input_product, output_state
 
     @classmethod
-    def spawn_new(cls, num_states: int) -> AutomataTransitionsGroup:
+    def spawn_new(cls, num_states: int | None) -> AutomataTransitionsGroup:
         return cls(num_states=num_states, transitions=[])
 
     def add_transition(
-        self, input_terms: tuple[A, ...], output_state: int
+        self, input_terms: tuple[A, ...], output_state: int,
+        ban_halt_state: bool = False
     ) -> bool:
         transition_entry = (input_terms, output_state)
-        if transition_entry in self.transitions_set:
-            return False
+        if input_terms in self.transitions_map:
+            if self.transitions_map[input_terms] == output_state:
+                return False
+
+            raise ValueError(
+                f'Conflicting transition for input terms {input_terms}: '
+                f'{output_state} vs {self.transitions_map[input_terms]}'
+            )
 
         _num_states: int | float = float('inf')
         if self.num_states is not None:
@@ -59,9 +81,24 @@ class AutomataTransitionsGroup(object):
             state = term.get_state()
             assert 0 <= state < _num_states
 
+            if ban_halt_state and is_halt_state(term):
+                raise ValueError(
+                    f'Cannot add transition with halt state term: {term}'
+                )
+
         self.transitions.append(transition_entry)
-        self.transitions_set.add(transition_entry)
+        self.transitions_map[input_terms] = output_state
         return True
+
+    def merge(
+        self, other: AutomataTransitionsGroup
+    ) -> Self:
+        for input_terms, output_state in other.transitions:
+            self.add_transition(
+                input_terms=input_terms, output_state=output_state
+            )
+
+        return self
 
 
 @dataclasses.dataclass
@@ -305,6 +342,132 @@ class RuleGenerator(object):
             assert state in state_eq_terms_map, err
 
         return state_eq_map
+
+
+class BidirectionalTape(object):
+    def __init__(self):
+        # automata cell states from position 0 and higher
+        # note that position increases for cells as we go rightwards in data
+        self.data: list[TapeCellState] = []
+        # automata cell states from position -1 and lower
+        # note that position decreases for cells as we go rightwards in data
+        self.rev_data: list[TapeCellState] = []
+
+    def get_range(self) -> tuple[int, int]:
+        min_pos = -len(self.rev_data)
+        max_pos = len(self.data) - 1
+        return min_pos, max_pos
+
+    def get_all_states(self) -> set[TapeCellState]:
+        # TODO: consider tracking unique states instead of recomputing
+        return set(self.data) | set(self.rev_data)
+
+    def prune(self) -> tuple[int, int]:
+        forward_popped, reverse_popped = 0, 0
+        # prune leading zeros in both directions
+        while self.data and self.data[-1] == VOID_STATE:
+            forward_popped += 1
+            self.data.pop()
+        while self.rev_data and self.rev_data[-1] == VOID_STATE:
+            reverse_popped += 1
+            self.rev_data.pop()
+
+        return forward_popped, reverse_popped
+
+    def get_minimal_data_region(self) -> list[TapeCellState]:
+        """
+        Get the minimal contiguous region of tape data
+        that contains all non-void states.
+        :return:
+        """
+        self.prune()
+        # make a shallow copy to avoid mutable reference
+        data_region = self.rev_data[::-1] + self.data
+        minimal_data_region: list[TapeCellState] = []
+        data_region_started: bool = False
+
+        for tape_cell_state in data_region:
+            if tape_cell_state != VOID_STATE:
+                data_region_started = True
+
+            if not data_region_started:
+                continue
+
+            minimal_data_region.append(tape_cell_state)
+
+        # remove trailing void state cells
+        # this can happen if all data cells are from the rev_data region
+        while minimal_data_region and minimal_data_region[-1] == VOID_STATE:
+            minimal_data_region.pop()
+
+        return minimal_data_region
+
+    def render_line(
+        self, start_position: int, length: int,
+        cell_width: int = BLANK_INT
+    ) -> TapeRenderFrame:
+        all_states = self.get_all_states()
+        max_state = VOID_STATE if not all_states else max(all_states)
+
+        if cell_width == BLANK_INT:
+            cell_width = len(str(max_state))
+        elif cell_width < len(str(max_state)):
+            raise ValueError(
+                f"Cell width {cell_width} is too small to fit "
+                f"the largest state {max_state}"
+            )
+
+        cells_to_render = length // (cell_width + 1)
+        line: str = ""
+
+        for k in range(cells_to_render):
+            position = start_position + k
+            state = self.read(position)
+            line += str(state).rjust(cell_width, '0') + "|"
+
+        line += " " * (length - len(line))
+        return TapeRenderFrame(
+            line=line, num_cells=cells_to_render,
+            cell_width=cell_width
+        )
+
+    def read(self, position: int) -> TapeCellState:
+        if position >= 0:
+            if position >= len(self.data):
+                return VOID_STATE
+
+            return self.data[position]
+        else:
+            rev_position = -position - 1
+            if rev_position >= len(self.rev_data):
+                return VOID_STATE
+
+            return self.rev_data[rev_position]
+
+    def __getitem__(self, position: int) -> TapeCellState:
+        return self.read(position)
+
+    def write(self, position: int, value: TapeCellState):
+        if position >= 0:
+            while position >= len(self.data):
+                self.data.append(VOID_STATE)
+
+            self.data[position] = value
+        else:
+            rev_position = -position - 1
+            while rev_position >= len(self.rev_data):
+                self.rev_data.append(VOID_STATE)
+
+            self.rev_data[rev_position] = value
+
+    def write_region(
+        self, position: int, end_position: int,
+        values: list[TapeCellState]
+    ):
+        for new_position in range(position, end_position+1):
+            offset = new_position - position
+            value = values[offset % len(values)]
+            self.write(new_position, value)
 
 
 if __name__ == "__main__":
